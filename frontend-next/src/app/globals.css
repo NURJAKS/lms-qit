@@ -1,0 +1,435 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Geologica:wght@300;400;500;600;700;800&family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Class-based dark mode for theme toggle */
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --qit-primary: #1a237e;
+  --qit-secondary: #00b0ff;
+  --qit-accent: #ff4081;
+  --qit-light: #f5f7ff;
+  --qit-dark: #0d1440;
+  --qit-dashboard-bg: #F0F4F8;
+  --qit-sidebar-dark: #0A0F24;
+  --qit-gradient-1: linear-gradient(135deg, #FF4181 0%, #B938EB 100%);
+  --qit-gradient-2: linear-gradient(135deg, #00b0ff, #00e5ff);
+  --qit-gradient-3: linear-gradient(135deg, #FF4181 0%, #B938EB 100%);
+  --qit-gradient-4: linear-gradient(135deg, #76ff03, #64dd17);
+  --qit-gradient-5: linear-gradient(135deg, #FF4181 0%, #B938EB 100%);
+  --qit-gradient-banner: linear-gradient(135deg, #1a237e 0%, #0d1440 50%, #311b92 100%);
+  --qit-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  --font-geist-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Светлая тема - улучшенная палитра */
+  --qit-bg-deep: #F8FAFC;
+  --qit-bg-surface: #FFFFFF;
+  --qit-bg-surface-glass: rgba(255, 255, 255, 0.95);
+  --qit-primary-gradient: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+  --qit-accent-blue: #3B82F6;
+  --qit-accent-purple: #8B5CF6;
+  --qit-success: #10B981;
+  --qit-danger: #EF4444;
+  --qit-warning: #F59E0B;
+  --qit-info-tech: #8B5CF6;
+  --qit-info-cyan: #06B6D4;
+  --qit-text-primary: #0F172A;
+  --qit-text-secondary: #64748B;
+  --qit-gold: #FBBF24;
+  --qit-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --qit-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --qit-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --qit-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --qit-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Dark theme - applied when html has .dark class */
+html.dark {
+  --background: #0B0F19;
+  --foreground: #FFFFFF;
+
+  /* Темная тема - улучшенная палитра */
+  --qit-bg-deep: #0B0F19;
+  --qit-bg-surface: #1A2238;
+  --qit-bg-surface-glass: rgba(26, 34, 56, 0.6);
+  --qit-primary-gradient: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+  --qit-accent-blue: #60A5FA;
+  --qit-accent-purple: #A78BFA;
+  --qit-success: #34D399;
+  --qit-danger: #F87171;
+  --qit-warning: #FBBF24;
+  --qit-info-tech: #8B5CF6;
+  --qit-info-cyan: #06B6D4;
+  --qit-text-primary: #FFFFFF;
+  --qit-text-secondary: #94A3B8;
+  --qit-gold: #FBBF24;
+  --qit-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --qit-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --qit-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --qit-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --qit-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-qit-primary: var(--qit-primary);
+  --color-qit-secondary: var(--qit-secondary);
+  --color-qit-accent: var(--qit-accent);
+  --color-qit-light: var(--qit-light);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  @keyframes shimmer-slide {
+  to {
+    transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+  @keyframes spin-around {
+  0% {
+    transform: translateZ(0) rotate(0);
+    }
+  15%, 35% {
+    transform: translateZ(0) rotate(90deg);
+    }
+  65%, 85% {
+    transform: translateZ(0) rotate(270deg);
+    }
+  100% {
+    transform: translateZ(0) rotate(360deg);
+    }
+  }
+  --animate-shiny-text: shiny-text 8s infinite
+;
+  @keyframes shiny-text {
+  0%, 90%, 100% {
+    background-position: calc(-100% - var(--shiny-width)) 0;
+    }
+  30%, 60% {
+    background-position: calc(100% + var(--shiny-width)) 0;
+    }
+  }
+  --animate-ripple: ripple var(--duration,2s) ease calc(var(--i, 0)*.2s) infinite;
+  @keyframes ripple {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    }
+  50% {
+    transform: translate(-50%, -50%) scale(0.9);
+    }
+  }
+  --animate-shine: shine var(--duration) infinite linear
+;
+  @keyframes shine {
+  0% {
+    background-position: 0% 0%;
+    }
+  50% {
+    background-position: 100% 100%;
+    }
+  to {
+    background-position: 0% 0%;
+    }
+  }
+  --animate-rippling: rippling var(--duration) ease-out;
+  @keyframes rippling {
+  0% {
+    opacity: 1;
+    }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+    }
+  }
+  --animate-grid: grid 15s linear infinite;
+  @keyframes grid {
+  0% {
+    transform: translateY(-50%);
+    }
+  100% {
+    transform: translateY(0);
+    }
+  }
+  --animate-marquee: marquee var(--duration, 40s) linear infinite;
+  --animate-marquee-reverse: marquee-reverse var(--duration, 40s) linear infinite;
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes marquee-reverse {
+    from { transform: translateX(-50%); }
+    to { transform: translateX(0); }
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* WOW Effects */
+@keyframes glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.8));
+  }
+}
+
+.glow-effect {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: 'Geologica', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.font-montserrat {
+  font-family: 'Montserrat', system-ui, sans-serif;
+}
+
+.font-geologica {
+  font-family: 'Geologica', 'Inter', system-ui, sans-serif;
+}
+
+/* Wiggle — покачивание влево-вправо */
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+.animate-wiggle {
+  animation: wiggle 2s ease-in-out infinite;
+}
+
+/* Float — плавное покачивание блока вверх-вниз */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Slide-up — появление карточек при скролле */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Gradient text — анимированный градиент */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  animation: gradient-shift 4s ease infinite;
+}
+
+/* Hero particles — орбиты и плавающие частицы */
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes float-particle {
+  0%, 100% { transform: translate(0, 0); opacity: 0.6; }
+  25% { transform: translate(10px, -15px); opacity: 0.9; }
+  50% { transform: translate(-8px, -8px); opacity: 0.7; }
+  75% { transform: translate(-12px, 10px); opacity: 0.8; }
+}
+
+.animate-orbit { animation: orbit 25s linear infinite; }
+.animate-orbit-slow { animation: orbit 35s linear infinite; }
+.animate-orbit-reverse { animation: orbit-reverse 20s linear infinite; }
+.animate-orbit-fast { animation: orbit 12s linear infinite; }
+.animate-orbit-faster { animation: orbit 8s linear infinite; }
+.animate-float-particle { animation: float-particle 8s ease-in-out infinite; }
+.animate-float-particle-slow { animation: float-particle 12s ease-in-out infinite; }
+.animate-float-particle-fast { animation: float-particle 6s ease-in-out infinite; }
+
+/* Glow effect для карточек при hover - улучшенный */
+@keyframes card-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3);
+  }
+}
+
+.card-glow-hover:hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2), 0 8px 16px rgba(139, 92, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1);
+}
+
+html.dark .card-glow-hover:hover {
+  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.3), 0 8px 16px rgba(139, 92, 246, 0.2), 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+/* Glassmorphism базовый класс - улучшенный */
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+html.dark .glass-card {
+  background: rgba(26, 34, 56, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Улучшенный glassmorphism для карточек */
+.glass-card-enhanced {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+html.dark .glass-card-enhanced {
+  background: rgba(26, 34, 56, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Унифицированные скругления */
+.rounded-unified {
+  border-radius: 16px;
+}
+
+.rounded-unified-lg {
+  border-radius: 20px;
+}
+
+/* Пульсирующая точка для индикаторов */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Meteor effect animation */
+@keyframes meteor-effect {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-200px) translateX(200px);
+    opacity: 0;
+  }
+}
+
+.animate-meteor-effect {
+  animation: meteor-effect linear infinite;
+}
+
+/* 3D Slider — карусель с вращающимися карточками */
+.slider-3d-scene {
+  perspective: 1200px;
+  perspective-origin: center center;
+}
+
+.slider-3d {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: rotate-3d 12s linear infinite;
+}
+
+.slider-3d-paused {
+  animation-play-state: paused;
+}
+
+.slider-3d-item {
+  position: absolute;
+  width: 200px;
+  height: 120px;
+  left: 50%;
+  top: 50%;
+  margin-left: -100px;
+  margin-top: -60px;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+}
+
+.slider-3d-center-text {
+  z-index: 1;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes rotate-3d {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .slider-3d-item {
+    width: 160px;
+    height: 100px;
+    margin-left: -80px;
+    margin-top: -50px;
+  }
+}

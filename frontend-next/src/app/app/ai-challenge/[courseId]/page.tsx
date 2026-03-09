@@ -1,0 +1,867 @@
+"use client";
+
+import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/api/client";
+import { useLanguage } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { ChevronLeft, Trophy, Zap, User, Bot, Clock, Layers, Brain, Star, Sparkles } from "lucide-react";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { Particles } from "@/components/ui/particles";
+import { getLocalizedCourseTitle } from "@/lib/courseUtils";
+
+type Screen = "intro" | "playing" | "results" | "memory" | "memoryComplete";
+type AILevel = "beginner" | "intermediate" | "expert";
+type GameMode = "quiz" | "flashcard" | "memory";
+
+interface Question {
+  id: number;
+  question_text: string;
+  option_a?: string;
+  option_b?: string;
+  option_c?: string;
+  option_d?: string;
+  answer_text?: string;
+}
+
+interface StartResponse {
+  challenge_id: number;
+  questions: Question[];
+  ai_times_per_question: number[];
+  round_time_limit_seconds: number;
+  ai_bonus_points: number;
+}
+
+interface WrongTopic {
+  id: number;
+  title: string;
+}
+
+interface MemoryCard {
+  id: string;
+  text: string;
+  pair_id: string;
+}
+
+interface ResultsResponse {
+  user_correct: number;
+  ai_correct: number;
+  user_time: number;
+  ai_time: number;
+  user_bonus_points: number;
+  ai_bonus_points: number;
+  user_total_score: number;
+  ai_total_score: number;
+  user_wins: boolean;
+  overtime: boolean;
+  recommendations: string;
+  round_time_limit: number;
+  wrong_topics?: WrongTopic[];
+  metrics?: {
+    user_speed_avg_sec: number;
+    user_accuracy_pct: number;
+    user_strategy_bonus: number;
+    ai_speed_avg_sec?: number;
+    ai_accuracy_pct?: number;
+    ai_strategy_bonus?: number;
+  };
+}
+
+// LEVEL_LABELS will be created using translations inside the component
+
+export default function AIChallengePage() {
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const courseId = params.courseId as string;
+  const cId = Number(courseId);
+  const queryClient = useQueryClient();
+  const { t, lang } = useLanguage();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  
+  // Получаем параметры из URL
+  const urlMode = searchParams.get("mode") as GameMode | null;
+  const urlLevel = searchParams.get("level") as AILevel | null;
+  
+  const [screen, setScreen] = useState<Screen>("intro");
+  const [gameMode, setGameMode] = useState<GameMode>(urlMode || "quiz");
+  const [aiLevel, setAiLevel] = useState<AILevel>(urlLevel || "intermediate");
+  const [challengeId, setChallengeId] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [aiTimes, setAiTimes] = useState<number[]>([]);
+  const [roundTimeLimit, setRoundTimeLimit] = useState(90);
+  const [aiBonusPoints, setAiBonusPoints] = useState(0);
+  const [currentQ, setCurrentQ] = useState(0);
+  const [answers, setAnswers] = useState<Array<{ question_id: number; answer?: string; time_seconds: number }>>([]);
+  const [qStartTime, setQStartTime] = useState<number>(0);
+  const [timeLeft, setTimeLeft] = useState(90);
+  const [aiAnsweredCount, setAiAnsweredCount] = useState(0);
+  const [results, setResults] = useState<ResultsResponse | null>(null);
+  const [cardResult, setCardResult] = useState<"user" | "ai" | null>(null);
+  const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
+  const [memoryFlipped, setMemoryFlipped] = useState<number[]>([]);
+  const [memoryMatched, setMemoryMatched] = useState<Set<string>>(new Set());
+  const roundStartRef = useRef<number>(0);
+  const aiTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const answersRef = useRef(answers);
+  const submittedRef = useRef(false);
+  answersRef.current = answers;
+
+  const { data: course } = useQuery({
+    queryKey: ["course", cId],
+    queryFn: async () => {
+      const { data } = await api.get<{ title: string }>(`/courses/${cId}`);
+      return data;
+    },
+    enabled: !!cId,
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      if (gameMode === "memory") {
+      const { data } = await api.get<{ cards: MemoryCard[] }>(`/challenge/memory?course_id=${cId}&lang=${lang}`);
+        return { memory: data };
+      }
+      const { data } = await api.post<StartResponse>(
+        `/challenge/start?course_id=${cId}&ai_level=${aiLevel}&game_mode=${gameMode}&lang=${lang}`
+      );
+      return { challenge: data };
+    },
+    onSuccess: (result) => {
+      if ("memory" in result && result.memory) {
+        setMemoryCards(result.memory.cards);
+        setMemoryFlipped([]);
+        setMemoryMatched(new Set());
+        setScreen("memory");
+        submittedRef.current = false;
+      } else if ("challenge" in result && result.challenge) {
+        const data = result.challenge;
+        setChallengeId(data.challenge_id);
+        setQuestions(data.questions);
+        setAiTimes(data.ai_times_per_question || []);
+        setRoundTimeLimit(data.round_time_limit_seconds ?? 90);
+        setAiBonusPoints(data.ai_bonus_points ?? 0);
+        setCurrentQ(0);
+        setAnswers([]);
+        setAiAnsweredCount(0);
+        setCardResult(null);
+        setTimeLeft(data.round_time_limit_seconds ?? 90);
+        setQStartTime(Date.now());
+        roundStartRef.current = Date.now();
+        submittedRef.current = false;
+        setScreen("playing");
+      }
+    },
+  });
+
+  // Автоматически начинаем игру, если параметры переданы в URL
+  useEffect(() => {
+    if (course && urlMode && urlLevel && screen === "intro" && !startMutation.isPending && questions.length === 0) {
+      // Начинаем игру сразу без задержки
+      startMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course, urlMode, urlLevel, screen]);
+
+  const submitMutation = useMutation({
+    mutationFn: async (body: { answers: Array<{ question_id: number; answer?: string; time_seconds: number }> }) => {
+      if (!challengeId) {
+        throw new Error("Challenge ID не найден");
+      }
+      const { data } = await api.post<ResultsResponse>(`/challenge/${challengeId}/submit`, body);
+      return data;
+    },
+    onSuccess: (data) => {
+      submittedRef.current = true;
+      setResults(data);
+      setScreen("results");
+      queryClient.invalidateQueries({ queryKey: ["course-structure", cId] });
+    },
+  });
+
+  useEffect(() => {
+    if (screen !== "playing" || questions.length === 0 || aiTimes.length === 0) return;
+    if (gameMode === "flashcard") {
+      const i = currentQ;
+      if (i >= aiTimes.length) return;
+      const aiTime = aiTimes[i] ?? 3;
+      aiTimersRef.current.forEach((t) => clearTimeout(t));
+      aiTimersRef.current = [];
+      const id = setTimeout(() => {
+        setAiAnsweredCount((c) => Math.min(c + 1, i + 1));
+        const currentAnswers = answersRef.current;
+        if (currentAnswers.length === i) {
+          const q = questions[i];
+          const newAnswers = [...currentAnswers, { question_id: q.id, answer: "x", time_seconds: 999 }];
+          setAnswers(newAnswers);
+          setCardResult("ai");
+        }
+      }, aiTime * 1000);
+      aiTimersRef.current = [id];
+      return () => aiTimersRef.current.forEach((t) => clearTimeout(t));
+    }
+    // Для quiz режима
+    aiTimersRef.current.forEach((t) => clearTimeout(t));
+    aiTimersRef.current = [];
+    let elapsed = 0;
+    aiTimes.forEach((t, i) => {
+      const id = setTimeout(() => {
+        setAiAnsweredCount((c) => Math.min(c + 1, i + 1));
+      }, (elapsed + t) * 1000);
+      elapsed += t;
+      aiTimersRef.current.push(id);
+    });
+    return () => aiTimersRef.current.forEach((t) => clearTimeout(t));
+  }, [screen, questions.length, aiTimes, gameMode, currentQ]);
+
+  useEffect(() => {
+    if (screen !== "playing" || gameMode === "flashcard" || questions.length === 0) return;
+    if (timeLeft <= 0) {
+      if (!submittedRef.current) {
+        const currentAnswers = answersRef.current;
+        if (currentAnswers.length < questions.length) {
+          const remaining = questions.slice(currentAnswers.length);
+          const newAnswers = [
+            ...currentAnswers,
+            ...remaining.map((r) => ({ question_id: r.id, answer: "", time_seconds: 0 })),
+          ];
+          submitMutation.mutate({ answers: newAnswers });
+        }
+      }
+      return;
+    }
+    const id = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(id);
+          if (!submittedRef.current && challengeId) {
+            const currentAnswers = answersRef.current;
+            if (currentAnswers.length < questions.length) {
+              const remaining = questions.slice(currentAnswers.length);
+              const newAnswers = [
+                ...currentAnswers,
+                ...remaining.map((r) => ({ question_id: r.id, answer: "", time_seconds: 0 })),
+              ];
+              submittedRef.current = true;
+              submitMutation.mutate({ answers: newAnswers });
+            }
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [screen, timeLeft, questions.length, gameMode]);
+
+  const handleAnswer = (answer: string) => {
+    if (submittedRef.current || !questions[currentQ]) return;
+    const timeSec = (Date.now() - qStartTime) / 1000;
+    const q = questions[currentQ];
+    const newAnswers = [...answers, { question_id: q.id, answer, time_seconds: timeSec }];
+    setAnswers(newAnswers);
+    if (currentQ + 1 >= questions.length) {
+      submittedRef.current = true;
+      submitMutation.mutate({ answers: newAnswers });
+    } else {
+      setCurrentQ(currentQ + 1);
+      setQStartTime(Date.now());
+    }
+  };
+
+  const handleFlashcardAnswer = (answer: string) => {
+    if (answers.length !== currentQ || cardResult || submittedRef.current || !questions[currentQ]) return;
+    const timeSec = (Date.now() - qStartTime) / 1000;
+    const q = questions[currentQ];
+    const optText = answer === "a" ? q.option_a : answer === "b" ? q.option_b : answer === "c" ? q.option_c : q.option_d;
+    const correct = optText === q.answer_text;
+    const aiTime = aiTimes[currentQ] ?? 3;
+    const userWins = correct && timeSec < aiTime;
+    const newAnswers = [...answers, { question_id: q.id, answer, time_seconds: timeSec }];
+    setAnswers(newAnswers);
+    setCardResult(userWins ? "user" : "ai");
+    aiTimersRef.current.forEach((t) => clearTimeout(t));
+    aiTimersRef.current = [];
+  };
+
+  const getPairKey = (id1: string, id2: string) => [id1, id2].sort().join("-");
+
+  const handleMemoryCardClick = (idx: number) => {
+    if (memoryFlipped.length >= 2 || memoryFlipped.includes(idx)) return;
+    const card = memoryCards[idx];
+    const pairKey = getPairKey(card.id, card.pair_id);
+    if (memoryMatched.has(pairKey)) return;
+    const newFlipped = [...memoryFlipped, idx];
+    setMemoryFlipped(newFlipped);
+    if (newFlipped.length === 2) {
+      const [a, b] = newFlipped;
+      const cardA = memoryCards[a];
+      const cardB = memoryCards[b];
+      if (cardA.pair_id === cardB.id || cardB.pair_id === cardA.id) {
+        setMemoryMatched((s) => new Set([...s, getPairKey(cardA.id, cardA.pair_id)]));
+        setMemoryFlipped([]);
+      } else {
+        setTimeout(() => setMemoryFlipped([]), 1000);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (memoryCards.length === 8 && memoryMatched.size === 4) {
+      setScreen("memoryComplete");
+    }
+  }, [memoryCards.length, memoryMatched.size]);
+
+  useEffect(() => {
+    if (cardResult && gameMode === "flashcard" && !submittedRef.current) {
+      const id = setTimeout(() => {
+        setCardResult(null);
+        if (currentQ + 1 >= questions.length) {
+          submittedRef.current = true;
+          submitMutation.mutate({ answers: answersRef.current });
+        } else {
+          setCurrentQ((prev) => prev + 1);
+          setQStartTime(Date.now());
+        }
+      }, 1500);
+      return () => clearTimeout(id);
+    }
+  }, [cardResult, gameMode, currentQ, questions.length]);
+
+  if (!course) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+          <p className="mt-4 text-center text-gray-600 dark:text-gray-400">
+            {t("loading")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Если параметры переданы в URL, не показываем экран intro, а сразу начинаем игру
+  const shouldShowIntro = screen === "intro" && !urlMode && !urlLevel;
+  
+  // Показываем загрузку только когда действительно идет загрузка
+  // Если параметры переданы в URL, показываем загрузку пока игра не началась
+  const isLoadingGame = (screen === "intro" && urlMode && urlLevel && (startMutation.isPending || (questions.length === 0 && !startMutation.isError))) || 
+                         (startMutation.isError && screen === "intro");
+
+  return (
+    <div className="relative min-h-screen">
+      {/* Декоративный фон с игровыми элементами */}
+      {shouldShowIntro && (
+        <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+          {/* Градиентный фон */}
+          <div 
+            className="absolute inset-0 opacity-30"
+            style={{
+              background: isDark
+                ? "radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 50%)"
+                : "radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 50%), radial-gradient(circle at 80% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%)"
+            }}
+          />
+          
+          {/* Плавающие декоративные элементы */}
+          <div className="absolute top-[10%] left-[5%] w-16 h-16 opacity-20 animate-float-particle">
+            <Zap className="w-full h-full text-purple-500" />
+          </div>
+          <div className="absolute top-[20%] right-[10%] w-12 h-12 opacity-15 animate-float-particle-slow" style={{ animationDelay: "-2s" }}>
+            <Star className="w-full h-full text-blue-500 fill-current" />
+          </div>
+          <div className="absolute bottom-[15%] left-[8%] w-10 h-10 opacity-20 animate-float-particle" style={{ animationDelay: "-4s" }}>
+            <Sparkles className="w-full h-full text-purple-400" />
+          </div>
+          <div className="absolute bottom-[25%] right-[5%] w-14 h-14 opacity-15 animate-float-particle-slow" style={{ animationDelay: "-1s" }}>
+            <Trophy className="w-full h-full text-amber-500" />
+          </div>
+          <div className="absolute top-[50%] left-[3%] w-8 h-8 opacity-20 animate-float-particle-fast" style={{ animationDelay: "-3s" }}>
+            <Star className="w-full h-full text-blue-400 fill-current" />
+          </div>
+          <div className="absolute top-[40%] right-[3%] w-12 h-12 opacity-15 animate-float-particle" style={{ animationDelay: "-5s" }}>
+            <Zap className="w-full h-full text-purple-400" />
+          </div>
+          
+          {/* Орбитальные частицы */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] animate-orbit-slow">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-purple-400/40" />
+            <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-1.5 h-1.5 rounded-full bg-blue-400/30" />
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 rounded-full bg-purple-500/30" />
+            <div className="absolute top-1/2 left-0 -translate-y-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-500/40" />
+          </div>
+          
+          {/* Дополнительные плавающие точки */}
+          <div className="absolute top-[30%] left-[15%] w-1.5 h-1.5 rounded-full bg-purple-400/50 animate-float-particle" />
+          <div className="absolute top-[35%] right-[20%] w-2 h-2 rounded-full bg-blue-400/40 animate-float-particle" style={{ animationDelay: "-2s" }} />
+          <div className="absolute bottom-[30%] left-[25%] w-1 h-1 rounded-full bg-purple-500/50 animate-float-particle-slow" style={{ animationDelay: "-4s" }} />
+          <div className="absolute bottom-[40%] right-[15%] w-1.5 h-1.5 rounded-full bg-blue-500/40 animate-float-particle" style={{ animationDelay: "-1s" }} />
+          
+          {/* Particles эффект */}
+          <Particles
+            className="absolute inset-0"
+            quantity={30}
+            ease={80}
+            color={isDark ? "#8b5cf6" : "#7c3aed"}
+            size={0.8}
+            staticity={50}
+          />
+        </div>
+      )}
+      
+      <div className="relative max-w-2xl mx-auto z-10">
+        {shouldShowIntro && (
+          <BlurFade delay={0.05}>
+            <Link href="/app/ai-challenge" className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 mb-6 transition-colors">
+              <ChevronLeft className="w-4 h-4" /> {t("back")}
+            </Link>
+          </BlurFade>
+        )}
+
+      {/* Показываем загрузку, если параметры переданы и игра начинается */}
+      {isLoadingGame && (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="relative text-center">
+            <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto" />
+            <p className="mt-4 text-center text-gray-600 dark:text-gray-400">
+              {startMutation.isError 
+                ? (() => {
+                    const error = startMutation.error as Error;
+                    const errorMessage = error?.message || "";
+                    // Проверяем, содержит ли ошибка информацию о недостаточном количестве тем
+                    if (errorMessage.includes("400") || errorMessage.includes("Пройдите больше тем")) {
+                      return t("aiPassedTopicsRequirement");
+                    }
+                    return errorMessage || t("error");
+                  })()
+                : t("aiJoining")}
+            </p>
+            {startMutation.isError && (
+              <div className="mt-4 space-y-2">
+                <Link
+                  href={`/app/courses/${cId}`}
+                  className="block px-4 py-2 rounded-lg text-white text-center bg-purple-600 hover:bg-purple-700 transition-colors"
+                >
+                  {t("aiGoToCourse")}
+                </Link>
+                <button
+                  onClick={() => startMutation.mutate()}
+                  className="w-full px-4 py-2 rounded-lg border-2 border-purple-500 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  {t("aiRetry")}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Показываем контент игры, если не идет загрузка */}
+      {!isLoadingGame && (
+        <>
+      {shouldShowIntro && (
+        <BlurFade delay={0.1}>
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 text-center overflow-hidden border-2 border-purple-200/50 dark:border-purple-800/50">
+            {/* Декоративные элементы внутри карточки */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 dark:bg-purple-400/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/5 dark:bg-blue-400/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+            
+            {/* Светящиеся углы */}
+            <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-purple-500/20 to-transparent rounded-tl-2xl" />
+            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-blue-500/20 to-transparent rounded-tr-2xl" />
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-bl-2xl" />
+            <div className="absolute bottom-0 right-0 w-20 h-20 bg-gradient-to-tl from-blue-500/20 to-transparent rounded-br-2xl" />
+            
+            <div className="relative z-10">
+              <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 animate-pulse opacity-75" />
+                <Zap className="w-10 h-10 text-white relative z-10 animate-pulse" />
+                {/* Вращающиеся звезды вокруг иконки */}
+                <div className="absolute -top-2 -right-2 w-4 h-4 animate-spin" style={{ animationDuration: "3s" }}>
+                  <Star className="w-full h-full text-yellow-400 fill-current" />
+                </div>
+                <div className="absolute -bottom-2 -left-2 w-3 h-3 animate-spin" style={{ animationDuration: "4s", animationDirection: "reverse" }}>
+                  <Star className="w-full h-full text-blue-400 fill-current" />
+                </div>
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-2">
+                AI vs Student
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                {gameMode === "flashcard"
+                  ? t("aiGameDescriptionFlashcard").replace("{course}", getLocalizedCourseTitle(course as any, t))
+                  : gameMode === "memory"
+                    ? t("aiGameDescriptionMemory").replace("{course}", getLocalizedCourseTitle(course as any, t))
+                    : t("aiGameDescriptionQuiz").replace("{course}", getLocalizedCourseTitle(course as any, t))}
+              </p>
+              <div className="mb-6">
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4 text-purple-500" />
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("gameMode")}:</p>
+                </div>
+                <div className="flex gap-2 justify-center flex-wrap mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setGameMode("quiz")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      gameMode === "quiz"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    <Zap className="w-4 h-4" />
+                    {t("quiz")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGameMode("flashcard")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      gameMode === "flashcard"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    <Layers className="w-4 h-4" />
+                    {t("flashcardDuel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGameMode("memory")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      gameMode === "memory"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    <Brain className="w-4 h-4" />
+                    {t("memoryGame")}
+                  </button>
+                </div>
+                {gameMode !== "memory" && (
+                  <>
+                    <div className="flex items-center justify-center gap-2 mb-3 mt-4">
+                      <Bot className="w-4 h-4 text-blue-500" />
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("aiLevelLabel")}:</p>
+                    </div>
+                    <div className="flex gap-2 justify-center flex-wrap">
+                      {(["beginner", "intermediate", "expert"] as const).map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => setAiLevel(l)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            aiLevel === l
+                              ? "bg-purple-600 text-white"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          }`}
+                        >
+                          {l === "beginner" ? t("aiLevelBeginner") : l === "intermediate" ? t("aiLevelIntermediate") : t("aiLevelExpert")}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => startMutation.mutate()}
+                  disabled={startMutation.isPending}
+                  className="relative py-4 px-10 rounded-xl text-white disabled:opacity-50 font-semibold text-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 overflow-hidden group"
+                >
+                  {/* Блестящий эффект при hover */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  <span className="relative z-10 flex items-center gap-2">
+                    <Zap className="w-5 h-5" />
+                    {startMutation.isPending ? t("aiJoining") : t("aiStarting")}
+                  </span>
+                </button>
+                {/* Декоративные элементы вокруг кнопки */}
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-ping" />
+                <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              </div>
+              {startMutation.isError && (
+                <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                  <p className="text-red-600 dark:text-red-400 text-sm">{(startMutation.error as Error).message}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </BlurFade>
+      )}
+
+      {screen === "playing" && questions[currentQ] && gameMode === "flashcard" && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-100 dark:bg-purple-900">
+              <User className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <div className="flex gap-1">
+                {questions.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full ${
+                      i < answers.length ? "bg-purple-600" : "bg-gray-200 dark:bg-gray-600"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-100 dark:bg-amber-900">
+              <Bot className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex gap-1">
+                {questions.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full ${
+                      i < aiAnsweredCount ? "bg-amber-600" : "bg-gray-200 dark:bg-gray-600"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{t("aiCard")} {currentQ + 1} / {questions.length}</p>
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}с</p>
+          {cardResult ? (
+            <div className="space-y-4">
+              <p className={`text-lg font-semibold ${cardResult === "user" ? "text-green-600" : "text-amber-600"}`}>
+                {cardResult === "user" ? t("aiYouWon") : t("aiWon")}
+              </p>
+              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t("aiAnswer")}:</p>
+                <p className="text-gray-800 dark:text-white">{questions[currentQ].answer_text}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">{questions[currentQ].question_text}</h2>
+              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">{t("aiWaitAnswer").replace("{time}", aiTimes[currentQ]?.toFixed(1) || "0")}</p>
+              <div className="space-y-3">
+                {["a", "b", "c", "d"].map((key) => {
+                  const q = questions[currentQ];
+                  const opt = key === "a" ? q.option_a : key === "b" ? q.option_b : key === "c" ? q.option_c : q.option_d;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleFlashcardAnswer(key)}
+                      className="w-full text-left py-3 px-4 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+                    >
+                      {key.toUpperCase()}. {opt ?? ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {screen === "memory" && memoryCards.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t("aiMemoryFindPairs")}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {memoryCards.map((card, idx) => {
+              const isFlipped = memoryFlipped.includes(idx);
+              const pairKey = getPairKey(card.id, card.pair_id);
+              const isMatched = memoryMatched.has(pairKey);
+              return (
+                <button
+                  key={card.id + idx}
+                  type="button"
+                  onClick={() => handleMemoryCardClick(idx)}
+                  disabled={isMatched || (memoryFlipped.length >= 2 && !isFlipped)}
+                  className={`aspect-[4/3] rounded-lg p-3 text-left text-sm font-medium transition-all flex items-center justify-center ${
+                    isMatched
+                      ? "bg-green-100 dark:bg-green-900/30 border-2 border-green-500 opacity-80"
+                      : isFlipped
+                        ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-500"
+                        : "bg-gray-100 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 hover:border-purple-500"
+                  }`}
+                >
+                  <span className={isFlipped || isMatched ? "text-gray-800 dark:text-white line-clamp-4" : "text-2xl text-gray-400"}>
+                    {isFlipped || isMatched ? card.text : "?"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {screen === "memoryComplete" && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
+            <Trophy className="w-10 h-10 text-green-600 dark:text-green-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">{t("aiCongratulations")}</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{t("aiAllPairsFound")}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => { setScreen("intro"); setMemoryCards([]); setMemoryMatched(new Set()); }}
+              className="py-2 px-4 rounded-lg border border-purple-500 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+            >
+              {t("aiRetry")}
+            </button>
+            <Link href={`/app/courses/${cId}`} className="py-2 px-4 rounded-lg text-white bg-purple-600 hover:bg-purple-700 transition-colors">
+              {t("aiBackToCourse")}
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {screen === "playing" && questions[currentQ] && gameMode === "quiz" && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <Clock className="w-5 h-5" />
+              <span className="font-bold text-lg">{timeLeft}с</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-100 dark:bg-purple-900">
+              <User className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <div className="flex-1">
+                <div className="flex gap-1 mb-1">
+                  {questions.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-2 h-2 rounded-full ${
+                        i < answers.length ? "bg-purple-600" : "bg-gray-200 dark:bg-gray-600"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-100 dark:bg-amber-900">
+              <Bot className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex gap-1">
+                {questions.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full ${
+                      i < aiAnsweredCount ? "bg-amber-600" : "bg-gray-200 dark:bg-gray-600"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{t("question")} {currentQ + 1} / {questions.length}</p>
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}с</p>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-6">{questions[currentQ].question_text}</h2>
+          <div className="space-y-3">
+            {["a", "b", "c", "d"].map((key) => {
+              const q = questions[currentQ];
+              const opt = key === "a" ? q.option_a : key === "b" ? q.option_b : key === "c" ? q.option_c : q.option_d;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleAnswer(key)}
+                  className="w-full text-left py-3 px-4 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+                >
+                  {key.toUpperCase()}. {opt ?? ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {screen === "results" && results && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${results.user_wins ? "bg-green-100 dark:bg-green-900" : "bg-amber-100 dark:bg-amber-900"}`}>
+            <Trophy className={`w-10 h-10 ${results.user_wins ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`} />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
+            {results.overtime ? t("aiTimeUp") : results.user_wins ? t("aiCongratulations") : `${t("aiWon")}. ${t("tryAgain")}`}
+          </h1>
+          <div className="grid grid-cols-2 gap-4 my-6 text-left">
+            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="font-medium text-gray-700 dark:text-gray-300">{t("aiUser")}</p>
+              <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{results.user_correct}/5</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.user_time.toFixed(1)}с</p>
+              {results.user_bonus_points > 0 && <p className="text-sm text-green-600 dark:text-green-400">{t("bonus")}: +{results.user_bonus_points}</p>}
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{t("aiTotal")}: {results.user_total_score}</p>
+            </div>
+            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="font-medium text-gray-700 dark:text-gray-300">{t("aiBot")}</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{results.ai_correct}/5</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.ai_time.toFixed(1)}с</p>
+              {results.ai_bonus_points > 0 && <p className="text-sm text-green-600 dark:text-green-400">{t("bonus")}: +{results.ai_bonus_points}</p>}
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{t("aiTotal")}: {results.ai_total_score}</p>
+            </div>
+          </div>
+          {results.metrics && (
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-left overflow-x-auto">
+              <p className="font-medium text-gray-700 dark:text-gray-300 mb-3">{t("aiStudentVsAiMetrics")}</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-600">
+                    <th className="text-left py-2 text-gray-600 dark:text-gray-400 font-medium">{t("aiMetric")}</th>
+                    <th className="text-left py-2 text-purple-600 dark:text-purple-400 font-medium">{t("aiUser")}</th>
+                    <th className="text-left py-2 text-amber-600 dark:text-amber-400 font-medium">{t("aiBot")}</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-700 dark:text-gray-300">
+                  <tr className="border-b border-gray-100 dark:border-gray-600">
+                    <td className="py-2">{t("aiThinkingSpeed")} ({t("aiSpeedUnit")})</td>
+                    <td className="py-2">{results.metrics.user_speed_avg_sec}</td>
+                    <td className="py-2">{results.metrics.ai_speed_avg_sec ?? "-"}</td>
+                  </tr>
+                  <tr className="border-b border-gray-100 dark:border-gray-600">
+                    <td className="py-2">{t("aiMemoryAccuracy")}</td>
+                    <td className="py-2">{results.metrics.user_accuracy_pct}</td>
+                    <td className="py-2">{results.metrics.ai_accuracy_pct ?? "-"}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2">{t("aiStrategyBonus")}</td>
+                    <td className="py-2">+{results.metrics.user_strategy_bonus}</td>
+                    <td className="py-2">+{results.metrics.ai_strategy_bonus ?? 0}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) }
+          {results.recommendations && (
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-left">
+              <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("aiRecommendations")}:</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap mb-3">{results.recommendations}</p>
+              {results.wrong_topics && results.wrong_topics.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {results.wrong_topics.map((t) => (
+                    <Link
+                      key={t.id}
+                      href={`/app/courses/${cId}/topic/${t.id}`}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors"
+                    >
+                      {t.title}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex gap-3 justify-center">
+            <button type="button" onClick={() => { setScreen("intro"); setResults(null); setCardResult(null); }} className="py-2 px-4 rounded-lg border border-purple-500 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+              {t("aiViewAgain")}
+            </button>
+            <Link href={`/app/courses/${cId}`} className="py-2 px-4 rounded-lg text-white bg-purple-600 hover:bg-purple-700 transition-colors">
+              {t("aiBackToCourse")}
+            </Link>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+      </div>
+    </div>
+  );
+}

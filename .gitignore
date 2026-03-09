@@ -1,0 +1,34 @@
+# === Backend (Python) ===
+backend/venv/
+backend/.env
+backend/data/
+backend/uploads/
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/**/*.so
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/*.db
+backend/**/*.sqlite3
+
+# === Frontend (уже есть frontend-next/.gitignore, здесь дублируем только корневые) ===
+# node_modules в корне, если появятся
+node_modules/
+
+# === Общее ===
+.cursor/
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Локальные конфиги (не коммитить секреты)
+*.local

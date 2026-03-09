@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/education.db
+      SECRET_KEY: change-me-in-production-secret-key-123
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_db:/app/data
+
+  frontend:
+    build:
+      context: ./frontend-next
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  backend_uploads:
+  backend_db:

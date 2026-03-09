@@ -1,0 +1,42 @@
+.parallax {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding: 2rem 0;
+  background-color: inherit;
+}
+
+.scroller {
+  display: flex;
+  white-space: nowrap;
+  text-align: center;
+  font-family: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+  gap: 3rem;
+}
+
+.scroller > div {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 3rem;
+  align-items: center;
+}
+
+.scroller span {
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+@media (min-width: 768px) {
+  .scroller {
+    font-size: 1.25rem;
+    gap: 4rem;
+  }
+  
+  .scroller > div {
+    gap: 4rem;
+  }
+}
