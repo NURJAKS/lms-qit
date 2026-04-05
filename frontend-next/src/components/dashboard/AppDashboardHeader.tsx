@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell, User, LogOut, ChevronDown, Globe, Sun, Moon } from "lucide-react";
 import { SearchHeader } from "./SearchHeader";
 import { useAuthStore } from "@/store/authStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/context/ThemeContext";
 import { useState, useRef, useEffect } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -14,6 +15,7 @@ import { getLocalizedNotificationText } from "@/lib/notificationText";
 
 export function AppDashboardHeader() {
   const { user, logout } = useAuthStore();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { t, lang, setLang } = useLanguage();
   const { theme, toggleTheme } = useTheme();
@@ -184,6 +186,7 @@ export function AppDashboardHeader() {
                 <button
                   type="button"
                   onClick={() => {
+                    queryClient.clear();
                     logout();
                     router.push("/");
                     setUserMenuOpen(false);

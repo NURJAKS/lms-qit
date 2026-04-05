@@ -9,7 +9,7 @@ import { getModalStyle, getTextColors } from "@/utils/themeStyles";
 import { cn } from "@/lib/utils";
 
 import { useLanguage } from "@/context/LanguageContext";
-import { getLocaleForLang } from "@/lib/dateUtils";
+import { getLocaleForLang, formatDateLocalized } from "@/lib/dateUtils";
 
 interface PurchaseSuccessModalProps {
   isOpen: boolean;
@@ -44,7 +44,7 @@ export function PurchaseSuccessModal({
   }, [isOpen]);
 
   const deliveryDate = estimatedDeliveryDate
-    ? new Date(estimatedDeliveryDate).toLocaleDateString(getLocaleForLang(lang), {
+    ? formatDateLocalized(estimatedDeliveryDate, lang, {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -86,7 +86,7 @@ export function PurchaseSuccessModal({
                   >
                     <CheckCircle className="w-12 h-12 text-white" />
                   </motion.div>
-2
+
                   <motion.h2
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}

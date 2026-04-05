@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,6 +22,9 @@ class TeacherAssignment(Base):
     video_urls = Column(Text)  # JSON array of video URLs (uploaded or YouTube/Vimeo)
     test_id = Column(Integer, ForeignKey("tests.id", ondelete="SET NULL"), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)  # manual close by teacher
+    reject_submissions_after_deadline = Column(Boolean, nullable=False, default=True)
+    allow_student_class_comments = Column(Boolean, nullable=False, default=True)
+    allow_student_edit_submission = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", back_populates="assignments_created")
@@ -31,3 +34,8 @@ class TeacherAssignment(Base):
     test = relationship("Test", foreign_keys=[test_id])
     submissions = relationship("AssignmentSubmission", back_populates="assignment", cascade="all, delete-orphan")
     rubric_criteria = relationship("TeacherAssignmentRubric", back_populates="assignment", cascade="all, delete-orphan")
+    class_comments = relationship(
+        "AssignmentClassComment",
+        back_populates="assignment",
+        cascade="all, delete-orphan",
+    )

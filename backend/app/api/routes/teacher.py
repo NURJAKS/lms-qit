@@ -16,7 +16,7 @@ from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
 from app.services.coins import add_coins
-from app.services.export_service import generate_csv_response, generate_xlsx_response
+from app.services.export_service import generate_xlsx_response
 from app.models.progress import StudentProgress
 from app.models.notification import Notification
 from app.models.enrollment import CourseEnrollment
@@ -44,7 +44,7 @@ def _can_manage_group(user: User, group: TeacherGroup) -> bool:
 
 
 def _is_assignment_closed(a: TeacherAssignment) -> bool:
-    """Assignment is closed if teacher set closed_at or deadline has passed."""
+    """Closed if teacher set closed_at, or deadline passed and reject_submissions_after_deadline is true."""
     from datetime import datetime, timezone
     closed_at = getattr(a, "closed_at", None)
     if closed_at is not None:
@@ -52,10 +52,58 @@ def _is_assignment_closed(a: TeacherAssignment) -> bool:
     deadline = getattr(a, "deadline", None)
     if deadline is None:
         return False
+    reject = getattr(a, "reject_submissions_after_deadline", True)
+    if reject is False:
+        return False
     now = datetime.now(timezone.utc)
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=timezone.utc)
     return deadline < now
+
+
+def _is_teacher_question_closed(q: TeacherQuestion) -> bool:
+    from datetime import datetime, timezone
+    dl = getattr(q, "deadline", None)
+    if dl is None:
+        return False
+    reject = getattr(q, "reject_submissions_after_deadline", True)
+    if reject is False:
+        return False
+    now = datetime.now(timezone.utc)
+    if dl.tzinfo is None:
+        dl = dl.replace(tzinfo=timezone.utc)
+    return dl < now
+
+
+def _question_options_list(raw: str | None) -> list:
+    if not raw or not str(raw).strip():
+        return []
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, list) else []
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+def _normalize_question_type_storage(qt: str | None) -> str:
+    if not qt:
+        return "open"
+    if qt == "short_answer":
+        return "open"
+    if qt == "multiple_choice":
+        return "single_choice"
+    if qt in ("open", "single_choice"):
+        return qt
+    return "open"
+
+
+def _normalize_question_type_api(stored: str | None) -> str:
+    s = stored or "open"
+    if s in ("open", "short_answer"):
+        return "open"
+    if s in ("single_choice", "multiple_choice"):
+        return "single_choice"
+    return s
 
 
 class GroupCreate(BaseModel):
@@ -66,15 +114,23 @@ class GroupCreate(BaseModel):
 class GroupUpdate(BaseModel):
     course_id: int | None = None
     group_name: str | None = None
+    is_archived: bool | None = None
 
 
 class AddStudent(BaseModel):
     student_id: int
 
 
+class RubricLevelCreate(BaseModel):
+    text: str = ""
+    points: float = 0
+
+
 class RubricCriterionCreate(BaseModel):
     name: str
     max_points: float
+    description: str | None = None
+    levels: list[RubricLevelCreate] | None = None
 
 
 class TestQuestionCreate(BaseModel):
@@ -114,6 +170,44 @@ class AssignmentUpdate(BaseModel):
     rubric: list[RubricCriterionCreate] | None = None
 
 
+def _parse_rubric_levels_json(raw: str | None) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _rubric_row_to_api(c: TeacherAssignmentRubric) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "max_points": float(c.max_points),
+        "description": (c.description or "") if getattr(c, "description", None) is not None else "",
+        "levels": _parse_rubric_levels_json(getattr(c, "levels_json", None)),
+    }
+
+
+def _rubric_levels_json_from_create(levels: list[RubricLevelCreate] | None) -> str | None:
+    if not levels:
+        return None
+    cleaned = [{"text": (lv.text or "").strip(), "points": float(lv.points)} for lv in levels]
+    return json.dumps(cleaned, ensure_ascii=False)
+
+
+def _validate_rubric_max_matches_levels(c: RubricCriterionCreate) -> None:
+    if not c.levels:
+        return
+    computed = max(float(lv.points) for lv in c.levels)
+    if abs(computed - float(c.max_points)) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail="max_points must equal the highest level points when levels are provided",
+        )
+
+
 class MaterialCreate(BaseModel):
     group_id: int
     course_id: int
@@ -129,6 +223,7 @@ class MaterialCreate(BaseModel):
 class QuestionCreate(BaseModel):
     group_id: int
     course_id: int
+    topic_id: int | None = None
     question_text: str
     question_type: str = "single_choice"  # single_choice, open
     options: list[str] | None = None
@@ -148,12 +243,18 @@ class MaterialUpdate(BaseModel):
 class QuestionUpdate(BaseModel):
     question_text: str | None = None
     question_type: str | None = None
+    topic_id: int | None = None
     options: list[str] | None = None
     correct_option: str | None = None
 
 
 class TopicCreate(BaseModel):
     title: str
+    description: str | None = None
+
+
+class TopicUpdate(BaseModel):
+    title: str | None = None
     description: str | None = None
 
 
@@ -349,6 +450,115 @@ def get_recent_submissions(
     ]
 
 
+@router.get("/submissions/inbox")
+def get_submissions_inbox(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+    status: str | None = Query(None, description="pending (есть непроверенные) или graded (все проверены)"),
+    group_id: int | None = Query(None, description="Фильтр по конкретной группе"),
+):
+    """
+    Список заданий с агрегированными счетчиками сдач для экрана 'Непроверенные задания'.
+    Возвращает именно задания (TeacherAssignment), а не отдельные сдачи.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import func, case, and_, or_
+
+    is_admin = current_user.role in ("admin", "director", "curator")
+    q_groups = db.query(TeacherGroup)
+    if not is_admin:
+        q_groups = q_groups.filter(TeacherGroup.teacher_id == current_user.id)
+    
+    if group_id:
+        q_groups = q_groups.filter(TeacherGroup.id == group_id)
+    
+    groups = q_groups.all()
+    group_ids = [g.id for g in groups]
+    group_map = {g.id: g for g in groups}
+
+    if not group_ids:
+        return []
+
+    # Подзапрос для агрегации сдач по каждому заданию
+    # submitted_count: общее кол-во сдач
+    # graded_count: кол-во оцененных сдач (grade is not null)
+    # pending_count: кол-во неоцененных сдач (grade is null)
+    stats_subq = (
+        db.query(
+            AssignmentSubmission.assignment_id,
+            func.count(AssignmentSubmission.id).label("submitted_count"),
+            func.count(AssignmentSubmission.grade).label("graded_count"),
+            func.sum(case((AssignmentSubmission.grade == None, 1), else_=0)).label("pending_count")
+        )
+        .group_by(AssignmentSubmission.assignment_id)
+        .subquery()
+    )
+
+    # Основной запрос по заданиям
+    query = (
+        db.query(
+            TeacherAssignment,
+            func.coalesce(stats_subq.c.submitted_count, 0).label("submitted_count"),
+            func.coalesce(stats_subq.c.graded_count, 0).label("graded_count"),
+            func.coalesce(stats_subq.c.pending_count, 0).label("pending_count")
+        )
+        .outerjoin(stats_subq, TeacherAssignment.id == stats_subq.c.assignment_id)
+        .filter(TeacherAssignment.group_id.in_(group_ids))
+    )
+
+    # Фильтрация по статусу
+    if status == "pending":
+        now = datetime.now(timezone.utc)
+        # Непроверенные сдачи ИЛИ срок сдачи прошёл, а работ никто не сдал
+        query = query.filter(
+            or_(
+                stats_subq.c.pending_count > 0,
+                and_(
+                    func.coalesce(stats_subq.c.submitted_count, 0) == 0,
+                    TeacherAssignment.deadline.isnot(None),
+                    TeacherAssignment.deadline < now,
+                ),
+            )
+        )
+    elif status == "graded":
+        # Все сдачи проверены (graded_count == submitted_count) и есть хотя бы одна сдача
+        # Или просто где есть проверенные (согласно уточнению в задании)
+        query = query.filter(
+            and_(
+                stats_subq.c.submitted_count > 0,
+                stats_subq.c.submitted_count == stats_subq.c.graded_count
+            )
+        )
+
+    # Сортировка: deadline (null в начало), затем created_at desc
+    # В SQLAlchemy nullsfirst() / nullslast()
+    results = query.order_by(
+        TeacherAssignment.deadline.asc().nullsfirst(),
+        TeacherAssignment.created_at.desc()
+    ).all()
+
+    out = []
+    for a, submitted_count, graded_count, pending_count in results:
+        group = group_map.get(a.group_id)
+        total_students = len(group.students) if group else 0
+        
+        out.append({
+            "id": a.id,
+            "title": a.title,
+            "group_id": a.group_id,
+            "group_name": group.group_name if group else "",
+            "course_id": a.course_id,
+            "course_title": a.course.title if a.course else "",
+            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "submitted_count": int(submitted_count),
+            "total_students": total_students,
+            "graded_count": int(graded_count)
+        })
+
+    return out
+
+
 @router.get("/groups")
 def list_groups(
     db: Annotated[Session, Depends(get_db)],
@@ -404,13 +614,17 @@ def update_group(
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Группа не найдена")
-    if current_user.role not in ("admin", "director"):
-        raise HTTPException(status_code=403, detail="У вас нет прав для редактирования групп. Это действие доступно только администраторам.")
+    
+    # Allow teachers to archive their own groups
+    if not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="У вас нет прав для редактирования этой группы.")
     
     if body.group_name is not None:
         g.group_name = body.group_name
     if body.course_id is not None:
         g.course_id = body.course_id
+    if body.is_archived is not None:
+        g.is_archived = body.is_archived
         
     db.commit()
     db.refresh(g)
@@ -427,8 +641,10 @@ def delete_group(
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Группа не найдена")
-    if current_user.role not in ("admin", "director"):
-        raise HTTPException(status_code=403, detail="У вас нет прав для удаления групп. Это действие доступно только администраторам.")
+    
+    # Allow teachers to delete their own groups
+    if not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="У вас нет прав для удаления этой группы.")
         
     db.delete(g)
     db.commit()
@@ -483,6 +699,98 @@ def list_group_students(
         raise HTTPException(status_code=404, detail="Группа не найдена")
     students = [gs.student for gs in g.students]
     return [{"id": u.id, "full_name": u.full_name or "", "email": u.email or ""} for u in students]
+
+
+@router.get("/groups/{group_id}/gradebook")
+def get_group_gradebook(
+    group_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Матрица оценок: учащиеся × задания группы (для вкладки «Оценки»)."""
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+
+    student_ids = [gs.student_id for gs in g.students]
+    users = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()}
+        if student_ids
+        else {}
+    )
+    students_out = [
+        {
+            "id": sid,
+            "full_name": (users[sid].full_name or "") if sid in users else "",
+            "email": (users[sid].email or "") if sid in users else "",
+        }
+        for sid in student_ids
+        if sid in users
+    ]
+    students_out.sort(key=lambda x: ((x["full_name"] or x["email"]).lower()))
+
+    assignments = (
+        db.query(TeacherAssignment)
+        .filter(TeacherAssignment.group_id == group_id)
+        .order_by(TeacherAssignment.created_at.desc())
+        .all()
+    )
+    assignment_cols = [
+        {
+            "id": a.id,
+            "title": a.title,
+            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "max_points": a.max_points or 100,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in assignments
+    ]
+
+    aid_list = [a.id for a in assignments]
+    subs: list[AssignmentSubmission] = []
+    if aid_list:
+        subs = db.query(AssignmentSubmission).filter(AssignmentSubmission.assignment_id.in_(aid_list)).all()
+
+    cells: dict[str, dict] = {}
+    for sub in subs:
+        key = f"{sub.student_id}_{sub.assignment_id}"
+        cells[key] = {
+            "submission_id": sub.id,
+            "grade": float(sub.grade) if sub.grade is not None else None,
+            "submitted": True,
+            "graded": sub.grade is not None,
+            "missing": False,
+        }
+
+    for sid in student_ids:
+        for a in assignments:
+            key = f"{sid}_{a.id}"
+            if key not in cells:
+                cells[key] = {
+                    "submission_id": None,
+                    "grade": None,
+                    "submitted": False,
+                    "graded": False,
+                    "missing": True,
+                }
+
+    column_averages: dict[str, float | None] = {}
+    for a in assignments:
+        grades = [float(s.grade) for s in subs if s.assignment_id == a.id and s.grade is not None]
+        column_averages[str(a.id)] = round(sum(grades) / len(grades), 1) if grades else None
+
+    row_averages: dict[str, float | None] = {}
+    for sid in student_ids:
+        grades = [float(s.grade) for s in subs if s.student_id == sid and s.grade is not None]
+        row_averages[str(sid)] = round(sum(grades) / len(grades), 1) if grades else None
+
+    return {
+        "students": students_out,
+        "assignments": assignment_cols,
+        "cells": cells,
+        "column_averages": column_averages,
+        "row_averages": row_averages,
+    }
 
 
 @router.delete("/groups/{group_id}/students/{student_id}")
@@ -702,7 +1010,7 @@ def list_assignments(
             "group_name": r.group.group_name if r.group else "",
             "course_id": r.course_id,
             "course_title": r.course.title if r.course else "",
-            "topic_id": None, # Question doesn't have topic_id currently
+            "topic_id": r.topic_id,
             "title": r.question_text,
             "description": f"Type: {r.question_type}",
             "deadline": None,
@@ -779,7 +1087,15 @@ def create_assignment(
     db.flush()
     if body.rubric:
         for c in body.rubric:
-            r = TeacherAssignmentRubric(assignment_id=a.id, name=c.name, max_points=c.max_points)
+            _validate_rubric_max_matches_levels(c)
+            desc = (c.description or "").strip() or None
+            r = TeacherAssignmentRubric(
+                assignment_id=a.id,
+                name=c.name,
+                max_points=c.max_points,
+                description=desc,
+                levels_json=_rubric_levels_json_from_create(c.levels),
+            )
             db.add(r)
     db.commit()
     db.refresh(a)
@@ -791,7 +1107,7 @@ def create_assignment(
             type="assignment_created",
             title="Новое задание",
             message=f"Преподаватель создал задание «{a.title}» для группы «{g.group_name}».",
-            link="/app/tasks-calendar?tab=all-assignments",
+            link=f"/app/courses/{body.course_id}?tab=classwork&assignmentId={a.id}",
         )
         db.add(notif)
     db.commit()
@@ -812,7 +1128,7 @@ def get_assignment(
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
         raise HTTPException(status_code=403, detail="Нет доступа")
-    rubric = [{"name": c.name, "max_points": float(c.max_points)} for c in a.rubric_criteria]
+    rubric = [_rubric_row_to_api(c) for c in a.rubric_criteria]
     return {
         "id": a.id,
         "group_id": a.group_id,
@@ -956,7 +1272,15 @@ def update_assignment(
             TeacherAssignmentRubric.assignment_id == assignment_id
         ).delete()
         for c in body.rubric:
-            r = TeacherAssignmentRubric(assignment_id=a.id, name=c.name, max_points=c.max_points)
+            _validate_rubric_max_matches_levels(c)
+            desc = (c.description or "").strip() or None
+            r = TeacherAssignmentRubric(
+                assignment_id=a.id,
+                name=c.name,
+                max_points=c.max_points,
+                description=desc,
+                levels_json=_rubric_levels_json_from_create(c.levels),
+            )
             db.add(r)
 
     db.commit()
@@ -985,7 +1309,7 @@ def list_submissions(
     users = {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()} if student_ids else {}
 
     rubric_rows = db.query(TeacherAssignmentRubric).filter(TeacherAssignmentRubric.assignment_id == assignment_id).all()
-    rubric = [{"id": c.id, "name": c.name, "max_points": float(c.max_points)} for c in rubric_rows]
+    rubric = [_rubric_row_to_api(c) for c in rubric_rows]
     submission_grades = {}
     for sg in db.query(AssignmentSubmissionGrade).filter(
         AssignmentSubmissionGrade.submission_id.in_([r.id for r in rows])
@@ -1008,6 +1332,7 @@ def list_submissions(
                 "file_urls": json.loads(r.file_urls) if r.file_urls else [],
                 "grade": float(r.grade) if r.grade is not None else None,
                 "teacher_comment": r.teacher_comment,
+                "student_private_comment": getattr(r, "student_private_comment", None),
                 "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
                 "rubric_grades": submission_grades.get(r.id, []),
                 "status": "graded" if r.grade is not None else "pending"
@@ -1038,32 +1363,7 @@ def list_submissions(
     return {"submissions": submissions, "rubric": rubric, "assignment": assignment_details}
 
 
-@router.get("/groups/{group_id}/progress/csv")
-def export_group_progress_csv(
-    group_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_teacher_user)],
-    course_id: int | None = Query(None),
-):
-    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
-    if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
-    student_ids = [gs.student_id for gs in g.students]
-    
-    rows = []
-    headers = ["User ID", "Full Name", "Email", "Topic ID", "Completed", "Score"]
-    
-    if student_ids:
-        users = {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()}
-        q = db.query(StudentProgress).filter(StudentProgress.user_id.in_(student_ids))
-        if course_id:
-            q = q.filter(StudentProgress.course_id == course_id)
-        prog_rows = q.all()
-        for r in prog_rows:
-            u = users.get(r.user_id)
-            rows.append([r.user_id, u.full_name if u else "", u.email if u else "", r.topic_id, r.is_completed, r.test_score])
-    
-    return generate_csv_response(rows, "group_progress", headers)
+
 
 
 @router.get("/groups/{group_id}/progress/excel")
@@ -1146,9 +1446,84 @@ def grade_submission(
         type="assignment_graded",
         title="Задание оценено",
         message=f"Ваша работа оценена: {final_grade}. {body.teacher_comment or ''}",
-        link="/app/tasks-calendar?tab=all-assignments",
+        link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
     )
     db.add(n)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/assignments/{assignment_id}/mark-reviewed")
+def mark_assignment_reviewed(
+    assignment_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Отметить все сдачи задания как проверенные (поставить 0 тем, кто не сдал, или просто пометить)."""
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    # Находим всех студентов группы
+    student_ids = [gs.student_id for gs in g.students]
+    
+    # Находим существующие сдачи
+    existing_submissions = db.query(AssignmentSubmission).filter(
+        AssignmentSubmission.assignment_id == assignment_id
+    ).all()
+    submitted_student_ids = [s.student_id for s in existing_submissions]
+
+    # 1. Для существующих сдач без оценки - ставим 0 (или можно оставить как есть, но обычно 'проверено' значит есть оценка)
+    # В данном контексте, судя по UI, это просто экшн для перемещения в 'Проверенные'.
+    # Чтобы задание попало в graded, у всех сдач должна быть оценка.
+    for s in existing_submissions:
+        if s.grade is None:
+            s.grade = 0
+            s.teacher_comment = "Auto-graded as reviewed"
+
+    # 2. Для тех кто не сдал - создаем пустую сдачу с оценкой 0
+    for sid in student_ids:
+        if sid not in submitted_student_ids:
+            new_sub = AssignmentSubmission(
+                assignment_id=assignment_id,
+                student_id=sid,
+                grade=0,
+                teacher_comment="Not submitted, marked as reviewed"
+            )
+            db.add(new_sub)
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/assignments/{assignment_id}/unmark-reviewed")
+def unmark_assignment_reviewed(
+    assignment_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Отметить задание как непроверенное (сбросить оценки 0 у пустых сдач или просто сбросить оценки)."""
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    # Сбрасываем оценки у всех сдач этого задания
+    submissions = db.query(AssignmentSubmission).filter(
+        AssignmentSubmission.assignment_id == assignment_id
+    ).all()
+    
+    for s in submissions:
+        s.grade = None
+        # Если это была пустая сдача (без текста и файла), можно её вообще удалить
+        if not s.submission_text and not s.file_url and not s.file_urls:
+            db.delete(s)
+
     db.commit()
     return {"ok": True}
 
@@ -1368,6 +1743,8 @@ def list_question_answers(
             "student_id": sid,
             "student_name": u.full_name or u.email,
             "answer_text": r.answer_text if r else None,
+            "grade": r.grade if r else None,
+            "teacher_comment": r.teacher_comment if r else None,
             "submitted_at": r.created_at.isoformat() if r and r.created_at else None,
             "status": "submitted" if r else "not_submitted"
         })
@@ -1375,12 +1752,86 @@ def list_question_answers(
     return {
         "answers": results,
         "question": {
+            "id": q.id,
             "text": q.question_text,
             "type": q.question_type,
             "options": json.loads(q.options) if q.options else [],
+            "correct_option": q.correct_option,
             "group_name": g.group_name
         }
     }
+
+
+@router.put("/questions/answers/{answer_id}")
+def grade_question_answer(
+    answer_id: int,
+    body: SubmissionGrade,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    from datetime import datetime, timezone
+    ans = db.query(TeacherQuestionAnswer).filter(TeacherQuestionAnswer.id == answer_id).first()
+    if not ans:
+        raise HTTPException(status_code=404, detail="Ответ не найден")
+    q = db.query(TeacherQuestion).filter(TeacherQuestion.id == ans.question_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Вопрос не найден")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    ans.grade = body.grade
+    ans.teacher_comment = body.teacher_comment
+    ans.graded_at = datetime.now(timezone.utc)
+
+    # Award coins if grade is high
+    if body.grade is not None and body.grade >= 70 and not (ans.coins_awarded or 0):
+        add_coins(db, ans.student_id, 100, f"question_{q.id}")
+        ans.coins_awarded = 1
+
+    n = Notification(
+        user_id=ans.student_id,
+        type="question_graded",
+        title="Ответ на вопрос оценен",
+        message=f"Ваш ответ на вопрос «{q.question_text[:30]}...» оценен: {body.grade}. {body.teacher_comment or ''}",
+        link="/app/questions",
+    )
+    db.add(n)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/questions/answers/{answer_id}/return")
+def return_question_answer(
+    answer_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Сбросить ответ студента, чтобы он мог ответить снова."""
+    ans = db.query(TeacherQuestionAnswer).filter(TeacherQuestionAnswer.id == answer_id).first()
+    if not ans:
+        raise HTTPException(status_code=404, detail="Ответ не найден")
+    q = db.query(TeacherQuestion).filter(TeacherQuestion.id == ans.question_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Вопрос не найден")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    student_id = ans.student_id
+    question_text = q.question_text
+    db.delete(ans)
+
+    n = Notification(
+        user_id=student_id,
+        type="question_returned",
+        title="Ответ возвращен",
+        message=f"Ваш ответ на вопрос «{question_text[:30]}...» был возвращен учителем. Вы можете ответить снова.",
+        link="/app/questions",
+    )
+    db.add(n)
+    db.commit()
+    return {"ok": True}
 
 
 @router.patch("/questions/{question_id}")
@@ -1421,6 +1872,7 @@ def create_question(
         teacher_id=current_user.id,
         group_id=body.group_id,
         course_id=body.course_id,
+        topic_id=body.topic_id,
         question_text=body.question_text,
         question_type=body.question_type,
         options=json.dumps(body.options) if body.options else None,
@@ -1441,7 +1893,61 @@ def create_question(
     return {"id": q.id, "question_text": q.question_text[:50]}
 
 
-# ---------- Topics (teacher creates) ----------
+    # ---------- Topics (teacher creates) ----------
+@router.patch("/topics/{topic_id}")
+def update_topic(
+    topic_id: int,
+    body: TopicUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Тема не найдена")
+    
+    # Check access
+    is_admin = current_user.role in ("admin", "director", "curator")
+    if not is_admin:
+        has_group = db.query(TeacherGroup).filter(
+            TeacherGroup.course_id == topic.course_id,
+            TeacherGroup.teacher_id == current_user.id
+        ).first()
+        if not has_group:
+            raise HTTPException(status_code=403, detail="Нет доступа")
+
+    if body.title is not None: topic.title = body.title
+    if body.description is not None: topic.description = body.description
+    
+    db.commit()
+    db.refresh(topic)
+    return {"id": topic.id, "title": topic.title}
+
+
+@router.delete("/topics/{topic_id}")
+def delete_topic(
+    topic_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Тема не найдена")
+    
+    # Check access
+    is_admin = current_user.role in ("admin", "director", "curator")
+    if not is_admin:
+        has_group = db.query(TeacherGroup).filter(
+            TeacherGroup.course_id == topic.course_id,
+            TeacherGroup.teacher_id == current_user.id
+        ).first()
+        if not has_group:
+            raise HTTPException(status_code=403, detail="Нет доступа")
+
+    db.delete(topic)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/courses/{course_id}/topics")
 def create_topic(
     course_id: int,
@@ -1484,7 +1990,7 @@ def get_assignment_for_clone(
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
         raise HTTPException(status_code=403, detail="Нет доступа")
-    rubric = [{"name": c.name, "max_points": float(c.max_points)} for c in a.rubric_criteria]
+    rubric = [_rubric_row_to_api(c) for c in a.rubric_criteria]
     return {
         "group_id": a.group_id,
         "course_id": a.course_id,

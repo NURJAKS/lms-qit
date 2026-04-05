@@ -133,7 +133,9 @@ export function StudentActivityAnalyticsWidget() {
               color: "#3B82F6",
             }}
           >
-            {chartData.reduce((s, d) => s + (d[coursesLabel] ?? 0) / 100, 0).toFixed(0)}
+            {chartData
+              .reduce((s, d) => s + (Number((d as Record<string, unknown>)[coursesLabel]) || 0) / 100, 0)
+              .toFixed(0)}
           </span>
         </div>
 

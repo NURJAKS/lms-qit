@@ -146,6 +146,29 @@ def cancel_purchase(
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 
 
+@router.delete("/purchases/{purchase_id}")
+def delete_purchase(
+    purchase_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Удалить запись о покупке (только если она отменена)."""
+    purchase = db.query(UserPurchase).filter(
+        UserPurchase.id == purchase_id,
+        UserPurchase.user_id == current_user.id
+    ).first()
+    
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Покупка не найдена")
+    
+    if purchase.delivery_status != "cancelled":
+        raise HTTPException(status_code=400, detail="Можно удалять только отмененные заказы")
+    
+    db.delete(purchase)
+    db.commit()
+    return {"ok": True, "message": "Запись удалена"}
+
+
 @router.post("/items/{item_id}/purchase")
 def purchase_item(
     item_id: int,
@@ -458,3 +481,26 @@ def checkout_cart(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
+
+@router.delete("/purchases/{purchase_id}")
+def delete_purchase(
+    purchase_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Удалить запись о покупке (только если она отменена)."""
+    purchase = db.query(UserPurchase).filter(
+        UserPurchase.id == purchase_id,
+        UserPurchase.user_id == current_user.id
+    ).first()
+    
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Покупка не найдена")
+    
+    if purchase.delivery_status != "cancelled":
+        raise HTTPException(status_code=400, detail="Можно удалять только отмененные заказы")
+    
+    db.delete(purchase)
+    db.commit()
+    return {"ok": True, "message": "Запись удалена"}

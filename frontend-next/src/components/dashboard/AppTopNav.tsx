@@ -18,6 +18,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useLanguage } from "@/context/LanguageContext";
 import { AppHeader } from "@/components/common/AppHeader";
@@ -27,6 +28,7 @@ import { getLocalizedNotificationText } from "@/lib/notificationText";
 
 export function AppTopNav() {
   const { user, logout, isAdmin, isTeacher } = useAuthStore();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useLanguage();
@@ -227,6 +229,7 @@ export function AppTopNav() {
                   <button
                     type="button"
                     onClick={() => {
+                      queryClient.clear();
                       logout();
                       router.push("/");
                       setUserMenuOpen(false);

@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, field_validator
 
 
 class CourseCategoryBase(BaseModel):
@@ -85,6 +87,12 @@ class CourseTopicBase(BaseModel):
     description: str | None = None
     is_preview: bool = False
 
+    @field_validator("is_preview", mode="before")
+    @classmethod
+    def _coerce_is_preview(cls, v: Any) -> bool:
+        """SQLite / legacy rows may have NULL; API must still return a boolean."""
+        return False if v is None else bool(v)
+
 
 class CourseTopicCreate(CourseTopicBase):
     course_id: int
@@ -95,6 +103,7 @@ class CourseTopicResponse(CourseTopicBase):
     id: int
     course_id: int
     module_id: int | None = None
+    theory_unlocked: bool = True
 
     class Config:
         from_attributes = True

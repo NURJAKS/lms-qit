@@ -1,6 +1,25 @@
 """
 Seed script: run from backend dir: python seed_data.py
 Requires: DATABASE_URL in .env, tables created (run app once or alembic).
+
+If admin already exists, full seed is skipped — use:
+  python seed_data.py --repair-course-content
+to recreate modules/topics/tests for Python and Web when they are missing.
+
+  python seed_data.py --repair-video-urls
+updates YouTube links for existing Python/Web topics (keeps progress rows).
+
+  python seed_data.py --prune-web-module4
+removes Web course «Жобалық қолданбалар» (module 4) and its topics from DB.
+
+  python seed_data.py --refresh-web-tests
+replaces Web course per-topic test questions with QUESTIONS_WEB_TOPIC_* from this file (keeps topic ids).
+
+  python scripts/add_web_html_intro_topic.py
+inserts «HTML дегеніміз не?» as Web course topic order 1 when the DB still has the old 9-topic layout (first topic «HTML тегтері»).
+
+  python seed_data.py --seed-informatics-course
+creates «Информатика және ақпараттық технологиялар негіздері» (жалпы ИТ сұрақтары) if missing — AI Challenge «Информатика» трегі үшін.
 """
 import os
 import sys
@@ -26,6 +45,12 @@ try:
 except ImportError:
     THEORY_PYTHON = None
     THEORY_WEB = None
+
+try:
+    from topic_video_urls import PYTHON_TOPIC_VIDEOS, WEB_TOPIC_VIDEOS
+except ImportError:
+    PYTHON_TOPIC_VIDEOS = []
+    WEB_TOPIC_VIDEOS = []
 
 # Format: (question_text, correct_answer "a"|"b"|"c"|"d", option_a, option_b, option_c, option_d)
 # Python topic 1: Python дегеніміз не?
@@ -73,12 +98,58 @@ QUESTIONS_PYTHON_TOPIC_5 = [
     ("range(3) функциясы қандай сандарды қайтарады?", "c", "1, 2, 3", "0, 1, 2, 3", "0, 1, 2", "3, 2, 1"),
 ]
 
+# Тақырыптар 6–10: функциялар, тізімдер, сөздіктер, OOP, модульдер (қысқа тест сұрақтары)
+QUESTIONS_PYTHON_TOPIC_6 = [
+    ("Функцияны қалай жариялаймыз?", "a", "def my_func():", "function my_func()", "fn my_func()", "func my_func()"),
+    ("return не істейді?", "b", "Циклді тоқтатады", "Функциядан мән қайтарады", "Файлды жабады", "Класс құрады"),
+    ("Аргумент пен параметрдің айырмашылығы?", "c", "Айырмашылығы жоқ", "Параметр — шақыру кезінде", "Параметр — анықтамада, аргумент — шақыруда", "Тек int болады"),
+    ("*args дегеніміз не?", "d", "Тек бір аргумент", "Кілт сөздер тізімі", "Глобалды айнымалы", "Санақталмайтын позициялық аргументтер"),
+    ("Лямбда функциясы қалай жазылады?", "a", "lambda x: x + 1", "fn(x) => x + 1", "def lambda(x)", "x -> x + 1"),
+]
+
+QUESTIONS_PYTHON_TOPIC_7 = [
+    ("Тізім (list) қалай жарияланады?", "b", "(1, 2, 3)", "[1, 2, 3]", "{1, 2, 3}", "<1, 2, 3>"),
+    ("Кортеж (tuple) қайсысы?", "a", "(1, 2)", "[1, 2]", "{1, 2}", "1, 2"),
+    ("append() не істейді?", "c", "Элементті басында қосады", "Тізімді сұрыптайды", "Соңына элемент қосады", "Элементті жояды"),
+    ("Срез [1:4] не қайтарады?", "d", "4 элемент", "Тек 1", "Тек 4", "Индекстер 1,2,3 элементтері"),
+    ("len([ ]) нәтижесі?", "b", "1", "0", "None", "Error"),
+]
+
+QUESTIONS_PYTHON_TOPIC_8 = [
+    ("Сөздік (dict) қалай жазылады?", "a", "{'a': 1}", "[a:1]", "(a=1)", "<a:1>"),
+    ("dict.get('a', 0) кілт жоқ болса не қайтарады?", "b", "Қате", "0 (default)", "None ғана", "Бос тізім"),
+    ("open() файлы қай режимде оқу үшін?", "b", "w", "r", "a", "x"),
+    ("with open(...) не үшін?", "d", "Тек жазу", "Тек оқу", "Кодты жылдамдатады", "Файлды автоматты жабу"),
+    ("JSON үшін стандартты модуль?", "a", "json", "pickle", "csv", "xml"),
+]
+
+QUESTIONS_PYTHON_TOPIC_9 = [
+    ("Класс анықтау кілт сөзі?", "b", "struct", "class", "object", "type"),
+    ("__init__ не үшін?", "a", "Конструктор/бастапқы күй", "Деструктор", "Статикалық әдіс", "Итератор"),
+    ("self дегеніміз не?", "c", "Глобалды айнымалы", "Модуль атауы", "Экземплярға сілтеме", "Сынып атауы"),
+    ("Мұрагерлік үшін синтаксис?", "d", "class A inherits B", "class A from B", "class A(B):", "class A -> B"),
+    ("Дандер әдіс __str__ не үшін?", "b", "Салыстыру", "Строкалық көрініс", "Хеш", "Ұзындық"),
+]
+
+QUESTIONS_PYTHON_TOPIC_10 = [
+    ("import math не істейді?", "a", "math модулін қосады", "Математиканы өшіреді", "Пакетті жояды", "Тек sqrt қосады"),
+    ("from x import y дегеніміз?", "b", "Барлық модульді жояды", "x модулінен y импорттау", "Тек пакет құрады", "Жолды көрсетеді"),
+    ("if __name__ == '__main__' не үшін?", "c", "Тек тест", "Тек IDE", "Скриптті тікелей іске қосқанда", "Ештеңе"),
+    ("Пакетті белгілеу үшін қандай файл керек?", "d", "setup.py", "__init__.py міндетті емес", "__main__.py ғана", "Каталогта __init__.py (бос болуы мүмкін)"),
+    ("pip дегеніміз не?", "a", "Python пакеттерін орнату құралы", "Интерпретатор", "Редактор", "ОС командасы"),
+]
+
 TOPIC_QUESTIONS_PYTHON = [
     QUESTIONS_PYTHON_TOPIC_1,
     QUESTIONS_PYTHON_TOPIC_2,
     QUESTIONS_PYTHON_TOPIC_3,
     QUESTIONS_PYTHON_TOPIC_4,
     QUESTIONS_PYTHON_TOPIC_5,
+    QUESTIONS_PYTHON_TOPIC_6,
+    QUESTIONS_PYTHON_TOPIC_7,
+    QUESTIONS_PYTHON_TOPIC_8,
+    QUESTIONS_PYTHON_TOPIC_9,
+    QUESTIONS_PYTHON_TOPIC_10,
 ]
 
 PYTHON_FINAL_QUESTIONS = [
@@ -89,79 +160,72 @@ PYTHON_FINAL_QUESTIONS = [
     ("Asyncio кітапханасында Event Loop қандай рөл атқарады?", "a", "Асинхронды тапсырмаларды, I/O операцияларын басқарады және олардың орындалу кезегін оркестрлейді", "Әрбір функция үшін жеке ОС ағынын ашады", "Барлық процессор ядроларын бір уақытта іске қосып, параллель есептеулер жасайды", "Ол тек веб-сұраныстарды кэштеу үшін қолданылады"),
 ]
 
-# Web topic 1: HTML тегтері
+# Web — AI Challenge үшін деңгейге сәйкес бөлінген сұрақтар (бастаушы 7 + орташа 7 + кәсіби 12)
+# Topic 1–3: бастаушы, 4–6: орташа, 7–10: кәсіби (әр тақырыпта 2–4 сұрақ)
+
+QUESTIONS_WEB_TOPIC_INTRO = [
+    ("HTML дегеніміз не?", "b", "Бағдарламалау тілі", "Белгілеу (разметка) тілі", "Сурет форматы", "Операциялық жүйе"),
+    ("HTML құжатын қай бағдарлама көрсетеді?", "a", "Браузер (веб-шолғыш)", "Word процессоры", "Компилятор", "Тек кескін редакторы"),
+    ("HTML тегтері қалай жазылады?", "b", "Дөңгелек жақша () ішінде", "Бұрышты жақша <> ішінде", "Фигуралық жақша {} ішінде", "Тек мәтін жолында"),
+    ("CSS пен HTML қатынасы қалай?", "c", "Бірдей тіл", "HTML — сәндеу, CSS — құрылым", "HTML — құрылым, CSS — сыртқы түрі", "CSS тек серверде жұмыс істейді"),
+    ("HyperText дегеніміз не?", "d", "Тек мәтін", "Тек сурет", "Тек видео", "Басқа құжаттарға сілтеме арқылы байланысқан мазмұн"),
+]
+
 QUESTIONS_WEB_TOPIC_1 = [
-    ("HTML сөзінің толық мағынасы қандай?", "a", "Hyper Text Markup Language", "Hyperlinks and Text Markup", "Home Tool Markup Language", "Hyper Tool Language"),
-    ("Ең үлкен тақырып (heading) тегін көрсетіңіз.", "d", "<h6>", "<heading>", "<head>", "<h1>"),
-    ("Сілтеме жасау үшін қай тег қолданылады?", "b", "<link>", "<a>", "<href>", "<url>"),
-    ("Сурет қою үшін қандай тег керек?", "c", "<picture>", "<p>", "<img>", "<image>"),
-    ("HTML құжатының негізгі бөлігі қай тегтің ішіне жазылады?", "a", "<body>", "<head>", "<html>", "<main>"),
+    ("HTML дегеніміз не?", "b", "Бағдарламалау тілі", "Белгілеу тілі", "Деректер базасын басқару жүйесі", "CSS фреймворкі"),
+    ("Бірінші деңгейдегі тақырыпты жасау үшін қай тег қолданылады?", "b", "<head>", "<h1>", "<header>", "<title>"),
+    ("CSS дегеніміз не?", "c", "Веб-параққа логика қосатын тіл", "Белгілеу тілі", "Веб-бетті сәндеу үшін қолданылатын стиль тілі", "JavaScript кітапханасы"),
 ]
 
-# Web topic 2: Формалар
 QUESTIONS_WEB_TOPIC_2 = [
-    ("Қолданушыдан мәлімет қабылдау үшін қандай тег қолданылады?", "b", "<receive>", "<input>", "<form>", "<text>"),
-    ("Input типтерінің ішінде құпия сөз (password) жазуға арналғаны қандай?", "a", "type='password'", "type='hidden'", "type='secret'", "type='text'"),
-    ("Форманы серверге жіберу (submit) үшін қандай батырма типі қолданылады?", "c", "type='send'", "type='push'", "type='submit'", "type='button'"),
-    ("Көп жолды мәтін енгізу үшін қай тег қажет?", "d", "<input type='textarea'>", "<text>", "<block>", "<textarea>"),
-    ("Тізімнен бірнеше нұсқаны таңдау үшін қандай тип қажет?", "b", "radio", "checkbox", "select", "text"),
+    ("Сыртқы CSS файлын қалай қосуға болады?", "b", '<script src="style.css"></script>', '<link rel="stylesheet" href="style.css">', '<css src="style.css">', '<style src="style.css"></style>'),
+    ("Сілтеме жасау үшін қай тег қолданылады?", "b", "<link>", "<a>", "<href>", "<url>"),
 ]
 
-# Web topic 3: Семантикалық HTML
 QUESTIONS_WEB_TOPIC_3 = [
-    ("Беттің төменгі бөлігіне (подвал) арналған семантикалық тег қалай аталады?", "a", "<footer>", "<bottom>", "<section>", "<div>"),
-    ("Беттің басты навигациялық (меню) бөлігін белгілеу үшін қандай тег қолданылады?", "c", "<menu>", "<header>", "<nav>", "<links>"),
-    ("Мақала немесе жаңалық сияқты жеке мағынасы бар басылымға арналған тег?", "b", "<section>", "<article>", "<main>", "<div>"),
-    ("Беттің тақырыбы мен логотипі орналасатын жоғарғы бөліктің тегі?", "a", "<header>", "<top>", "<head>", "<h1>"),
-    ("Негізгі контентті белгілейтін тегті көрсетіңіз.", "d", "<body>", "<content>", "<section>", "<main>"),
+    ("JavaScript-та console.log() не істейді?", "b", "Жаңа айнымалы жасайды", "Ақпаратты консольге шығарады", "Жаңа браузерді ашады", "Серверге деректер жібереді"),
+    ("JavaScript-та айнымалыны қалай жариялаймыз?", "b", "variable x = 5;", "var x = 5;", "int x = 5;", "letvar x = 5;"),
 ]
 
-# Web topic 4: CSS селекторлары
 QUESTIONS_WEB_TOPIC_4 = [
-    ("CSS-те класс селекторы қалай жазылады?", "a", ".classname", "#classname", "classname", "*classname"),
-    ("ID селекторы қалай жазылады?", "b", ".idname", "#idname", "idname", "$idname"),
-    ("Барлық элементтерді таңдайтын әмбебап селектор (universal selector)?", "c", "&", "@", "*", "%"),
-    ("CSS сөзінің толық мағынасы қандай?", "a", "Cascading Style Sheets", "Computer Style Sheets", "Creative Style Sheets", "Colorful Style Sheets"),
-    ("Элементтің фондық түсін өзгерту үшін қандай қасиет қолданылады?", "b", "color", "background-color", "bg-color", "paint"),
+    ("CSS-тегі flex қасиеті не істейді?", "b", "Суретті мөлдір етеді", "Элементтерді икемді контейнерге орналастырады", "Фон түсін өзгертеді", "Шрифт өлшемін арттырады"),
+    ("JavaScript массивіне соңынан элемент қосатын әдіс?", "b", "pop()", "push()", "shift()", "unshift()"),
+    ("CSS-та <div> ішіндегі барлық <p> элементтерін қалай таңдаймыз?", "a", "div p {}", "p div {}", ".div p {}", "div > p {}"),
 ]
 
-# Web topic 5: Flexbox
 QUESTIONS_WEB_TOPIC_5 = [
-    ("Flexbox макетін қосу үшін элементке қандай қасиет беру керек?", "a", "display: flex;", "display: block;", "layout: flex;", "position: flex;"),
-    ("Элементтерді көлденеңінен (негізгі ось бойынша) ортаға туралау үшін қандай қасиет қолданылады?", "b", "align-items: center;", "justify-content: center;", "text-align: center;", "vertical-align: middle;"),
-    ("Элементтерді тік ось (көлденең осьті кесіп өтетін) бойынша ортаға туралау үшін?", "c", "justify-content: center;", "margin: auto;", "align-items: center;", "float: center;"),
-    ("Flex-элементтері сыймай қалса, келесі қатарға өтуіне рұқсат беру үшін қандай қасиет қажет?", "d", "flex-direction: wrap;", "overflow: auto;", "display: inline-flex;", "flex-wrap: wrap;"),
-    ("Flex-бағытын (direction) тік (бағана) қою үшін?", "a", "flex-direction: column;", "flex-direction: vertical", "align-items: column;", "justify-content: column;"),
+    ("DOM дегеніміз не?", "b", "Бағдарламалау тілі", "HTML-ді JavaScript арқылы басқаруға мүмкіндік беретін құжат объектілері моделі", "CSS кітапханасы", "JS фреймворкі"),
+    ("HTML-та пароль енгізу өрісіне қандай атрибут керек?", "b", 'type="text"', 'type="password"', 'input="password"', 'field="password"'),
 ]
 
-# Web topic 6: Responsive дизайн
 QUESTIONS_WEB_TOPIC_6 = [
-    ("Респонсив дизайн үшін CSS-те не қолданылады?", "c", "Javascript", "HTML тегтері", "Media queries (@media)", "Тек пайыздар (%)"),
-    ("Ұялы телефондардың экран енін (viewport) дұрыс көрсету үшін <head>-ке қосылатын тег?", "a", "<meta name='viewport' content='width=device-width'>", "<meta name='mobile'>", "<responsive=yes>", "<link rel='mobile'>"),
-    ("Медиа сұраныс: @media (max-width: 600px) қашан жұмыс істейді?", "b", "Экран ені 600px-тен үлкен болса", "Экран ені 600px-ке дейін болса", "Экран биіктігі 600px болса", "Тек ұялы телефондарда ғана"),
-    ("Сұйық (fluid) қаріп өлшемі үшін қандай өлшем бірлігі жиі қолданылады?", "d", "px", "mm", "pt", "vw / vh"),
-    ("Сайтты ұялы телефонға бірінші бейімдеп, содан соң үлкен экранға жасау тәсілі?", "c", "Desktop-first", "Responsive-first", "Mobile-first", "Adaptive-design"),
+    ("event.preventDefault() не істейді?", "b", "Скрипттің орындалуын тоқтатады", "Оқиғаның стандартты әрекетін болдырмайды", "Элементті өшіреді", "Жаңа оқиға жасайды"),
+    ("CSS-та фонды мөлдір ету үшін не қолданамыз?", "b", "opacity: 0.5;", "background-color: transparent;", "display: none;", "visibility: hidden;"),
 ]
 
-# Web topic 7: JavaScript айнымалылары
 QUESTIONS_WEB_TOPIC_7 = [
-    ("JavaScript-те айнымалы жариялауға арналған жаңа кілт сөздері (ES6)?", "b", "var, const", "let, const", "def, var", "int, float"),
-    ("'let' және 'const' айырмашылығы қандай?", "a", "let-ті өзгертуге болады, const-ты болмайды", "const тек сандар үшін", "Айырмашылығы жоқ", "let глобальды болады"),
-    ("Деректер типін анықтау үшін қандай оператор қолданылады?", "d", "isType", "instanceof", "checkType", "typeof"),
-    ("JavaScript-те массив қалай жарияланады?", "c", "var arr = (1, 2)", "var arr = {1, 2}", "var arr = [1, 2, 3]", "var arr = <1, 2>"),
-    ("Теңдікті қатаң (типті де) тексеру операторы қандай?", "b", "==", "===", "=", "!=="),
+    ("JavaScript-та map() әдісі не істейді?", "b", "Негізгі массивті өзгертеді", "Әр элементке функция қолданып, жаңа массив жасайды", "Массив элементтерін өшіреді", "Массивті сұрыптайды"),
+    ("CSS-та z-index әдепкі мәні қандай?", "c", "0", "1", "auto", "none"),
+    ("Responsive design дегеніміз не?", "b", "Пайдаланушы әрекетіне жауап беретін дизайн", "Экран өлшеміне бейімделетін адаптив дизайн", "Белгілі бір ені бар дизайн", "Анимация қолданатын дизайн"),
+    ("fetch() арқылы JSON қалай аламыз?", "b", "response.text()", "response.json()", "response.data()", "response.object()"),
 ]
 
-# Web topic 8: DOM
 QUESTIONS_WEB_TOPIC_8 = [
-    ("DOM-ның толық мағынасы қандай?", "a", "Document Object Model", "Data Object Model", "Document Oriented Model", "Display Object Model"),
-    ("ID арқылы элементті тауып алу әдісі?", "c", "getElementsByClass()", "querySelector()", "getElementById()", "findId()"),
-    ("Элементке CSS классын қосу үшін қалай жазамыз?", "b", "element.class = 'new'", "element.classList.add('new')", "element.className.add()", "element.style.class = 'new'"),
-    ("Батырмаға сырт еткенде оқиға қосу үшін (JS арқылы) не қолданылады?", "d", "element.click = ...", "element.onPress = ...", "element.trigger('click')", "element.addEventListener('click', ...)"),
-    ("Элементтің тек мәтінін өзгерту үшін қандай қасиет керек?", "a", "textContent", "innerHTML", "value", "outerHTML"),
+    ("CSS селекторы :nth-child(2n) не істейді?", "b", "Барлық элементтерді таңдайды", "Әр екінші элементті таңдайды", "Бірінші элементті таңдайды", "Соңғы элементтерді таңдайды"),
+    ("JavaScript-та константаны қалай жариялаймыз?", "b", "let PI = 3.14;", "const PI = 3.14;", "var PI = 3.14;", "constant PI = 3.14;"),
+    ("CSS Grid дегеніміз не?", "a", "Элементтерді торға орналастыру жүйесі", "Стиль фреймворкі", "Адаптив мәтін әдісі", "Шрифт түрі"),
+    ("addEventListener() әдісі не істейді?", "c", "Элемент қосады", "Оқиғаны өшіреді", "Элементке оқиға өңдеушісін тағайындайды", "Жаңа элемент жасайды"),
+]
+
+QUESTIONS_WEB_TOPIC_9 = [
+    ("JavaScript-та this деген не?", "b", "Айнымалы", "Функция орындалып жатқан ағымдағы объектіге сілтеме", "Функция", "Айнымалы жариялау кілт сөзі"),
+    ("CSS-та элементтің тегіс пайда болуын қалай жасаймыз?", "b", "animation: fadeIn 2s;", "transition: opacity 2s;", "opacity: smooth;", "display: fade;"),
+    ("JS-та айнымалы массив екенін қалай тексереміз?", "b", "typeof array === 'array'", "Array.isArray(array)", "array.isArray()", "array.type === 'array'"),
+    ("CSS-та position: sticky не істейді?", "b", "Элементті әрқашан бір жерде ұстайды", "Элементті белгілі бір нүктеге дейін сырғытып, кейін тоқтатады", "Элементті жасырады", "Элементті мөлдір етеді"),
 ]
 
 TOPIC_QUESTIONS_WEB = [
+    QUESTIONS_WEB_TOPIC_INTRO,
     QUESTIONS_WEB_TOPIC_1,
     QUESTIONS_WEB_TOPIC_2,
     QUESTIONS_WEB_TOPIC_3,
@@ -170,6 +234,7 @@ TOPIC_QUESTIONS_WEB = [
     QUESTIONS_WEB_TOPIC_6,
     QUESTIONS_WEB_TOPIC_7,
     QUESTIONS_WEB_TOPIC_8,
+    QUESTIONS_WEB_TOPIC_9,
 ]
 
 WEB_FINAL_QUESTIONS = [
@@ -180,6 +245,81 @@ WEB_FINAL_QUESTIONS = [
     ("Stored XSS шабуылы қалай жүзеге асырылады?", "b", "URL параметрлері арқылы", "Хакер зиянды JavaScript кодын веб-сайттың дерекқорына сақтайды. Кейін бұл деректерді оқыған кез-келген бейкүнә пайдаланушының браузерінде код автоматты түрде орындалады", "Cookies ұрлау арқылы (sniffing)", "Құпия сөздерді жүктеп алу"),
 ]
 
+# Информатика / жалпы ИТ (Python синтаксисі емес): құрылғы, ОЖ, желі, кодтау, деректер, қауіпсіздік
+INFORMATICS_COURSE_TITLE = "Информатика және ақпараттық технологиялар негіздері"
+
+QUESTIONS_INFO_TOPIC_1 = [
+    ("Компьютердің негізгі үш компоненті дұрыс қалай аталады?", "b", "Тек монитор және пернетақта", "Процессор, жедел жад және сақтау құрылғылары", "Тек интернет және браузер", "Тек операциялық жүйе"),
+    ("Процессор (CPU) не істейді?", "a", "Нұсқаларды орындау және есептеулер жүргізу", "Тек суретті экранға шығару", "Тек файлдарды интернетке жүктеу", "Тек пернетақтаны тыңдау"),
+    ("Жедел жад (RAM) сипаттамасы қайсысы дұрыс?", "c", "Электр өшкенде де дерек сақталады", "Тек бейне файлдар үшін", "Электр өшкенде дерегі жойылады, жұмыс кезінде жылдам қолжетімді", "Тек процессордың жылдамдығын көрсетеді"),
+]
+
+QUESTIONS_INFO_TOPIC_2 = [
+    ("Монитор қандай құрылғы санатына жатады?", "b", "Енгізу құрылғысы", "Шығару құрылғысы", "Сақтау құрылғысы", "Желілік құрылғы"),
+    ("Пернетақта мен тінтуір қайсысына жатады?", "a", "Енгізу құрылғылары", "Шығару құрылғылары", "Серверлер", "Операциялық жүйе"),
+]
+
+QUESTIONS_INFO_TOPIC_3 = [
+    ("Операциялық жүйенің негізгі міндеті неде?", "d", "Тек мәтін өңдеу", "Тек ойын ойнау", "Тек интернетті қосу", "Ресурстарды басқару және қолданбаларға орта қамтамасыз ету"),
+    ("Файл кеңейтімі (.txt, .pdf) не үшін қолданылады?", "b", "Файл өлшемін көрсету үшін", "Файл түрін және қалай ашу керектігін анықтау үшін", "Құпия сөзді сақтау үшін", "Желідегі жылдамдықты өлшеу үшін"),
+]
+
+QUESTIONS_INFO_TOPIC_4 = [
+    ("Жергілікті желі (LAN) дегеніміз не?", "a", "Шектеулі аумақтағы құрылғыларды байланыстыратын желі", "Тек сателлит арқылы байланыс", "Тек бір компьютердің ішкі жады", "Тек интернет провайдерінің веб-сайты"),
+    ("IP-мекенжай не үшін қолданылады?", "c", "Тек электрондық пошта үшін", "Тек файл кеңейтімі үшін", "Желідегі құрылғыны бірегей анықтау", "Тек экран ажыратымдылығы үшін"),
+    ("Маршрутизатор (router) не істейді?", "b", "Тек принтерді басқарады", "Пакеттерді желі арасында бағыттайды және көбінесе Wi‑Fi таратады", "Тек файлды сығымдайды", "Тек вирустарды табады"),
+]
+
+QUESTIONS_INFO_TOPIC_5 = [
+    ("DNS дегеніміз не?", "a", "Домен атын (мысалы, example.com) IP-мекенжайға түрлендіру жүйесі", "Деректер базасын сақтау форматы", "Графикалық редактор", "Программалау тілі"),
+    ("HTTPS HTTP-тен неге әдетте қауіпсізрек?", "d", "Тек жылдамдау үшін", "Тек кіші файлдар үшін", "Тек мобильді құрылғылар үшін", "Трафикті шифрлау арқылы тыңдаудан қорғайды"),
+]
+
+QUESTIONS_INFO_TOPIC_6 = [
+    ("1 байт неше биттан тұрады?", "b", "4 бит", "8 бит", "16 бит", "32 бит"),
+    ("Екілік санау жүйесінде 1010₂ саны ондық жүйеде неге тең?", "a", "10", "12", "8", "1010"),
+]
+
+QUESTIONS_INFO_TOPIC_7 = [
+    ("Алгоритм дегеніміз не?", "c", "Тек компьютер бренді", "Тек деректер базасы кестесі", "Мәселені шешу үшін анықталған қадамдар тізбегі", "Тек интернет хаттамасы"),
+    ("О(n) нотациясы не сипаттайды?", "b", "Тек экран енін", "Алгоритмнің уақыт күрделілігінің өсу заңдылығын", "Тек файл өлшемін", "Тек процессор сағатын"),
+    ("Іздеу мен сұрыптау алгоритмдерінің айырмашылығы неде?", "d", "Айырмашылық жоқ", "Екеуі де тек файл ашады", "Сұрыптау — элемент іздеу, іздеу — реттеу", "Іздеу — мәні бар элементті табу, сұрыптау — элементтерді ретке келтіру"),
+    ("Рекурсия дегеніміз не?", "a", "Функцияның өзін шақыруы", "Тек циклдың синонимі", "Тек массив түрі", "Тек желілік пакет"),
+]
+
+QUESTIONS_INFO_TOPIC_8 = [
+    ("Реляциялық деректер базасы не сипаттайды?", "b", "Тек бейне файлдар жиынтығы", "Кестелер (жолдар мен бағандар) және олар арасындағы байланыстар", "Тек мәтін редакторы", "Тек операциялық жүйе"),
+    ("SQL тілі не үшін қолданылады?", "c", "Тек веб-бет сәндеу", "Тек 3D модельдеу", "Реляциялық деректер базасына сұраныс жазу және басқару", "Тек процессорды бағалау"),
+    ("Негізгі кілт (primary key) не үшін керек?", "a", "Кестедегі әр жолды бірегей сәйкестендіру", "Тек сурет сақтау", "Тек құпия сөз генерациясы", "Тек уақыт белгісін көрсету"),
+    ("Резервтік көшірме (backup) не үшін?", "d", "Тек интернет жылдамдығын арттыру", "Тек вирус жүктеу", "Тек экранды жарықтандыру", "Дерек жоғалғанда қалпына келтіру мүмкіндігі"),
+]
+
+QUESTIONS_INFO_TOPIC_9 = [
+    ("Фишинг шабуылы дегеніміз не?", "b", "Тек аппараттық қате", "Пайдаланушыны жалған сайт немесе хат арқылы алдау", "Тек файлды сығымдау", "Тек процессорды суыту"),
+    ("Күшті құпия сөзге не жатады?", "c", "Тек «12345»", "Тек туған күн", "Ұзындық, әртүрлі таңбалар және болжамды сөз емес комбинация", "Тек логинмен бірдей сөз"),
+    ("Зиянды бағдарлама (malware) дегеніміз не?", "a", "Зиян келтіру немесе рұқсатсыз әрекет үшін арналған бағдарламалық код", "Тек ойын патчы", "Тек антивирус жаңартуы", "Тек операциялық жүйенің логотипі"),
+    ("Екі факторлы аутентификация не береді?", "d", "Тек экран түсін өзгертеді", "Тек файл өлшемін кішірейту", "Тек интернетті тегін етеді", "Құпия сөзден басқа екінші растау арқылы кіруді қорғау"),
+]
+
+TOPIC_QUESTIONS_INFORMATICS = [
+    QUESTIONS_INFO_TOPIC_1,
+    QUESTIONS_INFO_TOPIC_2,
+    QUESTIONS_INFO_TOPIC_3,
+    QUESTIONS_INFO_TOPIC_4,
+    QUESTIONS_INFO_TOPIC_5,
+    QUESTIONS_INFO_TOPIC_6,
+    QUESTIONS_INFO_TOPIC_7,
+    QUESTIONS_INFO_TOPIC_8,
+    QUESTIONS_INFO_TOPIC_9,
+]
+
+INFO_FINAL_QUESTIONS = [
+    ("Виртуалдау (virtualization) технологиясының маңызы неде?", "a", "Бір физикалық серверде бірнеше оқшауланған виртуалды машиналарды іске қосу", "Тек экранды үлкейту", "Тек пернетақтаны ауыстыру", "Тек Wi‑Fi парольін өзгерту"),
+    ("TCP және UDP хаттамаларының негізгі айырмашылығы?", "b", "UDP әрқашан шифрланады, TCP — жоқ", "TCP байланыс орнату және сенімді жеткізуге бағытталса, UDP жеңіл және кепілдіксіз", "Тек порт нөмірлері әртүрлі", "Айырмашылық жоқ"),
+    ("Big O нотациясында O(1) дегеніміз не білдіреді?", "c", "Тек бір элемент бар", "Тек бір цикл", "Кіріс өлшеміне тәуелсіз тұрақты уақыт", "Тек бір байт жады"),
+    ("Қосарланған кілт (foreign key) не үшін қолданылады?", "d", "Тек суретті байланыстыру", "Тек құпия сөзді шифрлау", "Тек уақыт белгісін сақтау", "Басқа кестедегі жолға сілтеме жасап, байланыстыру"),
+    ("Zero-day уязвимость дегеніміз не?", "a", "Жаңа анықталған, әлі жаппа жоқ немесе кең таралмаған қауіп", "Тек вирус атауы", "Тек антивирус нұсқасы", "Тек интернет жылдамдығы"),
+]
 
 
 def _add_questions_to_test(db, test_id, questions_list):
@@ -212,8 +352,284 @@ def _ensure_categories(db):
     return cat_ids[:5]
 
 
+def _populate_python_modules_topics_tests(db, course_id: int) -> None:
+    """Modules, topics, per-topic tests, and final test for the Python course."""
+    m1_1 = CourseModule(course_id=course_id, title="Кіріспе", order_number=1, description="Python-ға кіріспе")
+    m1_2 = CourseModule(course_id=course_id, title="Басқару құрылымдары", order_number=2, description="Шартты операторлар және циклдар")
+    db.add(m1_1)
+    db.add(m1_2)
+    db.flush()
+    m1_3 = CourseModule(course_id=course_id, title="Функциялар және модульдер", order_number=3, description="Функциялар, сынып типтер және модульдер")
+    db.add(m1_3)
+    db.flush()
+    _d1 = THEORY_PYTHON if THEORY_PYTHON else [""] * 10
+    _pv = PYTHON_TOPIC_VIDEOS if len(PYTHON_TOPIC_VIDEOS) >= 10 else []
+    topics1 = [
+        (m1_1.id, "Python дегеніміз не?",         1,  _pv[0] if _pv else "https://www.youtube.com/watch?v=kqtD5dpn9C8",  600, _d1[0] if len(_d1)>0 else ""),
+        (m1_1.id, "Айнымалылар және деректер түрлері",  2,  _pv[1] if _pv else "https://www.youtube.com/watch?v=Z1Yd7upQsXY",  600, _d1[1] if len(_d1)>1 else ""),
+        (m1_1.id, "Операторлар",                     3,  _pv[2] if _pv else "https://www.youtube.com/watch?v=v5MR5JnKcZI",  600, _d1[2] if len(_d1)>2 else ""),
+        (m1_2.id, "Шартты операторлар",          4,  _pv[3] if _pv else "https://www.youtube.com/watch?v=AWek49wXGzI",  600, _d1[3] if len(_d1)>3 else ""),
+        (m1_2.id, "Циклдар",                           5,  _pv[4] if _pv else "https://www.youtube.com/watch?v=OnDr4J2UXSA",  600, _d1[4] if len(_d1)>4 else ""),
+        (m1_3.id, "Функциялар негіздері",         6,  _pv[5] if _pv else "https://www.youtube.com/watch?v=9Os0o3wzS_I",  600, _d1[5] if len(_d1)>5 else ""),
+        (m1_3.id, "Тізімдер және кортеждер",      7,  _pv[6] if _pv else "https://www.youtube.com/watch?v=R-HLU9Fl5ug",  600, _d1[6] if len(_d1)>6 else ""),
+        (m1_3.id, "Сөздіктер және файлдармен жұмыс",  8,  _pv[7] if _pv else "https://www.youtube.com/watch?v=4mX0uPQFLDU",  600, _d1[7] if len(_d1)>7 else ""),
+        (m1_3.id, "Сынып типтер негіздері",        9,  _pv[8] if _pv else "https://www.youtube.com/watch?v=qiSCMNBIP2g",  600, _d1[8] if len(_d1)>8 else ""),
+        (m1_3.id, "Модульдер және пакеттер",     10, _pv[9] if _pv else "https://www.youtube.com/watch?v=K5KVEU3aaeQ", 600, _d1[9] if len(_d1)>9 else ""),
+    ]
+    topic1_ids = []
+    for mod_id, title, order, video, dur, desc in topics1:
+        t = CourseTopic(course_id=course_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
+        db.add(t)
+        db.flush()
+        topic1_ids.append(t.id)
+    db.commit()
+
+    for idx, tid in enumerate(topic1_ids):
+        qs = TOPIC_QUESTIONS_PYTHON[idx]
+        test = Test(topic_id=tid, course_id=course_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
+        db.add(test)
+        db.flush()
+        _add_questions_to_test(db, test.id, qs)
+    final1 = Test(topic_id=None, course_id=course_id, title="Python негіздері - Қорытынды тест", passing_score=70, question_count=len(PYTHON_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    db.add(final1)
+    db.flush()
+    _add_questions_to_test(db, final1.id, PYTHON_FINAL_QUESTIONS)
+    db.commit()
+
+
+def _populate_web_modules_topics_tests(db, course_id: int) -> None:
+    """Modules, topics, per-topic tests, and final test for the Web course."""
+    m2_1 = CourseModule(course_id=course_id, title="HTML негіздері", order_number=1, description="HTML тегтері")
+    m2_2 = CourseModule(course_id=course_id, title="CSS стильдері", order_number=2, description="Веб-беттерді безендіру")
+    m2_3 = CourseModule(course_id=course_id, title="JavaScript негіздері", order_number=3, description="Интерактивті функционалдық")
+    db.add(m2_1)
+    db.add(m2_2)
+    db.add(m2_3)
+    db.flush()
+    _d2 = THEORY_WEB if THEORY_WEB else [""] * 10
+    _wv = WEB_TOPIC_VIDEOS if len(WEB_TOPIC_VIDEOS) >= 10 else []
+    topics2 = [
+        (m2_1.id, "HTML дегеніміз не?",         1,  _wv[0] if _wv else "https://www.youtube.com/watch?v=bWPMssHtgSo",  600, _d2[0]  if len(_d2)>0  else ""),
+        (m2_1.id, "HTML тегтері",               2,  _wv[1] if _wv else "https://www.youtube.com/watch?v=UB1O30fR-EE",  600, _d2[1]  if len(_d2)>1  else ""),
+        (m2_1.id, "Формалар",                    3,  _wv[2] if _wv else "https://www.youtube.com/watch?v=frAGrGN00OA",  600, _d2[2]  if len(_d2)>2  else ""),
+        (m2_1.id, "Семантикалық HTML",         4,  _wv[3] if _wv else "https://www.youtube.com/watch?v=PlxWf493en4",  600, _d2[3]  if len(_d2)>3  else ""),
+        (m2_2.id, "CSS селекторлары",          5,  _wv[4] if _wv else "https://www.youtube.com/watch?v=1PnVor36_40",  600, _d2[4]  if len(_d2)>4  else ""),
+        (m2_2.id, "Flexbox",                     6,  _wv[5] if _wv else "https://www.youtube.com/watch?v=JJSoEo8JSnc",  600, _d2[5]  if len(_d2)>5  else ""),
+        (m2_2.id, "Responsive дизайн",         7,  _wv[6] if _wv else "https://www.youtube.com/watch?v=1Rs2ND1ryYc",  600, _d2[6]  if len(_d2)>6  else ""),
+        (m2_3.id, "JavaScript айнымалылары",  8,  _wv[7] if _wv else "https://www.youtube.com/watch?v=hdI2bqOjy3c",  600, _d2[7]  if len(_d2)>7  else ""),
+        (m2_3.id, "DOM манипуляциясы",       9,  _wv[8] if _wv else "https://www.youtube.com/watch?v=y17RuWkWdn8",  600, _d2[8]  if len(_d2)>8  else ""),
+        (m2_3.id, "Оқиғалар және функциялар",    10, _wv[9] if _wv else "https://www.youtube.com/watch?v=XF1_MlZ5l6M", 600, _d2[9]  if len(_d2)>9  else ""),
+    ]
+    for mod_id, title, order, video, dur, desc in topics2:
+        t = CourseTopic(course_id=course_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
+        db.add(t)
+    db.commit()
+    topic2_ids = [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == course_id).order_by(CourseTopic.order_number).all()]
+    for idx, tid in enumerate(topic2_ids):
+        qs = TOPIC_QUESTIONS_WEB[idx]
+        test = Test(topic_id=tid, course_id=course_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
+        db.add(test)
+        db.flush()
+        _add_questions_to_test(db, test.id, qs)
+    final2 = Test(topic_id=None, course_id=course_id, title="Web негіздері - Қорытынды тест", passing_score=70, question_count=len(WEB_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    db.add(final2)
+    db.flush()
+    _add_questions_to_test(db, final2.id, WEB_FINAL_QUESTIONS)
+    db.commit()
+
+
+def _populate_informatics_modules_topics_tests(db, course_id: int) -> None:
+    """Информатика курсы: құрылғы, ОЖ, желі, кодтау, ДБ, қауіпсіздік (Python емес)."""
+    m3_1 = CourseModule(course_id=course_id, title="Құрылғы және жүйе", order_number=1, description="Процессор, жад, периферия, ОЖ")
+    m3_2 = CourseModule(course_id=course_id, title="Желі және интернет", order_number=2, description="LAN, IP, DNS, HTTPS")
+    m3_3 = CourseModule(course_id=course_id, title="Алгоритмдер, деректер, қауіпсіздік", order_number=3, description="Big O, SQL, phishing, MFA")
+    db.add(m3_1)
+    db.add(m3_2)
+    db.add(m3_3)
+    db.flush()
+    _blank = [""] * 9
+    topics3 = [
+        (m3_1.id, "Компьютер жүйесі және процессор", 1, "https://www.youtube.com/watch?v=OAx_6-b58ys", 600, _blank[0]),
+        (m3_1.id, "Енгізу-шығару құрылғылары", 2, "https://www.youtube.com/watch?v=FCMxA3G_9mI", 600, _blank[1]),
+        (m3_1.id, "Операциялық жүйе және файлдар", 3, "https://www.youtube.com/watch?v=pVzRTmdd9j0", 600, _blank[2]),
+        (m3_2.id, "Желі түрлері және маршрутизатор", 4, "https://www.youtube.com/watch?v=3QhU9jd03a0", 600, _blank[3]),
+        (m3_2.id, "Интернет, DNS және қауіпсіз веб", 5, "https://www.youtube.com/watch?v=7_LPdttKXPc", 600, _blank[4]),
+        (m3_2.id, "Бит, байт және екілік санау", 6, "https://www.youtube.com/watch?v=1GSjbWt0c9M", 600, _blank[5]),
+        (m3_3.id, "Алгоритмдер және күрделілік", 7, "https://www.youtube.com/watch?v=rL8X2mlNHPM", 600, _blank[6]),
+        (m3_3.id, "Деректер базасы негіздері", 8, "https://www.youtube.com/watch?v=zsjvFFKOm3c", 600, _blank[7]),
+        (m3_3.id, "Ақпараттық қауіпсіздік", 9, "https://www.youtube.com/watch?v=inWWhrC6EN0", 600, _blank[8]),
+    ]
+    for mod_id, title, order, video, dur, desc in topics3:
+        t = CourseTopic(course_id=course_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
+        db.add(t)
+    db.commit()
+    topic_ids = [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == course_id).order_by(CourseTopic.order_number).all()]
+    for idx, tid in enumerate(topic_ids):
+        if idx >= len(TOPIC_QUESTIONS_INFORMATICS):
+            break
+        qs = TOPIC_QUESTIONS_INFORMATICS[idx]
+        test = Test(topic_id=tid, course_id=course_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
+        db.add(test)
+        db.flush()
+        _add_questions_to_test(db, test.id, qs)
+    final3 = Test(topic_id=None, course_id=course_id, title="Информатика - Қорытынды тест", passing_score=70, question_count=len(INFO_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    db.add(final3)
+    db.flush()
+    _add_questions_to_test(db, final3.id, INFO_FINAL_QUESTIONS)
+    db.commit()
+
+
+def _clear_course_modules_topics_tests(db, course_id: int) -> None:
+    """Remove modules/topics/tests for a course (for repair). Progress rows cascade on topic delete."""
+    test_ids = [row[0] for row in db.query(Test.id).filter(Test.course_id == course_id).all()]
+    for tid in test_ids:
+        db.query(TestQuestion).filter(TestQuestion.test_id == tid).delete()
+    db.query(Test).filter(Test.course_id == course_id).delete()
+    db.query(CourseTopic).filter(CourseTopic.course_id == course_id).delete()
+    db.query(CourseModule).filter(CourseModule.course_id == course_id).delete()
+    db.commit()
+
+
+def refresh_web_course_test_questions(db) -> None:
+    """Web курс тақырып тесттеріндегі сұрақтарды кодтағы TOPIC_QUESTIONS_WEB бойынша жаңартады."""
+    title = "Web-әзірлеу негіздері"
+    c = db.query(Course).filter(Course.title == title).first()
+    if not c:
+        print("Web course not found.")
+        return
+    topic2_ids = [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == c.id).order_by(CourseTopic.order_number).all()]
+    if len(topic2_ids) != len(TOPIC_QUESTIONS_WEB):
+        print(f"Expected {len(TOPIC_QUESTIONS_WEB)} Web topics, found {len(topic2_ids)}. Attempting to refresh available topics anyway.")
+    
+    for idx, tid in enumerate(topic2_ids):
+        if idx >= len(TOPIC_QUESTIONS_WEB):
+            break
+        test = (
+            db.query(Test)
+            .filter(Test.topic_id == tid, Test.course_id == c.id, Test.is_final == 0)
+            .first()
+        )
+        if not test:
+            print(f"No non-final test for topic id {tid}")
+            continue
+        db.query(TestQuestion).filter(TestQuestion.test_id == test.id).delete()
+        qs = TOPIC_QUESTIONS_WEB[idx]
+        test.question_count = len(qs)
+        _add_questions_to_test(db, test.id, qs)
+    db.commit()
+    print(f"Updated Web topic tests: {len(topic2_ids)} topics.")
+
+
+def seed_informatics_course_if_missing(db) -> None:
+    """Қолданыстағы БД-ға Информатика курсін қосады (толық seed өткен жобалар үшін)."""
+    if db.query(Course).filter(Course.title == INFORMATICS_COURSE_TITLE).first():
+        print("Informatics course already exists.")
+        return
+    admin = db.query(User).filter(User.email == "admin@edu.kz").first()
+    if not admin:
+        print("admin@edu.kz not found. Run full seed first.")
+        return
+    cat_ids = _ensure_categories(db)
+    c3 = Course(
+        title=INFORMATICS_COURSE_TITLE,
+        description="Компьютер құрылғысы, желі, ОЖ, кодтау, деректер базасы және киберқауіпсіздік негіздері. Python синтаксисі емес.",
+        category_id=cat_ids[0],
+        is_active=True,
+        price=Decimal("32000.00"),
+        language="kz",
+        created_by=admin.id,
+        published_at=datetime.now(timezone.utc),
+        image_url="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80",
+    )
+    db.add(c3)
+    db.flush()
+    _populate_informatics_modules_topics_tests(db, c3.id)
+    print(f"Created Informatics course id={c3.id} with topics and tests.")
+
+
+def repair_main_courses_modules_topics(db) -> None:
+    """If Python/Web courses exist but have no topics (partial seed), rebuild modules/topics/tests."""
+    titles = ("Python программалау негіздері", "Web-әзірлеу негіздері")
+    c_py = db.query(Course).filter(Course.title == titles[0]).first()
+    c_web = db.query(Course).filter(Course.title == titles[1]).first()
+    if not c_py or not c_web:
+        print("Python/Web courses not found by title. Run full seed or check course titles.")
+        return
+    n_py = db.query(CourseTopic).filter(CourseTopic.course_id == c_py.id).count()
+    n_web = db.query(CourseTopic).filter(CourseTopic.course_id == c_web.id).count()
+    if n_py > 0 and n_web > 0:
+        print("Main courses already have topics. Nothing to repair.")
+        return
+    print("Repairing modules/topics/tests for Python and Web courses...")
+    _clear_course_modules_topics_tests(db, c_py.id)
+    _clear_course_modules_topics_tests(db, c_web.id)
+    _populate_python_modules_topics_tests(db, c_py.id)
+    _populate_web_modules_topics_tests(db, c_web.id)
+    print("Done: topics restored for Python and Web courses.")
+
+
+def prune_web_module4(db) -> None:
+    """Remove «Жобалық қолданбалар» (order 4) and its topics from the Web course."""
+    title = "Web-әзірлеу негіздері"
+    c = db.query(Course).filter(Course.title == title).first()
+    if not c:
+        print("Web course not found.")
+        return
+    mod = (
+        db.query(CourseModule)
+        .filter(CourseModule.course_id == c.id, CourseModule.order_number == 4)
+        .first()
+    )
+    if not mod:
+        print("Web module 4 not found (already removed?).")
+        return
+    topics = (
+        db.query(CourseTopic)
+        .filter(CourseTopic.module_id == mod.id)
+        .order_by(CourseTopic.order_number)
+        .all()
+    )
+    n = len(topics)
+    for t in topics:
+        db.delete(t)
+    db.delete(mod)
+    db.commit()
+    print(f"Removed Web module 4 and {n} topic(s).")
+
+
+def repair_topic_video_urls(db) -> None:
+    """Set video_url from topic_video_urls for Python/Web topics by order_number (keeps topic ids and progress)."""
+    try:
+        from topic_video_urls import PYTHON_TOPIC_VIDEOS, WEB_TOPIC_VIDEOS
+    except ImportError:
+        print("topic_video_urls module missing.")
+        return
+    if len(PYTHON_TOPIC_VIDEOS) < 10 or len(WEB_TOPIC_VIDEOS) < 10:
+        print("topic_video_urls lists incomplete.")
+        return
+    titles = ("Python программалау негіздері", "Web-әзірлеу негіздері")
+    c_py = db.query(Course).filter(Course.title == titles[0]).first()
+    c_web = db.query(Course).filter(Course.title == titles[1]).first()
+    if not c_py or not c_web:
+        print("Python/Web courses not found by title.")
+        return
+    updated = 0
+    for t in db.query(CourseTopic).filter(CourseTopic.course_id == c_py.id).order_by(CourseTopic.order_number):
+        idx = t.order_number - 1
+        if 0 <= idx < len(PYTHON_TOPIC_VIDEOS):
+            t.video_url = PYTHON_TOPIC_VIDEOS[idx]
+            updated += 1
+    for t in db.query(CourseTopic).filter(CourseTopic.course_id == c_web.id).order_by(CourseTopic.order_number):
+        idx = t.order_number - 1
+        if 0 <= idx < len(WEB_TOPIC_VIDEOS):
+            t.video_url = WEB_TOPIC_VIDEOS[idx]
+            updated += 1
+    db.commit()
+    print(f"Updated video_url for {updated} topics (Python + Web).")
+
+
 def _seed_courses_only(db, admin_id, cat_ids):
-    """Create 2 full courses + 18 placeholder courses. Assumes categories exist."""
+    """Create Python, Web, Informatics full courses + 18 placeholder courses. Assumes categories exist."""
     # Course 1: Python (active)
     c1 = Course(
         title="Python программалау негіздері",
@@ -228,50 +644,7 @@ def _seed_courses_only(db, admin_id, cat_ids):
     )
     db.add(c1)
     db.flush()
-    course1_id = c1.id
-    m1_1 = CourseModule(course_id=course1_id, title="Кіріспе", order_number=1, description="Python-ға кіріспе")
-    m1_2 = CourseModule(course_id=course1_id, title="Басқару құрылымдары", order_number=2, description="Шартты операторлар және циклдар")
-    db.add(m1_1)
-    db.add(m1_2)
-    db.flush()
-    m1_3 = CourseModule(course_id=course1_id, title="Функциялар және модульдер", order_number=3, description="Функциялар, сынып типтер және модульдер")
-    db.add(m1_3)
-    db.flush()
-    _d1 = THEORY_PYTHON if THEORY_PYTHON else [""] * 10
-    topics1 = [
-        # Module 1: Кіріспе (5 тақырып)
-        (m1_1.id, "Python дегеніміз не?",         1,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_1",  600, _d1[0] if len(_d1)>0 else ""),
-        (m1_1.id, "Айнымалылар және деректер түрлері",  2,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_2",  600, _d1[1] if len(_d1)>1 else ""),
-        (m1_1.id, "Операторлар",                     3,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_3",  600, _d1[2] if len(_d1)>2 else ""),
-        # Module 2: Басқару құрылымдары (2 тақырып)
-        (m1_2.id, "Шартты операторлар",          4,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_4",  600, _d1[3] if len(_d1)>3 else ""),
-        (m1_2.id, "Циклдар",                           5,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_5",  600, _d1[4] if len(_d1)>4 else ""),
-        # Module 3: Функциялар және модульдер (5 тақырып)
-        (m1_3.id, "Функциялар негіздері",         6,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_6",  600, _d1[5] if len(_d1)>5 else ""),
-        (m1_3.id, "Тізімдер және кортеждер",      7,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_7",  600, _d1[6] if len(_d1)>6 else ""),
-        (m1_3.id, "Сөздіктер және файлдармен жұмыс",  8,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_8",  600, _d1[7] if len(_d1)>7 else ""),
-        (m1_3.id, "Сынып типтер негіздері",        9,  "https://www.youtube.com/watch?v=REPLACE_PYTHON_9",  600, _d1[8] if len(_d1)>8 else ""),
-        (m1_3.id, "Модульдер және пакеттер",     10, "https://www.youtube.com/watch?v=REPLACE_PYTHON_10", 600, _d1[9] if len(_d1)>9 else ""),
-    ]
-    topic1_ids = []
-    for mod_id, title, order, video, dur, desc in topics1:
-        t = CourseTopic(course_id=course1_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
-        db.add(t)
-        db.flush()
-        topic1_ids.append(t.id)
-    db.commit()
-
-    for idx, tid in enumerate(topic1_ids):
-        qs = TOPIC_QUESTIONS_PYTHON[idx]
-        test = Test(topic_id=tid, course_id=course1_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
-        db.add(test)
-        db.flush()
-        _add_questions_to_test(db, test.id, qs)
-    final1 = Test(topic_id=None, course_id=course1_id, title="Python негіздері - Қорытынды тест", passing_score=70, question_count=len(PYTHON_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
-    db.add(final1)
-    db.flush()
-    _add_questions_to_test(db, final1.id, PYTHON_FINAL_QUESTIONS)
-    db.commit()
+    _populate_python_modules_topics_tests(db, c1.id)
 
     # Course 2: Web (active)
     c2 = Course(
@@ -287,52 +660,23 @@ def _seed_courses_only(db, admin_id, cat_ids):
     )
     db.add(c2)
     db.flush()
-    course2_id = c2.id
-    m2_1 = CourseModule(course_id=course2_id, title="HTML негіздері", order_number=1, description="HTML тегтері")
-    m2_2 = CourseModule(course_id=course2_id, title="CSS стильдері", order_number=2, description="Веб-беттерді безендіру")
-    m2_3 = CourseModule(course_id=course2_id, title="JavaScript негіздері", order_number=3, description="Интерактивті функционалдық")
-    db.add(m2_1)
-    db.add(m2_2)
-    db.add(m2_3)
+    _populate_web_modules_topics_tests(db, c2.id)
+
+    # Course 3: Информатика / жалпы ИТ (AI Challenge трегі)
+    c3 = Course(
+        title=INFORMATICS_COURSE_TITLE,
+        description="Компьютер құрылғысы, желі, ОЖ, кодтау, деректер базасы және киберқауіпсіздік негіздері. Python синтаксисі емес.",
+        category_id=cat_ids[0],
+        is_active=True,
+        price=Decimal("32000.00"),
+        language="kz",
+        created_by=admin_id,
+        published_at=datetime.now(timezone.utc),
+        image_url="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80",
+    )
+    db.add(c3)
     db.flush()
-    m2_4 = CourseModule(course_id=course2_id, title="Жобалық қолданбалар", order_number=4, description="Практикалық жобалар")
-    db.add(m2_4)
-    db.flush()
-    _d2 = THEORY_WEB if THEORY_WEB else [""] * 12
-    topics2 = [
-        # Module 1: HTML негіздері
-        (m2_1.id, "HTML тегтері",               1,  "https://www.youtube.com/watch?v=REPLACE_WEB_1",  600, _d2[0]  if len(_d2)>0  else ""),
-        (m2_1.id, "Формалар",                    2,  "https://www.youtube.com/watch?v=REPLACE_WEB_2",  600, _d2[1]  if len(_d2)>1  else ""),
-        (m2_1.id, "Семантикалық HTML",         3,  "https://www.youtube.com/watch?v=REPLACE_WEB_3",  600, _d2[2]  if len(_d2)>2  else ""),
-        # Module 2: CSS стильдері
-        (m2_2.id, "CSS селекторлары",          4,  "https://www.youtube.com/watch?v=REPLACE_WEB_4",  600, _d2[3]  if len(_d2)>3  else ""),
-        (m2_2.id, "Flexbox",                     5,  "https://www.youtube.com/watch?v=REPLACE_WEB_5",  600, _d2[4]  if len(_d2)>4  else ""),
-        (m2_2.id, "Responsive дизайн",         6,  "https://www.youtube.com/watch?v=REPLACE_WEB_6",  600, _d2[5]  if len(_d2)>5  else ""),
-        # Module 3: JavaScript негіздері
-        (m2_3.id, "JavaScript айнымалылары",  7,  "https://www.youtube.com/watch?v=REPLACE_WEB_7",  600, _d2[6]  if len(_d2)>6  else ""),
-        (m2_3.id, "DOM манипуляциясы",       8,  "https://www.youtube.com/watch?v=REPLACE_WEB_8",  600, _d2[7]  if len(_d2)>7  else ""),
-        (m2_3.id, "Оқиғалар және функциялар",    9,  "https://www.youtube.com/watch?v=REPLACE_WEB_9",  600, _d2[8]  if len(_d2)>8  else ""),
-        # Module 4: Жобалық қолданбалар
-        (m2_4.id, "CSS Grid жүйесі",          10, "https://www.youtube.com/watch?v=REPLACE_WEB_10", 600, _d2[9]  if len(_d2)>9  else ""),
-        (m2_4.id, "Ънді веб-бет жасау",      11, "https://www.youtube.com/watch?v=REPLACE_WEB_11", 600, _d2[10] if len(_d2)>10 else ""),
-        (m2_4.id, "Портфолио жобасы",           12, "https://www.youtube.com/watch?v=REPLACE_WEB_12", 600, _d2[11] if len(_d2)>11 else ""),
-    ]
-    for mod_id, title, order, video, dur, desc in topics2:
-        t = CourseTopic(course_id=course2_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
-        db.add(t)
-    db.commit()
-    topic2_ids = [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == course2_id).order_by(CourseTopic.order_number).all()]
-    for idx, tid in enumerate(topic2_ids):
-        qs = TOPIC_QUESTIONS_WEB[idx]
-        test = Test(topic_id=tid, course_id=course2_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
-        db.add(test)
-        db.flush()
-        _add_questions_to_test(db, test.id, qs)
-    final2 = Test(topic_id=None, course_id=course2_id, title="Web негіздері - Қорытынды тест", passing_score=70, question_count=len(WEB_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
-    db.add(final2)
-    db.flush()
-    _add_questions_to_test(db, final2.id, WEB_FINAL_QUESTIONS)
-    db.commit()
+    _populate_informatics_modules_topics_tests(db, c3.id)
 
     inactive = [
         ("Машиналық оқыту негіздері", "Жасанды интеллект пен ML алгоритмдері. Жақында.", cat_ids[2], 45000, "https://www.shutterstock.com/image-illustration/robot-hand-holding-ai-ml-600nw-2661516405.jpg"),
@@ -364,6 +708,21 @@ def seed():
     try:
         # Users
         if db.query(User).filter(User.email == "admin@edu.kz").first():
+            if "--prune-web-module4" in sys.argv:
+                prune_web_module4(db)
+                return
+            if "--refresh-web-tests" in sys.argv:
+                refresh_web_course_test_questions(db)
+                return
+            if "--repair-video-urls" in sys.argv:
+                repair_topic_video_urls(db)
+                return
+            if "--repair-course-content" in sys.argv:
+                repair_main_courses_modules_topics(db)
+                return
+            if "--seed-informatics-course" in sys.argv:
+                seed_informatics_course_if_missing(db)
+                return
             if "--courses-only" in sys.argv:
                 admin_user = db.query(User).filter(User.email == "admin@edu.kz").first()
                 admin_id = admin_user.id
@@ -372,7 +731,7 @@ def seed():
                     return
                 cat_ids = _ensure_categories(db)
                 _seed_courses_only(db, admin_id, cat_ids)
-                print("Seed completed: categories (if missing), 2 active courses with modules/topics/tests, 18 mock courses.")
+                print("Seed completed: categories (if missing), 3 active courses (Python, Web, Informatics) with modules/topics/tests, 18 mock courses.")
                 return
             # Add director/curator if missing (for existing DBs)
             if not db.query(User).filter(User.email == "director@edu.kz").first():
@@ -580,7 +939,7 @@ def seed():
         db.commit()
 
         _seed_courses_only(db, admin_id, cat_ids)
-        print("Seed completed: users, categories, 2 active courses with modules/topics/tests, 18 mock courses (all open).")
+        print("Seed completed: users, categories, 3 active courses (Python, Web, Informatics) with modules/topics/tests, 18 mock courses (all open).")
     finally:
         db.close()
 

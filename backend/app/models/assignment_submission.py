@@ -16,6 +16,7 @@ class AssignmentSubmission(Base):
     file_urls = Column(Text)  # JSON array of URLs (up to 5)
     grade = Column(Numeric(5, 2))
     teacher_comment = Column(Text)
+    student_private_comment = Column(Text)  # student ↔ teacher private note; teacher_comment is grading feedback
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
     graded_at = Column(DateTime(timezone=True))
     coins_awarded = Column(Integer, default=0)  # 1 = coins already awarded for this submission

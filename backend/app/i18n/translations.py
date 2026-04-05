@@ -39,6 +39,21 @@ EMAIL_TRANSLATIONS = {
     },
 }
 
+AI_CHALLENGE_TRANSLATIONS = {
+    "ru": {
+        "recommendations_fallback": "Рекомендуем повторить темы: {topics}.",
+        "ai_prompt": "Студент прошёл соревнование AI vs Студент по курсу «{course}» и ошибся в темах: {topics}.\nДай краткие рекомендации (2-3 предложения на русском языке): что повторить, на что обратить внимание. Без приветствий и общих фраз.",
+    },
+    "kk": {
+        "recommendations_fallback": "Келесі тақырыптарды қайталауды ұсынамыз: {topics}.",
+        "ai_prompt": "Студент «{course}» курсы бойынша AI vs Студент жарысынан өтіп, келесі тақырыптардан қателесті: {topics}.\nҚысқаша ұсыныстар беріңіз (қазақ тілінде 2-3 сөйлем): нені қайталау керек, неге назар аудару керек. Сәлемдесусіз және жалпы фразаларсыз.",
+    },
+    "en": {
+        "recommendations_fallback": "We recommend reviewing the following topics: {topics}.",
+        "ai_prompt": "The student completed the AI vs Student challenge for the course \"{course}\" and made mistakes in the following topics: {topics}.\nGive brief recommendations (2-3 sentences in English): what to review, what to pay attention to. No greetings or generic phrases.",
+    },
+}
+
 
 def get_email_translation(key: str, lang: str = "ru", **kwargs) -> str:
     """Get translated email text. Defaults to Russian if language not found."""

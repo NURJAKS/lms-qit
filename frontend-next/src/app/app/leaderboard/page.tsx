@@ -7,7 +7,7 @@ import Link from "next/link";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
-import { Trophy, Download, Medal, Award, X, BookOpen } from "lucide-react";
+import { Trophy, Download, Medal, Award, X, BookOpen, Crown } from "lucide-react";
 import { LeaderboardHeader } from "@/components/leaderboard/LeaderboardHeader";
 import { StatCard } from "@/components/leaderboard/StatCard";
 import { LeaderboardRow } from "@/components/leaderboard/LeaderboardRow";
@@ -86,7 +86,12 @@ function RatingCards({
         <div key={r.user_id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white/80 dark:bg-gray-800/80">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs text-gray-500 dark:text-gray-400">{t("leaderboardPlace")} #{r.rank}</p>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                {r.rank === 1 && <Crown className="w-3.5 h-3.5 text-yellow-500 animate-bounce" />}
+                {r.rank === 2 && <Crown className="w-3.5 h-3.5 text-gray-400" />}
+                {r.rank === 3 && <Crown className="w-3.5 h-3.5 text-orange-400" />}
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t("leaderboardPlace")} #{r.rank}</p>
+              </div>
               <Link href={`/app/profile/${r.user_id}`} className="font-semibold text-[var(--qit-primary)] dark:text-[#00b0ff] line-clamp-2">
                 {r.full_name}
               </Link>
@@ -175,25 +180,6 @@ export default function LeaderboardPage() {
     },
   });
 
-  const handleExportCsv = async () => {
-    try {
-      const { data } = await api.get<Blob>("/analytics/leaderboard/csv", {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "leaderboard.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to export CSV:", error);
-      const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
-      alert(errorMessage);
-    }
-  };
-
   const handleExportExcel = async () => {
     try {
       const { data } = await api.get<Blob>("/analytics/leaderboard/excel", {
@@ -208,7 +194,7 @@ export default function LeaderboardPage() {
     } catch (error) {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
+      const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
       alert(errorMessage);
     }
   };
@@ -339,29 +325,16 @@ export default function LeaderboardPage() {
       <div className="relative z-10">
         <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
           <LeaderboardHeader lastReward={lastReward} />
-          <div className="flex gap-2">
-            <BlurFade delay={0.2} inView>
-              <ShimmerButton
-                onClick={handleExportCsv}
-                background={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(243, 244, 246, 1)"}
-                shimmerColor={isDark ? "#ffffff" : "#000000"}
-                className="text-gray-900 dark:text-white border-0"
-                borderRadius="12px"
-              >
-                <Download className="w-4 h-4 mr-2" /> CSV
-              </ShimmerButton>
-            </BlurFade>
-            <BlurFade delay={0.25} inView>
-              <ShimmerButton
-                onClick={handleExportExcel}
-                className="bg-gradient-to-r from-[var(--qit-primary)] to-purple-600 text-white border-0"
-                shimmerColor="#ffffff"
-                borderRadius="12px"
-              >
-                <Download className="w-4 h-4 mr-2" /> Excel
-              </ShimmerButton>
-            </BlurFade>
-          </div>
+          <BlurFade delay={0.2} inView>
+            <ShimmerButton
+              onClick={handleExportExcel}
+              className="bg-gradient-to-r from-[var(--qit-primary)] to-purple-600 text-white border-0"
+              shimmerColor="#ffffff"
+              borderRadius="12px"
+            >
+              <Download className="w-4 h-4 mr-2" /> {t("digitalRating")}
+            </ShimmerButton>
+          </BlurFade>
         </div>
       </div>
 

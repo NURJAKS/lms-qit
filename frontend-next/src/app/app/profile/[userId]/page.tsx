@@ -11,9 +11,14 @@ import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
-import { BookOpen, Award, Trophy, Star, ChevronRight, Users, GraduationCap, Clock, CheckCircle, ArrowLeft, Crown, Medal } from "lucide-react";
+import { BookOpen, Award, Trophy, Star, ChevronRight, Users, GraduationCap, Clock, CheckCircle, ArrowLeft, Crown, Medal, Sparkles } from "lucide-react";
 import { ProfilePreviewCard } from "@/components/profile/ProfilePreviewCard";
+import { LeaderboardTopAchievementCard } from "@/components/profile/LeaderboardTopAchievementCard";
+import { MagicCard } from "@/components/ui/magic-card";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import type { SafeProfilePreviewData } from "@/types/profiles";
+import { formatProfileStudyDuration } from "@/lib/profileFieldLabels";
 
 type CourseProgress = {
   course_id: number;
@@ -36,7 +41,7 @@ type ProfilePublic = {
 };
 
 export default function UserProfilePage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const params = useParams();
   const router = useRouter();
   const rawUserId = params.userId;
@@ -110,7 +115,7 @@ export default function UserProfilePage() {
         <p className="text-gray-600 dark:text-gray-400 mb-4">{t("error")}</p>
         {isTimeout && (
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Запрос занял слишком много времени. Попробуйте ещё раз.
+            {t("requestTimeoutRetry")}
           </p>
         )}
         <Link href="/app/leaderboard" className="text-[var(--qit-primary)] hover:underline">
@@ -133,9 +138,7 @@ export default function UserProfilePage() {
   const enrollments = data.enrollments ?? [];
   const completedCount = certificates.length;
   const totalStudySeconds = progress_detail?.courses?.reduce((s, c) => s + (c.video_watched_seconds ?? 0), 0) ?? 0;
-  const studyHours = Math.floor(totalStudySeconds / 3600);
-  const studyMins = Math.floor((totalStudySeconds % 3600) / 60);
-  const studyHoursStr = studyHours > 0 ? `${studyHours}h${studyMins}` : studyMins > 0 ? `${studyMins}m` : "0";
+  const studyHoursStr = formatProfileStudyDuration(totalStudySeconds, t);
   const overallProgress = progress_detail?.courses?.length
     ? Math.round(progress_detail.courses.reduce((s, c) => s + c.progress_percent, 0) / progress_detail.courses.length)
     : 0;
@@ -190,32 +193,30 @@ export default function UserProfilePage() {
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <Image src="/icons/coin.png" alt="coins" width={20} height={20} className="shrink-0" />
+                <Image src="/icons/coin.png" alt={t("coinsAlt")} width={20} height={20} className="shrink-0" />
                 <span className="text-gray-600 dark:text-gray-400">{t("profileCoins")}: <strong className="text-gray-800 dark:text-white">{u.points ?? 0}</strong></span>
               </div>
             </div>
           </div>
         )}
         {(badges.length > 0 || topHistory.length > 0) && (
-          <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
-            <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5" /> {t("profileAchievements")}
+          <MagicCard className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5 relative overflow-hidden">
+            <BorderBeam className="absolute inset-0" />
+            <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2 relative z-10">
+              <Award className="w-5 h-5" />
+              <AnimatedShinyText className="text-base">{t("profileAchievements")}</AnimatedShinyText>
             </h2>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 relative z-10">
               {topHistory.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  {topHistory.slice(0, 5).map((h, i) => (
-                    <div key={`hist-${i}`} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gradient-to-r from-amber-50/50 to-transparent dark:from-amber-900/10 hover:shadow-md transition-all">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-inner shrink-0 scale-110">
-                        <Trophy className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800 dark:text-white">
-                          {t(`profileAchievementTop${h.rank}` as TranslationKey)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">{new Date(h.date).toLocaleDateString()}</p>
-                      </div>
-                    </div>
+                  {topHistory.slice(0, 5).map((h) => (
+                    <LeaderboardTopAchievementCard
+                      key={`${h.date}-${h.rank}`}
+                      item={h}
+                      lang={lang}
+                      t={t}
+                      fancy
+                    />
                   ))}
                 </div>
               )}
@@ -227,7 +228,7 @@ export default function UserProfilePage() {
                 ))}
               </div>
             </div>
-          </div>
+          </MagicCard>
         )}
         {certificates.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
@@ -272,7 +273,7 @@ export default function UserProfilePage() {
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white mb-4 sm:mb-6">{t("profile")}</h1>
         <div className="mb-6">
-          <ProfilePreviewCard profile={u} />
+          <ProfilePreviewCard profile={u} rank={userRank?.rank} />
         </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">

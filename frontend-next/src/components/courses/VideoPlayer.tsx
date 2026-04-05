@@ -7,6 +7,15 @@ import { useLanguage } from "@/context/LanguageContext";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
+/** Matches progressInterval (ms) below */
+const PROGRESS_INTERVAL_SEC = 1;
+const MAX_STEP_COEFF = 2;
+const MAX_STEP_SLACK = 3;
+
+function maxAllowedForwardStep(playbackRate: number) {
+  return playbackRate * PROGRESS_INTERVAL_SEC * MAX_STEP_COEFF + MAX_STEP_SLACK;
+}
+
 interface VideoPlayerProps {
   src?: string;
   duration: number;
@@ -17,14 +26,14 @@ interface VideoPlayerProps {
   isPremium?: boolean;
 }
 
-export function VideoPlayer({ 
-  src, 
-  duration, 
-  initialWatched, 
-  onProgress, 
-  onDurationLoaded, 
-  disabled = false, 
-  isPremium = false 
+export function VideoPlayer({
+  src,
+  duration,
+  initialWatched,
+  onProgress,
+  onDurationLoaded,
+  disabled = false,
+  isPremium = false,
 }: VideoPlayerProps) {
   const { t } = useLanguage();
   const playerRef = useRef<any>(null);
@@ -34,75 +43,133 @@ export function VideoPlayer({
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showSkipWarning, setShowSkipWarning] = useState(false);
   const lastSent = useRef(0);
-  const maxReached = useRef(initialWatched);
+  /** Furthest honestly reached time (seconds); drives API / UI */
+  const legitimateMaxRef = useRef(initialWatched);
+  /** Last raw playedSeconds sample (for jump detection) */
+  const lastAcceptedSecondsRef = useRef(initialWatched);
   const skipFlagRef = useRef(false);
+  const effectiveRate = isPremium ? playbackRate : 1.0;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const videoSrc = src?.startsWith("http") ? src : src ? (src.startsWith("/") ? src : `/uploads/${src}`) : undefined;
-  
-  // Cast ReactPlayer to any for React 19 compatibility
+
   const Player = ReactPlayer as any;
 
-  // Synchronize initial progress when loaded asynchronously
   const [hasSetInitialProgress, setHasSetInitialProgress] = useState(false);
 
-  // Reset state when the video URL changes
+  const syncRefsFromInitial = useCallback((w: number) => {
+    legitimateMaxRef.current = w;
+    lastAcceptedSecondsRef.current = w;
+    lastSent.current = w;
+    setWatched(w);
+  }, []);
+
   useEffect(() => {
-    maxReached.current = initialWatched;
-    lastSent.current = initialWatched;
-    setWatched(initialWatched);
+    syncRefsFromInitial(initialWatched);
     setHasSetInitialProgress(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset player bookkeeping when the media URL changes
   }, [src]);
+
+  const showSkipWarningBriefly = useCallback(() => {
+    setShowSkipWarning(true);
+    setTimeout(() => setShowSkipWarning(false), 2500);
+  }, []);
+
+  const clampSeekToLegitimate = useCallback(() => {
+    const cap = legitimateMaxRef.current;
+    skipFlagRef.current = true;
+    if (playerRef.current) {
+      playerRef.current.seekTo(cap, "seconds");
+    }
+    lastAcceptedSecondsRef.current = cap;
+    showSkipWarningBriefly();
+    setTimeout(() => {
+      skipFlagRef.current = false;
+    }, 500);
+  }, [showSkipWarningBriefly]);
 
   useEffect(() => {
     if (initialWatched > 0 && !hasSetInitialProgress && playerRef.current) {
-      playerRef.current.seekTo(initialWatched, 'seconds');
-      maxReached.current = initialWatched;
-      lastSent.current = initialWatched;
-      setWatched(initialWatched);
+      playerRef.current.seekTo(initialWatched, "seconds");
+      syncRefsFromInitial(initialWatched);
       setHasSetInitialProgress(true);
     }
-  }, [initialWatched, hasSetInitialProgress, mounted]);
+  }, [initialWatched, hasSetInitialProgress, mounted, syncRefsFromInitial]);
 
-  const handleProgress = useCallback((state: { playedSeconds: number }) => {
-    if (disabled || skipFlagRef.current) return;
-    
-    const playedSeconds = state.playedSeconds;
-    const current = Math.floor(playedSeconds);
+  const handleProgress = useCallback(
+    (state: { playedSeconds: number }) => {
+      if (disabled || skipFlagRef.current) return;
 
-    if (current > maxReached.current) {
-      maxReached.current = current;
-    }
-    
-    if (current > lastSent.current) {
-      lastSent.current = current;
-      setWatched(current);
-      onProgress(current);
-    }
-  }, [disabled, onProgress]);
+      const playedSeconds = state.playedSeconds;
+      const maxStep = maxAllowedForwardStep(effectiveRate);
+      const lastAcc = lastAcceptedSecondsRef.current;
+      const legit = legitimateMaxRef.current;
+      const delta = playedSeconds - lastAcc;
 
-  const handleSeek = useCallback((seconds: number) => {
+      const forwardJumpBeyondLegit =
+        delta > maxStep && playedSeconds > legit + 0.01;
+
+      if (forwardJumpBeyondLegit) {
+        clampSeekToLegitimate();
+        return;
+      }
+
+      lastAcceptedSecondsRef.current = playedSeconds;
+
+      const floored = Math.floor(playedSeconds);
+      if (floored > legit) {
+        legitimateMaxRef.current = floored;
+      }
+
+      if (floored > lastSent.current) {
+        lastSent.current = floored;
+        setWatched(floored);
+        onProgress(floored);
+      }
+    },
+    [disabled, onProgress, effectiveRate, clampSeekToLegitimate],
+  );
+
+  const handleSeek = useCallback(
+    (seconds: number) => {
+      if (disabled) return;
+
+      const legit = legitimateMaxRef.current;
+      const maxStep = maxAllowedForwardStep(effectiveRate);
+      if (seconds > legit + maxStep) {
+        clampSeekToLegitimate();
+      }
+    },
+    [disabled, effectiveRate, clampSeekToLegitimate],
+  );
+
+  const handleEnded = useCallback(() => {
     if (disabled) return;
-    
-    // Increased threshold to 15 to prevent false-positives caused by short buffering jumps
-    if (seconds > maxReached.current + 15) {
-      skipFlagRef.current = true;
-      if (playerRef.current) {
-        playerRef.current.seekTo(maxReached.current, 'seconds');
-      }
-      
-      setShowSkipWarning(true);
-      setTimeout(() => setShowSkipWarning(false), 2500);
-      setTimeout(() => { skipFlagRef.current = false; }, 500);
-    } else {
-      if (seconds > maxReached.current) {
-        maxReached.current = Math.floor(seconds);
-      }
+
+    let playerDur = 0;
+    try {
+      playerDur = Math.floor(playerRef.current?.getDuration?.() ?? 0);
+    } catch {
+      playerDur = 0;
     }
-  }, [disabled]);
+    const known = Math.max(0, Math.floor(duration));
+    const target =
+      playerDur > 0 && known > 0 ? Math.min(playerDur, known) : Math.max(playerDur, known);
+
+    if (target <= 0) return;
+
+    legitimateMaxRef.current = target;
+    lastAcceptedSecondsRef.current = target;
+
+    if (target > lastSent.current) {
+      lastSent.current = target;
+      setWatched(target);
+      onProgress(target);
+    }
+  }, [disabled, duration, onProgress]);
 
   const handleSpeedChange = (rate: number) => {
     setPlaybackRate(rate);
@@ -132,7 +199,6 @@ export function VideoPlayer({
     <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
       {videoSrc ? (
         <>
-          {/* No-skip warning overlay */}
           {showSkipWarning && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium backdrop-blur-sm border border-white/20 animate-in fade-in slide-in-from-top-2">
               <SkipForward className="w-4 h-4 text-amber-400" />
@@ -151,36 +217,38 @@ export function VideoPlayer({
               playbackRate={isPremium ? playbackRate : 1.0}
               onProgress={handleProgress}
               onSeek={handleSeek}
+              onEnded={handleEnded}
               onDuration={(dur: number) => {
                 if (onDurationLoaded) onDurationLoaded(Math.floor(dur));
               }}
               onReady={() => {
                 if (initialWatched > 0 && playerRef.current && !hasSetInitialProgress) {
-                  playerRef.current.seekTo(initialWatched, 'seconds');
-                  maxReached.current = initialWatched;
-                  lastSent.current = initialWatched;
+                  playerRef.current.seekTo(initialWatched, "seconds");
+                  syncRefsFromInitial(initialWatched);
                   setHasSetInitialProgress(true);
                 }
               }}
               config={{
                 youtube: {
-                  playerVars: { 
-                    showinfo: 0, 
-                    rel: 0, 
+                  playerVars: {
+                    showinfo: 0,
+                    rel: 0,
                     modestbranding: 1,
-                    origin: typeof window !== 'undefined' ? window.location.origin : undefined
-                  }
+                    cc_load_policy: 1,
+                    cc_lang_pref: "kk",
+                    hl: "kk",
+                    origin: typeof window !== "undefined" ? window.location.origin : undefined,
+                  },
                 },
                 file: {
                   attributes: {
-                    controlsList: 'nodownload'
-                  }
-                }
+                    controlsList: "nodownload",
+                  },
+                },
               }}
             />
           </div>
 
-          {/* Speed controls for Premium */}
           {isPremium && !disabled && (
             <div className="absolute top-4 right-4 z-10">
               <div className="relative" ref={speedMenuRef}>

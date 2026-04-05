@@ -47,10 +47,17 @@ from app.schemas.course import (
 )
 from app.schemas.test import TestCreate, TestUpdate, TestResponse, TestQuestionCreate, TestQuestionUpdate, TestQuestionResponse
 from app.services.activity_log import log_activity
-from app.services.export_service import generate_csv_response, generate_xlsx_response
+from app.services.coins import add_coins, get_user_balance
+from app.services.export_service import generate_xlsx_response
 # No fake profile imports
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+ADMIN_REWARD_COINS_MAX = 100_000
+
+
+class RewardCoinsBody(BaseModel):
+    amount: int
 
 
 # ---------- Users ----------
@@ -700,6 +707,45 @@ def update_user(
     return user
 
 
+@router.post("/users/{user_id}/reward-coins")
+def reward_user_coins(
+    user_id: int,
+    body: RewardCoinsBody,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_or_director)],
+):
+    """Ручное начисление coins студенту (без Premium-множителя)."""
+    if body.amount < 1 or body.amount > ADMIN_REWARD_COINS_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Сумма должна быть от 1 до {ADMIN_REWARD_COINS_MAX}",
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if user.role != "student":
+        raise HTTPException(status_code=400, detail="Награда доступна только для студентов")
+    if not add_coins(
+        db,
+        user_id,
+        body.amount,
+        "manual_admin_grant",
+        apply_premium_multiplier=False,
+    ):
+        raise HTTPException(status_code=500, detail="Не удалось начислить coins")
+    db.commit()
+    new_balance = get_user_balance(db, user_id)
+    log_activity(
+        db,
+        current_user.id,
+        "coins_rewarded",
+        "user",
+        user_id,
+        {"amount": body.amount, "target_user_id": user_id, "new_balance": new_balance},
+    )
+    return {"ok": True, "new_balance": new_balance}
+
+
 def _admin_get_last_login_dt(db: Session, user_id: int):
     row = (
         db.query(UserActivityLog)
@@ -811,18 +857,7 @@ def admin_update_student_profile(
     )
 
 
-@router.get("/users/export/csv")
-def export_users_csv(
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_admin_or_director)],
-):
-    users = db.query(User).order_by(User.id).all()
-    headers = ["ID", "Email", "Full Name", "Role", "Created At"]
-    rows = [
-        [u.id, u.email, u.full_name, u.role, u.created_at.isoformat() if u.created_at else ""]
-        for u in users
-    ]
-    return generate_csv_response(rows, "users", headers)
+
 
 
 @router.get("/users/export/excel")

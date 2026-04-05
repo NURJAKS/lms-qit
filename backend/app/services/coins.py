@@ -7,19 +7,25 @@ from app.models.coin_transaction_log import CoinTransactionLog
 from app.models.notification import Notification
 
 
-def add_coins(db: Session, user_id: int, amount: int, reason: str) -> bool:
+def add_coins(
+    db: Session,
+    user_id: int,
+    amount: int,
+    reason: str,
+    *,
+    apply_premium_multiplier: bool = True,
+) -> bool:
     """Увеличивает User.points на amount, логирует в coin_transaction_log, создаёт уведомление.
-    Для Premium пользователей добавляет бонус +50%."""
+    Для Premium при apply_premium_multiplier=True удваивает зачисляемую сумму."""
     if amount <= 0:
         return False
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return False
-    
-    # Premium бонус: +50% для Premium пользователей
+
     is_premium = getattr(user, "is_premium", 0) == 1
     actual_amount = amount
-    if is_premium:
+    if apply_premium_multiplier and is_premium:
         actual_amount = amount * 2  # 2x бонус (Double Coins)
     
     user.points = (user.points or 0) + actual_amount
@@ -27,7 +33,11 @@ def add_coins(db: Session, user_id: int, amount: int, reason: str) -> bool:
     db.add(log)
     
     # В уведомлении показываем фактическую сумму (с бонусом если есть)
-    bonus_text = f" (+{actual_amount - amount} Premium бонус)" if is_premium and actual_amount > amount else ""
+    bonus_text = (
+        f" (+{actual_amount - amount} Premium бонус)"
+        if apply_premium_multiplier and is_premium and actual_amount > amount
+        else ""
+    )
     notif = Notification(
         user_id=user_id,
         type="coins_earned",

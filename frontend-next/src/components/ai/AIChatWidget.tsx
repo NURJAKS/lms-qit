@@ -92,6 +92,9 @@ export function AIChatWidget() {
           <div className="flex items-center justify-between p-3 border-b dark:border-gray-700 text-white" style={{ background: "var(--qit-gradient-1)" }}>
             <div className="flex items-center gap-2">
               <span className="font-semibold">🤖 {t("aiAssistant")}</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                AI
+              </span>
               {!isPremium && dailyLimit && (
                 <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
                   {dailyLimit.used_count}/{dailyLimit.limit}

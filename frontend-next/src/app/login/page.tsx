@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLanguage } from "@/context/LanguageContext";
 import type { User } from "@/types";
 import { BookOpen, GraduationCap, Eye, EyeOff } from "lucide-react";
@@ -28,6 +29,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
   const setAuth = useAuthStore((s) => s.setAuth);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -81,6 +83,7 @@ function LoginContent() {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
       setAuth(userData, tokenData.access_token);
+      queryClient.clear();
       const redirect = searchParams.get("redirect");
       router.replace(redirect && redirect.startsWith("/") ? redirect : "/app");
     } catch (e: unknown) {

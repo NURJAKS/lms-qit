@@ -14,6 +14,8 @@ from app.models.course_module import CourseModule
 from app.models.course_topic import CourseTopic
 from app.models.enrollment import CourseEnrollment
 from app.models.notification import Notification
+from app.models.group_student import GroupStudent
+from app.models.teacher_group import TeacherGroup
 from app.models.payment import Payment
 from app.schemas.course import CourseResponse, CourseModuleResponse, CourseTopicResponse
 
@@ -117,6 +119,72 @@ def get_course_structure(
     return {"course_id": course_id, "modules": result}
 
 
+@router.get("/{course_id}/classmates")
+def list_course_classmates(
+    course_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Студенты в тех же учебных группах, что и текущий пользователь, для данного курса."""
+    my_group_ids = [
+        gs.group_id
+        for gs in db.query(GroupStudent).filter(GroupStudent.student_id == current_user.id).all()
+    ]
+    if not my_group_ids:
+        return []
+    groups = (
+        db.query(TeacherGroup)
+        .filter(TeacherGroup.course_id == course_id, TeacherGroup.id.in_(my_group_ids))
+        .all()
+    )
+    if not groups:
+        return []
+    group_ids = [g.id for g in groups]
+    links = db.query(GroupStudent).filter(GroupStudent.group_id.in_(group_ids)).all()
+    student_ids = list({ln.student_id for ln in links})
+    if not student_ids:
+        return []
+    users = db.query(User).filter(User.id.in_(student_ids)).all()
+    out = [
+        {"id": u.id, "full_name": u.full_name or "", "email": u.email or ""}
+        for u in users
+    ]
+    out.sort(key=lambda x: (x["full_name"] or x["email"]).lower())
+    return out
+
+
+@router.get("/{course_id}/teachers")
+def list_course_teachers(
+    course_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Учителя, которые преподают данный курс текущему студенту."""
+    my_group_ids = [
+        gs.group_id
+        for gs in db.query(GroupStudent).filter(GroupStudent.student_id == current_user.id).all()
+    ]
+    if not my_group_ids:
+        return []
+    groups = (
+        db.query(TeacherGroup)
+        .filter(TeacherGroup.course_id == course_id, TeacherGroup.id.in_(my_group_ids))
+        .all()
+    )
+    if not groups:
+        return []
+    teacher_ids = list({g.teacher_id for g in groups})
+    if not teacher_ids:
+        return []
+    teachers = db.query(User).filter(User.id.in_(teacher_ids)).all()
+    out = [
+        {"id": u.id, "full_name": u.full_name or "", "email": u.email or ""}
+        for u in teachers
+    ]
+    out.sort(key=lambda x: (x["full_name"] or x["email"]).lower())
+    return out
+
+
 @router.post("/{course_id}/initiate-payment")
 def initiate_payment(
     course_id: int,
@@ -185,9 +253,8 @@ def enroll_course(
     db.add(notif)
     
     # Найти все группы для этого курса и создать задачи для преподавателей
-    from app.models.teacher_group import TeacherGroup
     from app.models.add_student_task import AddStudentTask
-    
+
     groups = db.query(TeacherGroup).filter(
         TeacherGroup.course_id == course_id
     ).all()

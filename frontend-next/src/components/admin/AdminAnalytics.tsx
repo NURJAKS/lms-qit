@@ -163,25 +163,6 @@ export function AdminAnalytics() {
     0
   );
 
-  const handleExportCsv = async () => {
-    try {
-      const { data } = await api.get<Blob>("/analytics/leaderboard/csv?limit=20", {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "leaderboard-top20.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to export CSV:", error);
-      const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
-      alert(errorMessage);
-    }
-  };
-
   const handleExportExcel = async () => {
     try {
       const { data } = await api.get<Blob>("/analytics/leaderboard/excel?limit=20", {
@@ -196,7 +177,7 @@ export function AdminAnalytics() {
     } catch (error) {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
+      const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
       alert(errorMessage);
     }
   };
@@ -504,23 +485,13 @@ export function AdminAnalytics() {
                 <h2 className={`font-semibold flex items-center gap-2 text-lg ${isDark ? "text-white" : "text-gray-900"}`}>
                   <Trophy className="w-5 h-5 text-[#FBBF24]" /> {t("adminLeaderboardTop20")}
                 </h2>
-                <div className="flex gap-2">
-                  <ShimmerButton
-                    onClick={handleExportCsv}
-                    background={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(243, 244, 246, 1)"}
-                    shimmerColor={isDark ? "#ffffff" : "#000000"}
-                    className="flex items-center gap-1 py-1.5 px-3 rounded-xl text-xs border-0 text-gray-900 dark:text-white"
-                  >
-                    <Download className="w-4 h-4" /> CSV
-                  </ShimmerButton>
-                  <ShimmerButton
-                    onClick={handleExportExcel}
-                    className="flex items-center gap-1 py-1.5 px-3 rounded-xl text-white text-xs border-0 bg-gradient-to-r from-blue-600 to-purple-600"
-                    shimmerColor="#ffffff"
-                  >
-                    <Download className="w-4 h-4" /> Excel
-                  </ShimmerButton>
-                </div>
+                <ShimmerButton
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1 py-1.5 px-3 rounded-xl text-white text-xs border-0 bg-gradient-to-r from-blue-600 to-purple-600"
+                  shimmerColor="#ffffff"
+                >
+                  <Download className="w-4 h-4" /> Excel
+                </ShimmerButton>
           </div>
           <div className="overflow-x-auto max-h-80 overflow-y-auto">
             <table className="w-full text-sm">

@@ -19,6 +19,8 @@ from app.models.teacher_assignment import TeacherAssignment
 from app.models.teacher_assignment_rubric import TeacherAssignmentRubric
 from app.models.assignment_submission import AssignmentSubmission
 from app.models.assignment_submission_grade import AssignmentSubmissionGrade
+from app.models.assignment_class_comment import AssignmentClassComment
+from app.models.assignment_class_comment import AssignmentClassComment
 from app.models.notification import Notification
 from app.models.ai_chat_history import AIChatHistory
 from app.models.payment import Payment
@@ -38,6 +40,7 @@ from app.models.community_post import CommunityPost
 from app.models.community_post_like import CommunityPostLike
 from app.models.topic_note import TopicNote
 from app.models.student_profile import StudentProfile
+from app.models.material_private_comment import MaterialPrivateComment
 
 __all__ = [
     "Base",
@@ -61,6 +64,8 @@ __all__ = [
     "TeacherAssignmentRubric",
     "AssignmentSubmission",
     "AssignmentSubmissionGrade",
+    "AssignmentClassComment",
+    "AssignmentClassComment",
     "Notification",
     "AIChatHistory",
     "Payment",
@@ -81,4 +86,5 @@ __all__ = [
     "CommunityPostLike",
     "TopicNote",
     "StudentProfile",
+    "MaterialPrivateComment",
 ]

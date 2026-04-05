@@ -247,7 +247,7 @@ export function PeopleList({ role }: PeopleListProps) {
                               className="font-bold text-base sm:text-lg mb-1 truncate group-hover:text-[#3B82F6] transition-colors leading-tight"
                               style={{ color: textColors.primary }}
                             >
-                              {user.full_name || user.email || "Без имени"}
+                              {user.full_name || user.email || t("noName")}
                             </h3>
                             <div className="flex items-center gap-1.5 text-xs sm:text-sm" style={{ color: textColors.secondary }}>
                               <Mail className="w-3.5 h-3.5 shrink-0 opacity-60" />

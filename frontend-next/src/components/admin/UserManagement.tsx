@@ -2,12 +2,12 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { Download, Pencil, Plus, Trash2, UserPlus, ClipboardList, Info } from "lucide-react";
+import { Coins, Download, Pencil, Plus, Trash2, UserPlus, ClipboardList, Info } from "lucide-react";
 import { useSidebar } from "@/context/SidebarContext";
 import { getGlassCardStyle, getModalStyle, getInputStyle, getTextColors } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -15,12 +15,16 @@ import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { formatDateTimeLocalized, formatDateLocalized } from "@/lib/dateUtils";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { motion, AnimatePresence } from "framer-motion";
+
+const ADMIN_REWARD_COINS_MAX = 100_000;
 
 type UserRow = {
   id: number;
   email: string;
   full_name: string;
   role: string;
+  points?: number;
   description?: string;
   photo_url?: string;
   parent_id?: number | null;
@@ -80,6 +84,8 @@ export function UserManagement() {
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [assignModal, setAssignModal] = useState<StudentWithoutGroup | null>(null);
+  const [rewardUser, setRewardUser] = useState<UserRow | null>(null);
+  const [rewardSuccess, setRewardSuccess] = useState<{ amount: number; balance: number } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: users = [] } = useQuery({
@@ -138,24 +144,32 @@ export function UserManagement() {
     },
   });
 
-  const handleExportCsv = async () => {
-    try {
-      const { data } = await api.get<Blob>("/admin/users/export/csv", {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "users.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to export CSV:", error);
-      const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
-      alert(errorMessage);
-    }
-  };
+  const rewardCoinsMutation = useMutation({
+    mutationFn: async ({ userId, amount }: { userId: number; amount: number }) => {
+      const { data } = await api.post<{ ok: boolean; new_balance: number }>(
+        `/admin/users/${userId}/reward-coins`,
+        { amount }
+      );
+      return { data, amount };
+    },
+    onSuccess: ({ data, amount }) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      setRewardUser(null);
+      setRewardSuccess({ amount, balance: data.new_balance });
+    },
+    onError: (e: { response?: { data?: { detail?: string | unknown } } }) => {
+      const detail = e.response?.data?.detail;
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? String((detail[0] as { msg?: string })?.msg ?? t("error"))
+            : t("error");
+      setRewardError(msg);
+    },
+  });
+
+  const [rewardError, setRewardError] = useState<string | null>(null);
 
   const handleExportExcel = async () => {
     try {
@@ -171,7 +185,7 @@ export function UserManagement() {
     } catch (error) {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
+      const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
       alert(errorMessage);
     }
   };
@@ -334,23 +348,13 @@ export function UserManagement() {
               >
                 <Plus className="w-4 h-4 shrink-0" /> {t("adminAddUser")}
               </button>
-              <div className="flex gap-2">
-                <ShimmerButton
-                  onClick={handleExportCsv}
-                  background={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(243, 244, 246, 1)"}
-                  shimmerColor={isDark ? "#ffffff" : "#000000"}
-                  className="flex items-center gap-2 py-2.5 px-5 rounded-xl border-0 font-medium text-gray-900 dark:text-white"
-                >
-                  <Download className="w-4 h-4 shrink-0" /> CSV
-                </ShimmerButton>
-                <ShimmerButton
-                  onClick={handleExportExcel}
-                  className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-white border-0 font-medium shadow-lg bg-gradient-to-r from-[#FF4181] to-[#B938EB]"
-                  shimmerColor="#ffffff"
-                >
-                  <Download className="w-4 h-4 shrink-0" /> Excel
-                </ShimmerButton>
-              </div>
+              <ShimmerButton
+                onClick={handleExportExcel}
+                className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-white border-0 font-medium shadow-lg bg-gradient-to-r from-[#FF4181] to-[#B938EB]"
+                shimmerColor="#ffffff"
+              >
+                <Download className="w-4 h-4 shrink-0" /> Excel
+              </ShimmerButton>
             </div>
           )}
         </div>
@@ -413,6 +417,17 @@ export function UserManagement() {
                 {canManageUsers && (
                   <td className="py-4 px-6 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {u.role === "student" && (
+                        <button
+                          type="button"
+                          onClick={() => setRewardUser(u)}
+                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                          style={{ color: "#EAB308" }}
+                          title={t("adminRewardCoinsButtonTitle")}
+                        >
+                          <Coins className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setEditing(u)}
@@ -617,6 +632,140 @@ export function UserManagement() {
           isPending={updateMutation.isPending}
         />
       )}
+
+      {rewardUser && (
+        <RewardCoinsModal
+          user={rewardUser}
+          onClose={() => setRewardUser(null)}
+          onSubmit={(amount) =>
+            rewardCoinsMutation.mutate({ userId: rewardUser.id, amount })
+          }
+          isPending={rewardCoinsMutation.isPending}
+        />
+      )}
+
+      {rewardSuccess && (
+        <RewardSuccessModal
+          amount={rewardSuccess.amount}
+          balance={rewardSuccess.balance}
+          onClose={() => setRewardSuccess(null)}
+        />
+      )}
+
+      {rewardError && (
+        <RewardErrorModal
+          message={rewardError}
+          onClose={() => setRewardError(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function RewardErrorModal({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  const { t } = useLanguage();
+  const { theme } = useTheme();
+  const modalStyle = getModalStyle(theme);
+  const textColors = getTextColors(theme);
+  const isDark = theme === "dark";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="rounded-2xl shadow-2xl p-8 max-w-sm mx-4 w-full border-0 text-center relative overflow-hidden"
+        style={modalStyle}
+      >
+        <div 
+          className="absolute top-0 left-0 w-full h-1 bg-red-500" 
+        />
+        
+        <div className="w-20 h-20 bg-red-100 dark:bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Info className="w-10 h-10 text-red-600 dark:text-red-400" />
+        </div>
+
+        <h3 className="text-xl font-bold mb-4" style={{ color: textColors.primary }}>
+          {t("error")}
+        </h3>
+        
+        <p className="text-sm mb-8 opacity-80" style={{ color: textColors.secondary }}>
+          {message}
+        </p>
+
+        <button
+          onClick={onClose}
+          className="w-full py-3 px-6 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg bg-red-500 shadow-red-500/30"
+        >
+          {t("ok")}
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
+function RewardSuccessModal({
+  amount,
+  balance,
+  onClose,
+}: {
+  amount: number;
+  balance: number;
+  onClose: () => void;
+}) {
+  const { t } = useLanguage();
+  const { theme } = useTheme();
+  const modalStyle = getModalStyle(theme);
+  const textColors = getTextColors(theme);
+  const isDark = theme === "dark";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="rounded-2xl shadow-2xl p-8 max-w-sm mx-4 w-full border-0 text-center relative overflow-hidden"
+        style={modalStyle}
+      >
+        <div 
+          className="absolute top-0 left-0 w-full h-1" 
+          style={{ background: "linear-gradient(90deg, #EAB308, #CA8A04)" }}
+        />
+        
+        <div className="w-20 h-20 bg-yellow-100 dark:bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Coins className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />
+        </div>
+
+        <h3 className="text-2xl font-bold mb-2" style={{ color: textColors.primary }}>
+          {t("adminRewardCoinsSuccess")}
+        </h3>
+        
+        <div className="space-y-1 mb-8">
+          <p className="text-3xl font-black text-yellow-600 dark:text-yellow-400">
+            +{amount}
+          </p>
+          <p className="text-sm opacity-70" style={{ color: textColors.secondary }}>
+            {t("adminRewardCoinsNewBalance")}: {balance}
+          </p>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full py-3 px-6 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg"
+          style={{ 
+            background: "linear-gradient(135deg, #EAB308 0%, #CA8A04 100%)",
+            boxShadow: "0 4px 15px rgba(234, 179, 8, 0.4)"
+          }}
+        >
+          {t("ok")}
+        </button>
+      </motion.div>
     </div>
   );
 }
@@ -1117,6 +1266,101 @@ function UserDetailModal({
             {t("close")}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RewardCoinsModal({
+  user,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  user: UserRow;
+  onClose: () => void;
+  onSubmit: (amount: number) => void;
+  isPending: boolean;
+}) {
+  const { t } = useLanguage();
+  const { theme } = useTheme();
+  const modalStyle = getModalStyle(theme);
+  const inputStyle = getInputStyle(theme);
+  const textColors = getTextColors(theme);
+  const isDark = theme === "dark";
+  const [amountStr, setAmountStr] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError("");
+    const n = parseInt(amountStr.trim(), 10);
+    if (!Number.isFinite(n) || n < 1 || n > ADMIN_REWARD_COINS_MAX) {
+      setLocalError(t("adminRewardCoinsAmountInvalid"));
+      return;
+    }
+    onSubmit(n);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div
+        className="rounded-xl shadow-xl p-6 max-w-md mx-4 w-full border-0 backdrop-blur-xl"
+        style={modalStyle}
+      >
+        <h3 className="font-semibold mb-2 text-lg" style={{ color: textColors.primary }}>
+          {t("adminRewardCoinsModalTitle")}
+        </h3>
+        <p className="text-sm mb-1" style={{ color: textColors.primary }}>
+          {user.full_name}
+        </p>
+        <p className="text-xs mb-4" style={{ color: textColors.secondary }}>
+          {t("adminRewardCoinsBalanceLabel")}: {user.points ?? 0}
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
+              {t("adminRewardCoinsAmountLabel")}
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={ADMIN_REWARD_COINS_MAX}
+              value={amountStr}
+              onChange={(e) => setAmountStr(e.target.value)}
+              className="w-full border-0 rounded-lg px-3 py-2"
+              style={inputStyle}
+              placeholder={t("adminRewardCoinsAmountPlaceholder")}
+              autoFocus
+            />
+            <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
+              {t("adminRewardCoinsAmountHint")}
+            </p>
+          </div>
+          {localError && <p className="text-red-400 text-sm">{localError}</p>}
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2 px-4 rounded-lg hover:opacity-90"
+              style={{
+                background: isDark ? "rgba(30, 41, 59, 0.7)" : "rgba(0, 0, 0, 0.05)",
+                border: isDark ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(0, 0, 0, 0.12)",
+                color: textColors.primary,
+              }}
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="py-2 px-4 rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, #EAB308 0%, #CA8A04 100%)" }}
+            >
+              {isPending ? t("loading") : t("adminRewardCoinsSubmit")}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

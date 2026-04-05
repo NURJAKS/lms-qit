@@ -1,6 +1,7 @@
 """
 Статическая база вопросов для новых мини-игр AI Challenge.
-Категории: python, javascript, html_css, algorithms, cs_general
+Категории: python, javascript, html_css, algorithms, cs_general, cybersecurity;
+псевдокатегория web (в find/guess/speed) = javascript + html_css.
 Уровни: beginner, intermediate, expert
 """
 
@@ -245,6 +246,97 @@ FIND_BUG_QUESTIONS = [
         "explanation_kk": "Оңтайсыз: ішкі цикл range(n - 1 - i) болуы керек. Ерте шығу жоқ.",
         "explanation_en": "Suboptimal: inner loop should be range(n - 1 - i). No early exit optimization.",
     },
+    # ===== CYBERSECURITY =====
+    {
+        "id": "fb_cyb_1",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'user_cmd = input("> ")\nresult = eval(user_cmd)\nprint(result)',
+        "bug_line": 2,
+        "explanation": "eval() на вводе пользователя опасен — возможно выполнение произвольного кода (RCE).",
+        "explanation_kk": "eval() пайдаланушы кірісінде қауіпті — кез келген кодты орындауға болады.",
+        "explanation_en": "eval() on user input is dangerous — arbitrary code execution (RCE).",
+    },
+    {
+        "id": "fb_cyb_2",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'import hashlib\npw = "secret123"\ndigest = hashlib.md5(pw.encode()).hexdigest()\nprint("stored:", digest)\n# login: compare plain input to digest with ==',
+        "bug_line": 3,
+        "explanation": "MD5 для паролей устарел и уязвим; нужны современные KDF (bcrypt, Argon2).",
+        "explanation_kk": "MD5 парольдер үшін ескірген; bcrypt/Argon2 сияқты KDF қажет.",
+        "explanation_en": "MD5 for passwords is weak; use modern KDFs (bcrypt, Argon2).",
+    },
+    {
+        "id": "fb_cyb_3",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'uid = request.args.get("id")\nquery = "SELECT * FROM users WHERE id = " + uid\ncursor.execute(query)',
+        "bug_line": 3,
+        "explanation": "Конкатенация в SQL — SQL-инъекция; нужны параметризованные запросы.",
+        "explanation_kk": "SQL-ға қосу — SQL инъекциясы; параметрленген сұраулар қажет.",
+        "explanation_en": "String concatenation in SQL enables SQL injection; use parameterized queries.",
+    },
+    {
+        "id": "fb_cyb_4",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'token = request.cookies.get("session")\nif token:\n    user_id = int(token.split("-")[0])\n    return load_user(user_id)',
+        "bug_line": 3,
+        "explanation": "Доверие к данным из cookie без подписи/HMAC — подделка сессии.",
+        "explanation_kk": "Cookie деректеріне қол қойылмай сену — сессияны бұрмалау.",
+        "explanation_en": "Trusting unsigned cookie data allows session forgery.",
+    },
+    {
+        "id": "fb_cyb_5",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'app.config["SECRET_KEY"] = "change-me-in-production"\napp.run(debug=True, host="0.0.0.0")',
+        "bug_line": 2,
+        "explanation": "debug=True в продакшене раскрывает отладчик и секреты.",
+        "explanation_kk": "debug=True өндірісте отладчик пен құпияларды ашады.",
+        "explanation_en": "debug=True in production exposes the debugger and secrets.",
+    },
+    {
+        "id": "fb_cyb_6",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'def reset_password(email):\n    new_pw = "Temp123!"\n    send_email(email, f"Your new password: {new_pw}")\n    save_password_hash(email, new_pw)',
+        "bug_line": 3,
+        "explanation": "Отправка нового пароля открытым текстом по email небезопасна.",
+        "explanation_kk": "Жаңа парольді email арқылы ашық жіберу қауіпті.",
+        "explanation_en": "Sending a new password in plain email is insecure.",
+    },
+    {
+        "id": "fb_cyb_7",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 'from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\nkey = os.urandom(16)\niv = b"\\x00" * 16\ncipher = Cipher(algorithms.AES(key), modes.CBC(iv))',
+        "bug_line": 3,
+        "explanation": "Фиксированный IV в CBC — уязвимость; IV должен быть уникальным и случайным.",
+        "explanation_kk": "CBC үшін тұрақты IV — әлсіздік; IV бірегей және кездейсоқ болуы керек.",
+        "explanation_en": "Fixed IV in CBC is weak; IV must be unique and random per message.",
+    },
+    {
+        "id": "fb_cyb_8",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 'def verify(sig, data, pubkey):\n    return pubkey.verify(sig, data)  # missing hash step',
+        "bug_line": 2,
+        "explanation": "Проверка подписи без хеширования данных (raw RSA) — классическая ошибка.",
+        "explanation_kk": "Деректерді хештемей қолтаңба тексеру — типтік қате.",
+        "explanation_en": "Signature verification without hashing the message is a classic crypto mistake.",
+    },
+    {
+        "id": "fb_cyb_9",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 'ALLOWED_ORIGINS = ["*"]\n@app.after_request\ndef add_cors(resp):\n    resp.headers["Access-Control-Allow-Origin"] = "*"\n    resp.headers["Access-Control-Allow-Credentials"] = "true"\n    return resp',
+        "bug_line": 5,
+        "explanation": "Credentials=true с Origin=* запрещено спецификацией и небезопасно.",
+        "explanation_kk": "Credentials=true және Origin=* сәйкес емес және қауіпті.",
+        "explanation_en": "Credentials=true with Origin=* is invalid CORS and unsafe.",
+    },
 ]
 
 
@@ -479,6 +571,79 @@ GUESS_OUTPUT_QUESTIONS = [
         "level": "intermediate",
         "code": '# Stack operations:\n# push(1), push(2), push(3), pop(), push(4), pop()\n# What is the top of the stack?',
         "options": ["2", "4", "1", "3"],
+        "correct": "a",
+    },
+    # ===== CYBERSECURITY =====
+    {
+        "id": "go_cyb_1",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'layers = ["perimeter", "endpoint", "data"]\nprint(len(layers))',
+        "options": ["3", "2", "1", "0"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_2",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'bits = 128\nprint(bits)',
+        "options": ["128", "256", "64", "512"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_3",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "code": 'x = "admin" == "Admin"\nprint(x)',
+        "options": ["False", "True", "admin", "Error"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_4",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'import hashlib\nh = hashlib.sha256(b"x").hexdigest()\nprint(len(h))',
+        "options": ["64", "32", "128", "256"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_5",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'ports = [22, 80, 443]\nprint(443 in ports)',
+        "options": ["True", "False", "443", "Error"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_6",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "code": 'def xor(a, b):\n    return bytes(x ^ y for x, y in zip(a, b))\nprint(len(xor(b"abc", b"abc")))',
+        "options": ["3", "0", "6", "Error"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_7",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 'print(2 ** 16 - 1)',
+        "options": ["65535", "65536", "32767", "131071"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_8",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 's = "Bearer token123".split()[1]\nprint(s)',
+        "options": ["token123", "Bearer", "Bearer token123", "Error"],
+        "correct": "a",
+    },
+    {
+        "id": "go_cyb_9",
+        "category": "cybersecurity",
+        "level": "expert",
+        "code": 'flags = {"secure", "httponly"}\nprint(len(flags))',
+        "options": ["2", "1", "0", "Error"],
         "correct": "a",
     },
 ]
@@ -750,19 +915,164 @@ SPEED_CODE_QUESTIONS = [
         ],
         "correct": "a",
     },
+    # ===== CYBERSECURITY =====
+    {
+        "id": "sc_cyb_1",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "task": "Безопасно сравнить пароль с сохранённым хешем (Python, bcrypt).",
+        "task_kk": "Сақталған хешпен парольді қауіпсіз салыстыру (bcrypt).",
+        "task_en": "Safely compare a password with a stored bcrypt hash.",
+        "options": [
+            "bcrypt.checkpw(password.encode(), stored_hash)",
+            "password == stored_hash.decode()",
+            "hash(password) == stored_hash",
+            "stored_hash.startswith(password)",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_2",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "task": "Правильный заголовок для защиты от XSS при выводе JSON в браузере.",
+        "task_kk": "JSON шығаруда XSS-тен қорғану үшін дұрыс header.",
+        "task_en": "Correct header to reduce XSS risk when serving JSON.",
+        "options": [
+            'Content-Type: application/json; charset=utf-8',
+            "Content-Type: text/html",
+            "X-Powered-By: Express",
+            "Cache-Control: no-cache",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_3",
+        "category": "cybersecurity",
+        "level": "beginner",
+        "task": "Что использовать вместо eval() для JSON-строки от клиента?",
+        "task_kk": "Клиенттен келген JSON жолы үшін eval() орнына не қолдану керек?",
+        "task_en": "What to use instead of eval() for a JSON string from the client?",
+        "options": [
+            "json.loads(data)",
+            "pickle.loads(data)",
+            "exec(data)",
+            "compile(data)",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_4",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "task": "Параметризованный запрос (псевдокод) для безопасного SQL.",
+        "task_kk": "Қауіпсіз SQL үшін параметрленген сұрау.",
+        "task_en": "Parameterized query pattern for safe SQL.",
+        "options": [
+            'cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))',
+            'cursor.execute("SELECT * FROM users WHERE id = " + user_id)',
+            'cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
+            'cursor.execute("SELECT * FROM users WHERE id = " + str(user_id))',
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_5",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "task": "Установить флаги HttpOnly и Secure для cookie сессии (концептуально).",
+        "task_kk": "Сессия cookie үшін HttpOnly және Secure белгілерін қою.",
+        "task_en": "Set HttpOnly and Secure on a session cookie.",
+        "options": [
+            "Set-Cookie: sid=...; HttpOnly; Secure; SameSite=Lax",
+            "Set-Cookie: sid=...; Public=true",
+            "document.cookie = 'sid=...'",
+            "Set-Cookie: sid=...; Readable=true",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_6",
+        "category": "cybersecurity",
+        "level": "intermediate",
+        "task": "Проверка CSRF: что должен содержать POST из браузера?",
+        "task_kk": "CSRF тексеруі: браузерден POST не ішінде болуы керек?",
+        "task_en": "CSRF protection: what should a browser POST include?",
+        "options": [
+            "Valid CSRF token matching server-side session",
+            "Only a correct Referer header (never enough alone)",
+            "Empty body",
+            "GET parameters only",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_7",
+        "category": "cybersecurity",
+        "level": "expert",
+        "task": "Правило для длины ключа AES-256 (в битах).",
+        "task_kk": "AES-256 кілт ұзындығы (битпен).",
+        "task_en": "Correct AES-256 key length in bits.",
+        "options": ["256", "128", "512", "64"],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_8",
+        "category": "cybersecurity",
+        "level": "expert",
+        "task": "Минимально достаточная защита от timing-атак при сравнении секретов.",
+        "task_kk": "Құпияларды салыстыруда timing шабуылынан қорғану.",
+        "task_en": "Standard way to compare secrets in constant time.",
+        "options": [
+            "secrets.compare_digest(a, b)  # or hmac.compare_digest",
+            "a == b",
+            "len(a) == len(b)",
+            "hash(a) == hash(b)",
+        ],
+        "correct": "a",
+    },
+    {
+        "id": "sc_cyb_9",
+        "category": "cybersecurity",
+        "level": "expert",
+        "task": "Принцип минимальных привилегий (least privilege).",
+        "task_kk": "Ең аз привилегия принципі.",
+        "task_en": "Principle of least privilege means:",
+        "options": [
+            "Grant only permissions needed for the task",
+            "Grant admin to all services",
+            "Use one shared password for all",
+            "Disable logging for performance",
+        ],
+        "correct": "a",
+    },
 ]
 
 
 # ──────────── Helpers ────────────
 
-CHALLENGE_CATEGORIES = ["python", "javascript", "html_css", "algorithms", "cs_general"]
+CHALLENGE_CATEGORIES = [
+    "python",
+    "javascript",
+    "html_css",
+    "web",
+    "algorithms",
+    "cs_general",
+    "cybersecurity",
+]
 
 CATEGORY_LABELS = {
     "python": {"ru": "Python", "kk": "Python", "en": "Python"},
     "javascript": {"ru": "JavaScript", "kk": "JavaScript", "en": "JavaScript"},
     "html_css": {"ru": "HTML/CSS", "kk": "HTML/CSS", "en": "HTML/CSS"},
+    "web": {"ru": "Веб-разработка", "kk": "Веб әзірлеу", "en": "Web development"},
     "algorithms": {"ru": "Алгоритмы", "kk": "Алгоритмдер", "en": "Algorithms"},
     "cs_general": {"ru": "Основы CS", "kk": "CS негіздері", "en": "CS Basics"},
+    "cybersecurity": {
+        "ru": "Основы кибербезопасности",
+        "kk": "Киберқауіпсіздік негіздері",
+        "en": "Cybersecurity fundamentals",
+    },
 }
 
 
@@ -780,7 +1090,10 @@ def get_questions_by_mode(mode: str, category: str | None = None, level: str | N
         return []
 
     if category and category != "all":
-        pool = [q for q in pool if q["category"] == category]
+        if category == "web":
+            pool = [q for q in pool if q["category"] in ("javascript", "html_css")]
+        else:
+            pool = [q for q in pool if q["category"] == category]
     if level and level != "all":
         pool = [q for q in pool if q["level"] == level]
 

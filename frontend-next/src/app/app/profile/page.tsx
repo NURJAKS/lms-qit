@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
@@ -13,9 +13,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatProfileStudyDuration } from "@/lib/profileFieldLabels";
 import type { TranslationKey } from "@/i18n/translations";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle, COURSE_TITLE_KEYS } from "@/lib/courseUtils";
 import { ProfilePreviewCard } from "@/components/profile/ProfilePreviewCard";
+import { LeaderboardTopAchievementCard } from "@/components/profile/LeaderboardTopAchievementCard";
 import type { SafeProfilePreviewData } from "@/types/profiles";
 import {
   User as UserIcon,
@@ -342,11 +344,12 @@ export default function ProfilePage() {
     gcTime: 0,
   });
   const { data: enrollments = [] } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", user?.id],
     queryFn: async () => {
       const { data } = await api.get<unknown[]>("/courses/my/enrollments");
       return data;
     },
+    enabled: user?.id != null,
   });
   const { data: certificates = [] } = useQuery({
     queryKey: ["my-certificates"],
@@ -472,7 +475,7 @@ export default function ProfilePage() {
   });
 
   const { register, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm<Form>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as Resolver<Form>,
     defaultValues: { 
       full_name: "", 
       description: "", 
@@ -894,9 +897,7 @@ export default function ProfilePage() {
   const has100 = certificates.some((c) => c.final_score != null && c.final_score >= 100);
   const completedCount = certificates.length;
   const totalStudySeconds = progressDetail?.courses?.reduce((s, c) => s + (c.video_watched_seconds ?? 0), 0) ?? 0;
-  const studyHours = Math.floor(totalStudySeconds / 3600);
-  const studyMins = Math.floor((totalStudySeconds % 3600) / 60);
-  const studyHoursStr = studyHours > 0 ? `${studyHours}h${studyMins}` : studyMins > 0 ? `${studyMins}m` : "0";
+  const studyHoursStr = formatProfileStudyDuration(totalStudySeconds, t);
   const overallProgress = progressDetail?.courses?.length
     ? Math.round(progressDetail.courses.reduce((s, c) => s + c.progress_percent, 0) / progressDetail.courses.length)
     : 0;
@@ -993,7 +994,7 @@ export default function ProfilePage() {
                 </Link>
               )}
               <div className="flex items-center gap-2">
-                <Image src="/icons/coin.png" alt="coins" width={20} height={20} className="shrink-0" />
+                <Image src="/icons/coin.png" alt={t("coinsAlt")} width={20} height={20} className="shrink-0" />
                 <span className="text-gray-600 dark:text-gray-400">{t("profileCoins")}: <strong className="text-gray-800 dark:text-white">{(me as { points?: number })?.points ?? (user as { points?: number })?.points ?? 0}</strong></span>
                 <Link href="/app/shop" className="text-[var(--qit-primary)] hover:underline text-sm ml-1">{t("profileShopLink")}</Link>
               </div>
@@ -1013,7 +1014,9 @@ export default function ProfilePage() {
                         const reasonKey = tx.reason || tx.label;
                         let translatedLabel = tx.label;
                         if (reasonKey) {
-                          if (reasonKey.startsWith("ai_challenge_")) {
+                          if (reasonKey.startsWith("ai_challenge_perfect_")) {
+                            translatedLabel = t("coinsReason_ai_challenge_perfect");
+                          } else if (reasonKey.startsWith("ai_challenge_")) {
                             translatedLabel = t("coinsReason_ai_challenge");
                           } else if (reasonKey.startsWith("daily_streak_")) {
                             translatedLabel = t("coinsReason_daily_streak");
@@ -1156,18 +1159,14 @@ export default function ProfilePage() {
               <div className="flex flex-col gap-3 relative z-10">
                 {topHistory.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    {topHistory.slice(0, 5).map((h, i) => (
-                      <MagicCard key={`hist-${i}`} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gradient-to-r from-amber-50/50 to-transparent dark:from-amber-900/10 hover:shadow-md transition-all">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-inner shrink-0 scale-110">
-                          <Trophy className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <SparklesText className="text-sm font-semibold" sparklesCount={3} colors={{first:"#FBBF24", second:"#F59E0B"}}>
-                            {t(`profileAchievementTop${h.rank}` as TranslationKey)}
-                          </SparklesText>
-                          <p className="text-xs text-gray-500 mt-0.5">{new Date(h.date).toLocaleDateString()}</p>
-                        </div>
-                      </MagicCard>
+                    {topHistory.slice(0, 5).map((h) => (
+                      <LeaderboardTopAchievementCard
+                        key={`${h.date}-${h.rank}`}
+                        item={h}
+                        lang={lang}
+                        t={t}
+                        fancy
+                      />
                     ))}
                   </div>
                 )}
@@ -1223,7 +1222,7 @@ export default function ProfilePage() {
                               } catch (error) {
                                 console.error("Failed to download PDF:", error);
                                 const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-                                const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
+                                const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
                                 alert(errorMessage);
                               }
                             }}
@@ -1333,6 +1332,20 @@ export default function ProfilePage() {
     </div>
   );
 
+  const userRank = leaderboard.find((r) => r.user_id === (me?.id ?? user?.id));
+
+  const roleLabel = useMemo(() => {
+    if (!profileExt) return "";
+    if (profileExt.role === "director") return t("director");
+    if (profileExt.role === "teacher") return t("teacher");
+    if (profileExt.role === "curator") return t("curator");
+    if (profileExt.role === "admin") return t("roleAdmin");
+    if (profileExt.role === "parent") return t("parent");
+    if (profileExt.role === "student") return t("student");
+    if (profileExt.role === "courier") return t("adminShopCourier");
+    return profileExt.role;
+  }, [profileExt, t]);
+
   const userCard = (
     <MagicCard className="flex flex-col items-center text-center mb-8 relative overflow-hidden">
       {((me as { is_premium?: number })?.is_premium ?? (user as { is_premium?: number })?.is_premium ?? 0) === 1 && (
@@ -1351,6 +1364,13 @@ export default function ProfilePage() {
           {profileExt?.photo_url ? <img src={profileExt.photo_url} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-14 h-14 text-[var(--qit-primary)] dark:text-[#00b0ff]" />}
           <Ripple className="opacity-50" />
         </div>
+        {userRank && userRank.rank <= 3 && (
+          <div className="absolute -top-4 -left-3 z-10 pointer-events-none">
+            {userRank.rank === 1 && <Crown className="w-10 h-10 text-yellow-500 rotate-[-15deg] drop-shadow-lg animate-bounce" />}
+            {userRank.rank === 2 && <Crown className="w-9 h-9 text-gray-400 rotate-[-10deg] drop-shadow-md" />}
+            {userRank.rank === 3 && <Crown className="w-9 h-9 text-orange-400 rotate-[-10deg] drop-shadow-md" />}
+          </div>
+        )}
         <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handlePhotoChange} disabled={uploading}/>
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer disabled:opacity-50 z-10" title={t("profileUploadPhoto")}>
           <Camera className="w-8 h-8 text-white" />
@@ -1370,7 +1390,7 @@ export default function ProfilePage() {
         {profileExt?.city && (
           <span className="flex items-center gap-1.5 text-sm"><MapPin className="w-4 h-4 shrink-0" /> {profileExt.city}</span>
         )}
-        <span className="text-sm capitalize">{profileExt?.role ?? ""}</span>
+        <span className="text-sm">{roleLabel}</span>
       </div>
       {profileExt?.created_at && (
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -1484,7 +1504,7 @@ export default function ProfilePage() {
       <div className="flex items-center justify-center min-h-[400px] px-4">
         <div className="max-w-md w-full rounded-2xl p-5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <h2 className="font-semibold text-gray-900 dark:text-white mb-2">
-            {t("profileLoadError") ?? "Не удалось загрузить профиль"}
+            {t("profileLoadError")}
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 break-words">{String(err)}</p>
           <button
@@ -1495,7 +1515,7 @@ export default function ProfilePage() {
             }}
             className="px-4 py-2 rounded-xl bg-[var(--qit-primary)] text-white font-medium hover:opacity-90 transition-opacity"
           >
-            {t("retry") ?? "Повторить"}
+            {t("retry")}
           </button>
         </div>
       </div>
@@ -1556,9 +1576,11 @@ export default function ProfilePage() {
     </BlurFade>
   );
 
+
+
   const safePreviewBlock = profilePreviewData && (
     <BlurFade delay={0.09}>
-      <ProfilePreviewCard profile={profilePreviewData} className="mb-6" />
+      <ProfilePreviewCard profile={profilePreviewData} rank={userRank?.rank} className="mb-6" />
     </BlurFade>
   );
 
@@ -2333,7 +2355,7 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("profileAccessRightsLines")}</label>
-                    <textarea {...register("permissions_text")} rows={4} placeholder="Управление пользователями&#10;Управление курсами&#10;Просмотр отчетов" className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white transition-all" />
+                    <textarea {...register("permissions_text")} rows={4} placeholder={t("profileAdminPermissionsPlaceholder")} className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white transition-all" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("profileResponsibilityAreasLines")}</label>

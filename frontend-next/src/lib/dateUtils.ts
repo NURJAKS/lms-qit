@@ -41,8 +41,13 @@ export function formatDateTimeLocalized(
 }
 
 const KK_MONTHS = [
-  'Қаңтар', 'Ақпан', 'Наурыз', 'Сәуір', 'Мамыр', 'Маусым',
-  'Шілде', 'Тамыз', 'Қыркүйек', 'Қазан', 'Қараша', 'Желтоқсан'
+  'қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым',
+  'шілде', 'тамыз', 'қыркүйек', 'қазан', 'қараша', 'желтоқсан'
+];
+
+const KK_MONTHS_GENITIVE = [
+  'қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым',
+  'шілде', 'тамыз', 'қыркүйек', 'қазан', 'қараша', 'желтоқсан'
 ];
 
 export function formatDateLocalized(
@@ -67,7 +72,15 @@ export function formatDateLocalized(
     const day = d.getDate();
     const month = KK_MONTHS[d.getMonth()];
     const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
+    return `${day} ${month} ${year} ж.`;
+  }
+
+  if (lang === 'ru' && finalOptions.month === 'long') {
+    return d.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
   }
 
   return d.toLocaleDateString(locale, finalOptions);

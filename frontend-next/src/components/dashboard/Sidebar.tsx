@@ -18,6 +18,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useSidebar } from "@/context/SidebarContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -27,6 +28,7 @@ import { getLocalizedNotificationText } from "@/lib/notificationText";
 
 export function Sidebar() {
   const { user, logout, isAdmin, isTeacher } = useAuthStore();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useLanguage();
@@ -210,6 +212,7 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => {
+            queryClient.clear();
             logout();
             router.push("/");
           }}

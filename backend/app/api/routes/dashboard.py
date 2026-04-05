@@ -1,8 +1,8 @@
 from datetime import date, timedelta, datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, distinct
 
 from app.api.deps import get_current_user
@@ -797,9 +797,214 @@ def get_upcoming_deadlines(
             "title": a.title,
             "type": deadline_type,
             "dueDate": a.deadline.isoformat(),
+            "courseId": a.course_id,
             "courseTitle": course.title if course else "",
             "priority": priority,
             "submitted": submitted,
         })
     
     return result
+
+
+def _course_progress_bar_type(category_name: str | None) -> str:
+    if not category_name:
+        return "other"
+    n = category_name.lower()
+    if any(x in n for x in ("програм", "python", "java", "web", "it", "код", "code", "develop", "әзірлеу")):
+        return "programming"
+    if any(x in n for x in ("дизайн", "design", "ui", "ux")):
+        return "design"
+    if any(x in n for x in ("маркет", "marketing", "smm")):
+        return "marketing"
+    return "other"
+
+
+@router.get("/course-progress-bars")
+def get_course_progress_bars(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Прогресс по записанным курсам для диаграммы (реальные данные из student_progress)."""
+    enrollments = db.query(CourseEnrollment).filter(CourseEnrollment.user_id == current_user.id).all()
+    if not enrollments:
+        return {"courses": [], "average_progress": 0.0, "improvement_percent": 0.0}
+
+    course_ids = list({e.course_id for e in enrollments})
+    courses = (
+        db.query(Course)
+        .options(joinedload(Course.category))
+        .filter(Course.id.in_(course_ids))
+        .all()
+    )
+    courses_by_id = {c.id: c for c in courses}
+
+    out_rows: list[dict] = []
+    for cid in course_ids:
+        c = courses_by_id.get(cid)
+        if not c:
+            continue
+        topics = db.query(CourseTopic).filter(CourseTopic.course_id == cid).all()
+        total = len(topics)
+        if total == 0:
+            continue
+        done_q = (
+            db.query(StudentProgress)
+            .filter(
+                StudentProgress.user_id == current_user.id,
+                StudentProgress.course_id == cid,
+                StudentProgress.is_completed == True,  # noqa: E712
+            )
+            .all()
+        )
+        done_topic_ids = {p.topic_id for p in done_q if p.topic_id}
+        pct = round(min(100, (len(done_topic_ids) / total) * 100))
+        cat_name = c.category.name if c.category else None
+        ctype = _course_progress_bar_type(cat_name)
+        out_rows.append({"name": c.title, "progress": pct, "type": ctype})
+
+    if not out_rows:
+        return {"courses": [], "average_progress": 0.0, "improvement_percent": 0.0}
+
+    out_rows.sort(key=lambda x: x["progress"], reverse=True)
+    top = out_rows[:5]
+    avg = round(sum(x["progress"] for x in out_rows) / len(out_rows), 1)
+
+    today = date.today()
+    start_curr = today - timedelta(days=30)
+    start_prev = today - timedelta(days=60)
+    start_curr_dt = datetime.combine(start_curr, datetime.min.time())
+    end_curr_dt = datetime.combine(today + timedelta(days=1), datetime.min.time())
+    start_prev_dt = datetime.combine(start_prev, datetime.min.time())
+
+    prev_completed = (
+        db.query(StudentProgress)
+        .filter(
+            StudentProgress.user_id == current_user.id,
+            StudentProgress.is_completed == True,  # noqa: E712
+            func.coalesce(StudentProgress.completed_at, StudentProgress.created_at) >= start_prev_dt,
+            func.coalesce(StudentProgress.completed_at, StudentProgress.created_at) < start_curr_dt,
+        )
+        .count()
+    )
+    curr_completed = (
+        db.query(StudentProgress)
+        .filter(
+            StudentProgress.user_id == current_user.id,
+            StudentProgress.is_completed == True,  # noqa: E712
+            func.coalesce(StudentProgress.completed_at, StudentProgress.created_at) >= start_curr_dt,
+            func.coalesce(StudentProgress.completed_at, StudentProgress.created_at) < end_curr_dt,
+        )
+        .count()
+    )
+    if prev_completed <= 0:
+        improvement = 100.0 if curr_completed > 0 else 0.0
+    else:
+        improvement = round((curr_completed - prev_completed) / prev_completed * 100, 1)
+
+    return {"courses": top, "average_progress": avg, "improvement_percent": improvement}
+
+
+@router.get("/study-time-summary")
+def get_study_time_summary(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Суммарное время просмотра видео (video_watched_seconds) по темам; окна — по дате обновления строки."""
+    rows = db.query(StudentProgress).filter(StudentProgress.user_id == current_user.id).all()
+    total_min = sum((r.video_watched_seconds or 0) for r in rows) // 60
+
+    today_d = date.today()
+    week_ago = today_d - timedelta(days=7)
+    month_ago = today_d - timedelta(days=30)
+    prev_week_start = today_d - timedelta(days=14)
+    prev_week_end = today_d - timedelta(days=8)
+
+    def sum_minutes_window(start_d: date, end_d: date) -> int:
+        s = 0
+        for r in rows:
+            u = r.updated_at or r.created_at
+            if not u:
+                continue
+            ud = u.date() if isinstance(u, datetime) else u
+            if start_d <= ud <= end_d:
+                s += r.video_watched_seconds or 0
+        return s // 60
+
+    today_min = sum_minutes_window(today_d, today_d)
+    week_min = sum_minutes_window(week_ago, today_d)
+    month_min = sum_minutes_window(month_ago, today_d)
+    curr_week_min = sum_minutes_window(week_ago, today_d)
+    prev_week_min = sum_minutes_window(prev_week_start, prev_week_end)
+
+    if prev_week_min <= 0:
+        change = 0.0 if curr_week_min <= 0 else 100.0
+    else:
+        change = round((curr_week_min - prev_week_min) / prev_week_min * 100, 1)
+
+    return {
+        "total_minutes": total_min,
+        "today_minutes": today_min,
+        "week_minutes": week_min,
+        "month_minutes": month_min,
+        "change_percent": change,
+        "is_positive": change >= 0,
+    }
+
+
+@router.get("/today-progress")
+def get_today_progress_metric(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    metric: str = Query("lessons", description="lessons | assignments | tests"),
+):
+    """Счётчики активности за сегодня (темы, проверенные задания, тесты)."""
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    if metric == "assignments":
+        val = (
+            db.query(AssignmentSubmission)
+            .filter(
+                AssignmentSubmission.student_id == current_user.id,
+                AssignmentSubmission.grade != None,  # noqa: E711
+                func.date(func.coalesce(AssignmentSubmission.graded_at, AssignmentSubmission.submitted_at)) == today,
+            )
+            .count()
+        )
+        prev = (
+            db.query(AssignmentSubmission)
+            .filter(
+                AssignmentSubmission.student_id == current_user.id,
+                AssignmentSubmission.grade != None,  # noqa: E711
+                func.date(func.coalesce(AssignmentSubmission.graded_at, AssignmentSubmission.submitted_at)) == yesterday,
+            )
+            .count()
+        )
+    elif metric == "tests":
+        val = _tests_passed_today(db, current_user.id)
+        prev = (
+            db.query(StudentProgress)
+            .filter(
+                StudentProgress.user_id == current_user.id,
+                StudentProgress.is_completed == True,  # noqa: E712
+                StudentProgress.test_score != None,  # noqa: E711
+                func.date(func.coalesce(StudentProgress.completed_at, StudentProgress.created_at)) == yesterday,
+            )
+            .count()
+        )
+    else:
+        val = _topics_completed_today(db, current_user.id)
+        prev = (
+            db.query(StudentProgress)
+            .filter(
+                StudentProgress.user_id == current_user.id,
+                StudentProgress.is_completed == True,  # noqa: E712
+                func.date(func.coalesce(StudentProgress.completed_at, StudentProgress.created_at)) == yesterday,
+            )
+            .count()
+        )
+
+    if prev <= 0:
+        change = 100.0 if val > 0 else 0.0
+    else:
+        change = round((val - prev) / prev * 100, 1)
+    return {"value": val, "change": change, "is_positive": val >= prev}

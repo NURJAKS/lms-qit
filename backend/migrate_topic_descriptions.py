@@ -18,6 +18,7 @@ DESCRIPTIONS_COURSE_1 = [
     "for циклы: for элемент in тізім: — әр элемент үшін орындалады. range(n) 0-ден n-1-ге дейін сандар береді. while циклы: while шарт: — шарт True болғанша қайталанады. break — циклдан шығады, continue — келесі итерацияға өтеді.",
 ]
 DESCRIPTIONS_COURSE_2 = [
+    "HTML (HyperText Markup Language) — веб-беттердің құрылымын құруға арналған разметка (белгілеу) тілі; бағдарламалау тілі емес. Браузер HTML кодын оқып парақты көрсетеді; CSS — сыртқы түрі, JavaScript — интерактивтілік. Бұл сабақта сіз HTML не екенін және веб-технологиялар стегін түсінесіз.",
     "HTML (HyperText Markup Language) — веб-беттердің құрылымын сипаттайтын разметка тілі. Тегтер арқылы мәтін, суреттер, сілтемелер, формалар және басқа элементтер анықталады. Браузер осы тегтерді оқып, бетті көрсетеді. Бұл сабақта сіз видеоны қарап, негізгі HTML тегтерімен танысасыз.",
     """HTML формалары пайдаланушыдан деректер жинау үшін қолданылады.
 
@@ -67,6 +68,7 @@ name атрибуты әр элементке қойылуы керек — се
     "Медиа-сұраныстар: @media (max-width: 768px) { }. viewport meta тегі. Бірліктер: %, vw, vh, rem. min-width, max-width. Мобильді алдымен (mobile-first) тәсілі.",
     "let, const, var — айнымалы жасау. let және const — блок көлемінде. const — қайта тағайындалмайды. Примитивтер: number, string, boolean, null, undefined. Объектілер: object, array, function.",
     "document.getElementById(), querySelector(), querySelectorAll() — элементтерді табу. textContent, innerHTML — мазмұнды өзгерту. addEventListener() — оқиғаларды қосу. createElement(), appendChild() — жаңа элементтер қосу. classList.add/remove — кластарды басқару.",
+    "Оқиғалар: click, submit, input, load — addEventListener арқылы өңдеуші тағайындау. Функциялар — қайталанатын код блогы; параметрлер мен return. event.preventDefault() — әдепкі әрекетті болдырмау.",
 ]
 
 

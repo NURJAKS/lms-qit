@@ -57,17 +57,6 @@ export function TeacherDashboard() {
       changePercent: groupsChangePercent,
       color: "#3B82F6",
       bgGlow: isDark ? "rgba(59, 130, 246, 0.15)" : "rgba(59, 130, 246, 0.08)",
-    },
-    {
-      icon: BookOpen,
-      value: pendingCount,
-      label: t("teacherStatsPending"),
-      gradient: "linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)",
-      sparklineData: [], // тренд для проверок пока не считаем
-      change: 0,
-      changePercent: 0,
-      color: "#F59E0B",
-      bgGlow: isDark ? "rgba(245, 158, 11, 0.15)" : "rgba(245, 158, 11, 0.08)",
       hasAlert: pendingCount > 0,
     },
     {
@@ -80,6 +69,7 @@ export function TeacherDashboard() {
       changePercent: studentsChangePercent,
       color: "#10B981",
       bgGlow: isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.08)",
+      hasAlert: false,
     },
   ];
 
@@ -91,14 +81,6 @@ export function TeacherDashboard() {
       description: t("teacherGoToGroupsHint"),
       gradient: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
       color: "#3B82F6",
-    },
-    {
-      href: "/app/teacher?tab=assignments",
-      icon: BookOpen,
-      label: t("teacherGoToAssignments"),
-      description: t("teacherGoToAssignmentsHint"),
-      gradient: "linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)",
-      color: "#F59E0B",
     },
   ];
 
@@ -145,7 +127,7 @@ export function TeacherDashboard() {
                 <div className="relative">
                   <div className="flex items-start justify-between mb-5">
                     <div
-                      className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0 text-white shadow-lg group-hover:scale-110 transition-transform duration-300"
+                      className="relative w-14 h-14 rounded-xl flex items-center justify-center shrink-0 text-white shadow-lg group-hover:scale-110 transition-transform duration-300"
                       style={{ 
                         background: card.gradient,
                         boxShadow: `0 8px 16px ${card.color}40`,

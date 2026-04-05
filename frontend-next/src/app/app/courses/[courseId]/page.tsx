@@ -1,20 +1,22 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
 import type { TranslationKey } from "@/i18n/translations";
-import { Lock, Zap, CreditCard, Smartphone, Loader2, FileQuestion } from "lucide-react";
+import { Lock, Zap, CreditCard, Smartphone, Loader2, FileQuestion, Users } from "lucide-react";
 import { TestComponent } from "@/components/tests/TestComponent";
 import { LearningPath, type FlattenedTopic } from "@/components/courses/LearningPath";
 import { DailyQuestWidget } from "@/components/dashboard/DailyQuestWidget";
 import type { Course } from "@/types";
-import { getLocalizedCourseDesc, getLocalizedCourseTitle, getLocalizedModuleTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
+import { getLocalizedCourseDesc, getLocalizedCourseTitle, getCourseBannerUrl } from "@/lib/courseUtils";
+import { StudentAssignmentsListView } from "@/components/courses/StudentAssignmentsListView";
+import { StudentCourseClasswork } from "@/components/courses/StudentCourseClasswork";
 
 interface Structure {
   course_id: number;
@@ -67,6 +69,7 @@ function PremiumEnrollButton({
 export default function CourseDetailPage() {
   const { t } = useLanguage();
   const user = useAuthStore((s) => s.user);
+  const userId = user?.id;
   const params = useParams();
   const courseId = params.courseId as string;
   const id = Number(courseId);
@@ -102,22 +105,23 @@ export default function CourseDetailPage() {
   });
 
   const { data: enrollments = [] } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", userId],
     queryFn: async () => {
-      const { data } = await api.get<Array<{ course_id: number }>>("/courses/my/enrollments");
+      const { data } = await api.get<Array<{ course_id: number; course: Course }>>("/courses/my/enrollments");
       return data;
     },
+    enabled: userId != null,
   });
 
   const enrolled = enrollments.some((e) => e.course_id === id);
 
   const { data: progressList = [] } = useQuery({
-    queryKey: ["progress", id],
+    queryKey: ["progress", id, userId],
     queryFn: async () => {
       const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean }>>(`/progress/course/${id}`);
       return data;
     },
-    enabled: !!id && enrolled,
+    enabled: !!id && enrolled && userId != null,
   });
 
   const { data: stats } = useQuery({
@@ -193,6 +197,54 @@ export default function CourseDetailPage() {
     enabled: !!id && enrolled,
   });
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const rawTab = searchParams.get("tab");
+  const courseTab: "tasks" | "people" | "assignments" | "classwork" =
+    rawTab === "assignments"
+      ? "assignments"
+      : rawTab === "classwork"
+        ? "classwork"
+        : rawTab === "people"
+          ? "people"
+          : "tasks";
+
+  const setCourseTab = (next: "tasks" | "people" | "assignments" | "classwork") => {
+    const q = new URLSearchParams(searchParams.toString());
+    if (next === "tasks") {
+      q.delete("tab");
+    } else {
+      q.set("tab", next);
+    }
+    q.delete("assignmentId"); // Clear assignmentId when switching tabs
+    const s = q.toString();
+    router.push(s ? `/app/courses/${id}?${s}` : `/app/courses/${id}`, { scroll: false });
+  };
+
+  useEffect(() => {
+    const allowed = new Set(["assignments", "people", "tasks", "classwork"]);
+    const tab = searchParams.get("tab");
+    if (tab === "feed" || (tab && !allowed.has(tab))) {
+      const q = new URLSearchParams(searchParams.toString());
+      q.delete("tab");
+      const s = q.toString();
+      router.replace(s ? `/app/courses/${id}?${s}` : `/app/courses/${id}`);
+    }
+  }, [searchParams, id, router]);
+
+  const assignmentIdParam = searchParams.get("assignmentId");
+  const initialAssignmentId = assignmentIdParam ? Number(assignmentIdParam) : undefined;
+
+  const { data: classmates = [] } = useQuery({
+    queryKey: ["course-teachers", id],
+    queryFn: async () => {
+      const { data } = await api.get<Array<{ id: number; full_name: string; email: string }>>(`/courses/${id}/teachers`);
+      return data;
+    },
+    enabled: !!id && enrolled,
+  });
+
   const openPaymentModal = () => {
     setPaymentModal(true);
     setPaymentStep("method");
@@ -211,7 +263,7 @@ export default function CourseDetailPage() {
         try {
           const { data } = await api.post<{ payment_id?: number; enrollment_id?: number }>(`/courses/${id}/initiate-payment`);
           if (data.enrollment_id) {
-            queryClient.invalidateQueries({ queryKey: ["my-enrollments"] });
+            queryClient.invalidateQueries({ queryKey: ["my-enrollments", userId] });
             setPaymentStep("done");
             setPaymentModal(false);
             return;
@@ -224,7 +276,7 @@ export default function CourseDetailPage() {
             // Fallback: прямой enroll если payment API недоступен
             await api.post(`/courses/${id}/enroll`);
             setTransactionId(`TXN-${Date.now().toString(36).toUpperCase()}`);
-            queryClient.invalidateQueries({ queryKey: ["my-enrollments"] });
+            queryClient.invalidateQueries({ queryKey: ["my-enrollments", userId] });
             setPaymentStep("done");
             setTimeout(() => setPaymentModal(false), 2500);
             return;
@@ -248,7 +300,7 @@ export default function CourseDetailPage() {
           throw confirmErr;
         }
       }
-      queryClient.invalidateQueries({ queryKey: ["my-enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["my-enrollments", userId] });
       setPaymentStep("done");
       setTimeout(() => {
         setPaymentModal(false);
@@ -301,12 +353,12 @@ export default function CourseDetailPage() {
     );
   }
 
-  const courseImageUrl = course.image_url || `https://picsum.photos/seed/course-${id}/300/200`;
+  const courseImageUrl = course.image_url || "/course-placeholder.svg";
   const completedCount = progressList.filter((p) => p.is_completed).length;
   const totalTopics = flattenedPath.length;
 
   return (
-    <div className={enrolled ? "grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 lg:gap-8" : ""}>
+    <div className={enrolled ? "block" : ""}>
       <div className={enrolled ? "min-w-0" : ""}>
       {paymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
@@ -373,7 +425,7 @@ export default function CourseDetailPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{t("eurasianBank")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
                   <button
@@ -386,7 +438,7 @@ export default function CourseDetailPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{t("tinkoff")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
                   <button
@@ -399,7 +451,7 @@ export default function CourseDetailPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{t("jusan")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
                   <button
@@ -412,7 +464,7 @@ export default function CourseDetailPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{t("forte")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
                 </div>
@@ -508,20 +560,20 @@ export default function CourseDetailPage() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6 flex flex-col sm:flex-row gap-4 sm:gap-6">
-        <div className="w-full sm:w-48 h-44 sm:h-32 rounded-xl overflow-hidden bg-[var(--qit-primary)]/10 shrink-0">
-          <img src={courseImageUrl} alt={localizedCourseTitle} className="w-full h-full object-cover" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white mb-2 break-words">{localizedCourseTitle}</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">{localizedCourseDesc}</p>
-          <p className="text-[#1a237e] dark:text-[#00b0ff] font-semibold mb-4">
-            {course.is_premium_only ? t("premiumOnly") : `${Number(course.price)}₸`}
-          </p>
-          {!enrolled && (
-            course.is_premium_only ? (
+      {!enrolled ? (
+        <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6 flex flex-col sm:flex-row gap-4 sm:gap-6">
+          <div className="w-full sm:w-48 h-44 sm:h-32 rounded-xl overflow-hidden bg-[var(--qit-primary)]/10 shrink-0">
+            <img src={courseImageUrl} alt={localizedCourseTitle} className="w-full h-full object-cover" />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white mb-2 break-words">{localizedCourseTitle}</h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">{localizedCourseDesc}</p>
+            <p className="text-[#1a237e] dark:text-[#00b0ff] font-semibold mb-4">
+              {course.is_premium_only ? t("premiumOnly") : `${Number(course.price)}₸`}
+            </p>
+            {course.is_premium_only ? (
               isPremiumUser ? (
-                <PremiumEnrollButton courseId={id} onEnrolled={() => queryClient.invalidateQueries({ queryKey: ["my-enrollments"] })} t={t} />
+                <PremiumEnrollButton courseId={id} onEnrolled={() => queryClient.invalidateQueries({ queryKey: ["my-enrollments", userId] })} t={t} />
               ) : (
                 <Link href="/app/premium" className="inline-flex items-center gap-2 py-2.5 px-4 rounded-lg text-white min-h-[2.5rem]" style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)" }}>
                   <Lock className="w-4 h-4" />
@@ -532,161 +584,256 @@ export default function CourseDetailPage() {
               <button type="button" onClick={openPaymentModal} className="py-2.5 px-4 rounded-lg text-white min-h-[2.5rem]" style={{ background: "var(--qit-primary)" }}>
                 {t("courseBuy")}
               </button>
-            )
-          )}
-          {enrolled && <p className="text-green-600 font-medium">{t("courseEnrolled")}</p>}
+            )}
+          </div>
         </div>
-      </div>
-
-      {enrolled && (
-        <div className="mb-6">
-          <Link href={`/app/ai-challenge/${id}`} className="inline-flex items-center gap-2 py-2.5 px-4 rounded-lg bg-amber-500 text-white hover:bg-amber-600 min-h-[2.5rem]">
-            <Zap className="w-4 h-4" /> {t("aiVsStudent")}
-          </Link>
-        </div>
-      )}
-
-      {enrolled && flattenedPath.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-6">{t("courseModulesTopics")}</h2>
-          <LearningPath courseId={id} items={flattenedPath} />
-        </div>
-      )}
-
-      {enrolled && (
-        <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
-          <div className="border-b dark:border-gray-600 px-4 py-4">
-            <h2 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
-              <FileQuestion className="w-5 h-5 text-[var(--qit-primary)]" />
-              {t("leaderboardControlTest")}
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {t("leaderboardControlDesc")}
-            </p>
+      ) : (
+        <>
+          <div className="flex gap-4 sm:gap-8 border-b border-gray-200 dark:border-gray-600 mb-6">
+            <button
+              type="button"
+              onClick={() => setCourseTab("assignments")}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "assignments"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("assignmentsList")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCourseTab("classwork")}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "classwork"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("courseClasswork")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCourseTab("tasks")}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "tasks"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("studentCourseTabTasks")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCourseTab("people")}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "people"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("studentCourseTabPeople")}
+            </button>
           </div>
 
-          {activeTestId ? (
-            <div className="p-4">
-              <TestComponent
-                testId={activeTestId}
-                onComplete={() => setActiveTestId(null)}
-                onCancel={() => setActiveTestId(null)}
-              />
-            </div>
-          ) : (
-            <div className="p-4">
-              {courseTests.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400">
-                  {t("courseNoTests")}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  {courseTests.map((test) => {
-                    const canTake = test.can_take !== false;
-                    const displayTitle = test.is_final
-                      ? getLocalizedCourseTitle({ title: test.course_title || test.title } as any, t as any)
-                      : test.title;
-                    const topicsInfo = test.topics_total !== undefined && test.topics_total > 0
-                      ? `${test.topics_completed_count || 0}/${test.topics_total}`
-                      : null;
-                    const assignmentsInfo = test.assignments_total !== undefined && test.assignments_total > 0
-                      ? `${test.assignments_completed || 0}/${test.assignments_total}`
-                      : null;
-                    
-                    const missingItems: string[] = [];
-                    if (!test.topics_completed && topicsInfo) {
-                      missingItems.push(`${t("topicsLabel")}: ${topicsInfo}`);
-                    }
-                    if (!test.assignments_completed && assignmentsInfo) {
-                      missingItems.push(`${t("assignmentsLabel")}: ${assignmentsInfo}`);
-                    }
-                    
-                    return (
-                      <button
-                        key={test.id}
-                        type="button"
-                        onClick={() => canTake && setActiveTestId(test.id)}
-                        disabled={!canTake}
-                        className={`text-left p-4 rounded-xl border dark:border-gray-600 transition-colors ${
-                          canTake
-                            ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                            : "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-800 dark:text-white flex items-center gap-2">
-                              {displayTitle}
-                              {!canTake && <Lock className="w-4 h-4 text-gray-400" />}
-                            </div>
-                            {test.is_final && (
-                              <span className="text-sm text-amber-600 dark:text-amber-400">
-                                ({t("leaderboardFinal")})
-                              </span>
-                            )}
-                            <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                              {test.question_count} {t("leaderboardQuestion")} • {test.passing_score}% {t("leaderboardPass")}
-                            </div>
-                            {!canTake && missingItems.length > 0 && (
-                              <div className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                                {t("testsAllTopicsAndAssignmentsRequired")} ({missingItems.join(", ")})
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+          {/* Premium Course Header Banner */}
+          <div
+            className="rounded-2xl overflow-hidden mb-6 p-6 sm:p-10 text-white relative shadow-xl border border-white/10"
+            style={{ minHeight: "220px" }}
+          >
+            {/* Background Image with Overlay */}
+            <div 
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 hover:scale-105"
+              style={{ backgroundImage: `url(${getCourseBannerUrl(course)})` }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
+            
+            {/* Glossy Overlay for content */}
+            <div className="relative z-10 flex flex-col h-full justify-center max-w-3xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4 w-fit">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">{t("learningTrack")}</span>
+              </div>
+              <h1 className="text-2xl sm:text-4xl font-extrabold font-montserrat tracking-tight drop-shadow-lg">
+                {localizedCourseTitle}
+              </h1>
+              <p className="text-white/80 text-sm sm:text-base mt-2 line-clamp-2 max-w-2xl font-medium leading-relaxed">
+                {localizedCourseDesc}
+              </p>
+              
+              <div className="mt-6 flex flex-wrap gap-4 text-xs font-semibold">
+                <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
+                  <span className="text-blue-400">●</span>
+                  {completedCount}/{totalTopics} {t("topicsLabel")}
                 </div>
+                {stats && (
+                  <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
+                    <span className="text-green-400">●</span>
+                    {stats.progress_percent}% {t("progressLabel")}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {courseTab === "assignments" && (
+            <div className="mb-6">
+              <StudentAssignmentsListView embedded />
+            </div>
+          )}
+
+          {courseTab === "classwork" && (
+            <div className="mb-6 min-w-0">
+              <StudentCourseClasswork courseId={id} initialAssignmentId={initialAssignmentId} />
+            </div>
+          )}
+
+          {courseTab === "tasks" && (
+            <>
+              <div className="mb-6">
+                <Link
+                  href={`/app/ai-challenge/${id}`}
+                  className="inline-flex items-center gap-2 py-2.5 px-4 rounded-lg bg-amber-500 text-white hover:bg-amber-600 min-h-[2.5rem]"
+                >
+                  <Zap className="w-4 h-4" /> {t("aiVsStudent")}
+                </Link>
+              </div>
+
+              {flattenedPath.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-6 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-6">{t("courseModulesTopics")}</h2>
+                  <LearningPath courseId={id} items={flattenedPath} />
+                </div>
+              )}
+
+              <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
+                <div className="border-b dark:border-gray-600 px-4 py-4">
+                  <h2 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                    <FileQuestion className="w-5 h-5 text-[var(--qit-primary)]" />
+                    {t("courseFinalTestSectionTitle")}
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{t("courseFinalTestSectionDesc")}</p>
+                </div>
+
+                {activeTestId ? (
+                  <div className="p-4">
+                    <TestComponent
+                      testId={activeTestId}
+                      onComplete={() => setActiveTestId(null)}
+                      onCancel={() => setActiveTestId(null)}
+                    />
+                  </div>
+                ) : (
+                  <div className="p-4">
+                    {courseTests.length === 0 ? (
+                      <p className="text-gray-500 dark:text-gray-400">{t("courseNoTests")}</p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                        {courseTests.map((test) => {
+                          const canTake = test.can_take !== false;
+                          const displayTitle = test.is_final ? t("courseFinalTestCardTitle") : t("courseControlTestCardTitle");
+                          const finalCourseTitleRaw = (test.course_title || course?.title || "").trim();
+                          const finalCourseSubtitle =
+                            test.is_final && finalCourseTitleRaw
+                              ? getLocalizedCourseTitle(
+                                  { title: finalCourseTitleRaw } as Course,
+                                  t as (k: TranslationKey) => string
+                                )
+                              : null;
+                          const topicsInfo =
+                            test.topics_total !== undefined && test.topics_total > 0
+                              ? `${test.topics_completed_count || 0}/${test.topics_total}`
+                              : null;
+                          const assignmentsInfo =
+                            test.assignments_total !== undefined && test.assignments_total > 0
+                              ? `${test.assignments_completed || 0}/${test.assignments_total}`
+                              : null;
+
+                          const missingItems: string[] = [];
+                          if (!test.topics_completed && topicsInfo) {
+                            missingItems.push(`${t("topicsLabel")}: ${topicsInfo}`);
+                          }
+                          if (!test.assignments_completed && assignmentsInfo) {
+                            missingItems.push(`${t("assignmentsLabel")}: ${assignmentsInfo}`);
+                          }
+
+                          return (
+                            <button
+                              key={test.id}
+                              type="button"
+                              onClick={() => canTake && setActiveTestId(test.id)}
+                              disabled={!canTake}
+                              className={`text-left p-4 rounded-xl border dark:border-gray-600 transition-colors ${
+                                canTake
+                                  ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                                  : "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <div className="font-medium text-gray-800 dark:text-white flex items-center gap-2">
+                                    {displayTitle}
+                                    {!canTake && <Lock className="w-4 h-4 text-gray-400" />}
+                                  </div>
+                                  {finalCourseSubtitle && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{finalCourseSubtitle}</p>
+                                  )}
+                                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                    {test.question_count} {t("leaderboardQuestion")} • {test.passing_score}% {t("leaderboardPass")}
+                                  </div>
+                                  {!canTake && missingItems.length > 0 && (
+                                    <div className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                      {t("testsAllTopicsAndAssignmentsRequired")} ({missingItems.join(", ")})
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {courseTab === "people" && (
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[var(--qit-primary)]" />
+                {t("courseTeachers")}
+              </h2>
+              {classmates.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t("studentNoTeachers")}</p>
+              ) : (
+                <ul className="space-y-3">
+                  {classmates.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        href={`/app/profile/${p.id}`}
+                        className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-gray-600 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-white flex items-center justify-center text-sm font-bold shrink-0">
+                          {(p.full_name || p.email || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-white truncate">{p.full_name || p.email}</p>
+                          {p.email ? <p className="text-xs text-gray-500 truncate">{p.email}</p> : null}
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
-        </div>
+        </>
       )}
+
       </div>
 
-      {enrolled && (
-        <aside className="lg:order-none order-last">
-          <div className="lg:sticky lg:top-24 space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
-              <h3 className="font-semibold text-gray-800 dark:text-white mb-3">{t("profileCoins")}</h3>
-              <div className="flex items-center gap-2">
-                <Image src="/icons/coin.png" alt="coins" width={24} height={24} />
-                <span className="text-2xl font-bold text-gray-800 dark:text-white">{stats?.points ?? 0}</span>
-              </div>
-              <Link href="/app/shop" className="mt-2 inline-block text-sm font-medium text-[var(--qit-primary)] hover:underline">
-                {t("profileShopLink")}
-              </Link>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
-              <h3 className="font-semibold text-gray-800 dark:text-white mb-3">{t("profileCourseProgress")}</h3>
-              <div className="flex items-center gap-3">
-                <div className="relative w-16 h-16">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-200 dark:text-gray-600" />
-                    <circle
-                      cx="18" cy="18" r="15.9"
-                      fill="none" stroke="var(--qit-primary)" strokeWidth="2"
-                      strokeDasharray={`${totalTopics ? (completedCount / totalTopics) * 100 : 0} 100`}
-                      strokeLinecap="round"
-                      className="transition-all duration-500"
-                    />
-                  </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-800 dark:text-white">
-                    {totalTopics ? Math.round((completedCount / totalTopics) * 100) : 0}%
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {completedCount} / {totalTopics} {t("profileTopic")}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <DailyQuestWidget />
-          </div>
-        </aside>
-      )}
     </div>
   );
 }

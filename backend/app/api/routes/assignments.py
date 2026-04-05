@@ -6,7 +6,7 @@ from typing import Annotated
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -15,9 +15,13 @@ from app.models.user import User
 from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
+from app.models.assignment_submission_grade import AssignmentSubmissionGrade
+from app.models.teacher_assignment_rubric import TeacherAssignmentRubric
 from app.models.teacher_material import TeacherMaterial
 from app.models.course import Course
 from app.models.notification import Notification
+from app.models.assignment_class_comment import AssignmentClassComment
+from app.api.routes.teacher import _rubric_row_to_api
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -25,10 +29,70 @@ ALLOWED_SUBMISSION_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
+def _deadline_passed(deadline: datetime | None, now: datetime) -> bool:
+    if deadline is None:
+        return False
+    d = deadline if deadline.tzinfo is not None else deadline.replace(tzinfo=timezone.utc)
+    return d < now
+
+
+def _submission_file_urls(sub: AssignmentSubmission | None) -> list[str]:
+    if not sub:
+        return []
+    urls: list[str] = []
+    if getattr(sub, "file_url", None):
+        urls.append(sub.file_url)
+    raw = getattr(sub, "file_urls", None)
+    if raw:
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(parsed, list):
+                urls.extend(str(u) for u in parsed if u)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    seen: set[str] = set()
+    out: list[str] = []
+    for u in urls:
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def _assignment_json_list(raw: str | None) -> list:
+    """Parse TeacherAssignment JSON array columns; bad legacy data must not break /assignments/my."""
+    if not raw or not str(raw).strip():
+        return []
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, list) else []
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
 class SubmitBody(BaseModel):
     submission_text: str | None = None
     file_url: str | None = None
     file_urls: list[str] | None = None
+
+
+class ClassCommentBody(BaseModel):
+    text: str = Field(..., min_length=1, max_length=20000)
+
+
+def _can_access_assignment_class_comments(db: Session, user: User, a: TeacherAssignment) -> bool:
+    if user.role in ("admin", "director", "curator"):
+        return True
+    if user.role == "teacher" and user.id == a.teacher_id:
+        return True
+    if user.role == "student":
+        return (
+            db.query(GroupStudent)
+            .filter(GroupStudent.student_id == user.id, GroupStudent.group_id == a.group_id)
+            .first()
+            is not None
+        )
+    return False
 
 
 @router.post("/submissions/upload")
@@ -100,88 +164,72 @@ def list_my_assignments(
         if topic_ids:
             for t in db.query(CourseTopic).filter(CourseTopic.id.in_(topic_ids)).all():
                 topics[t.id] = t.title
+    aid_list = [a.id for a in assignments]
+    teacher_ids = list({a.teacher_id for a in assignments})
+    teachers = {u.id: u for u in db.query(User).filter(User.id.in_(teacher_ids)).all()} if teacher_ids else {}
+
+    rubrics_by_assignment: dict[int, list[dict]] = {}
+    if aid_list:
+        for row in db.query(TeacherAssignmentRubric).filter(TeacherAssignmentRubric.assignment_id.in_(aid_list)).all():
+            rubrics_by_assignment.setdefault(row.assignment_id, []).append(_rubric_row_to_api(row))
+
+    sub_ids = [s.id for s in submissions_by_assignment.values() if s is not None]
+    rubric_grades_by_sub: dict[int, list[dict]] = {}
+    if sub_ids:
+        for sg in db.query(AssignmentSubmissionGrade).filter(AssignmentSubmissionGrade.submission_id.in_(sub_ids)).all():
+            rubric_grades_by_sub.setdefault(sg.submission_id, []).append(
+                {"criterion_id": sg.criterion_id, "points": float(sg.points)}
+            )
+
+    from sqlalchemy import func as sa_func
+    cc_counts: dict[int, int] = {}
+    if aid_list:
+        for aid, cnt in (
+            db.query(AssignmentClassComment.assignment_id, sa_func.count(AssignmentClassComment.id))
+            .filter(AssignmentClassComment.assignment_id.in_(aid_list))
+            .group_by(AssignmentClassComment.assignment_id)
+            .all()
+        ):
+            cc_counts[aid] = cnt
+
     now = datetime.now(timezone.utc)
     out = []
     for a in assignments:
         sub = submissions_by_assignment.get(a.id)
-        closed = (getattr(a, "closed_at", None) is not None) or (
-            a.deadline is not None and a.deadline < now
-        )
+        closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
+        tu = teachers.get(a.teacher_id)
+        teacher_name = (tu.full_name or tu.email or "") if tu else ""
+        rubric = rubrics_by_assignment.get(a.id, [])
+        rgrades = rubric_grades_by_sub.get(sub.id, []) if sub else []
         out.append({
             "id": a.id,
             "title": a.title,
             "description": a.description,
             "course_id": a.course_id,
             "course_title": courses[a.course_id].title if a.course_id in courses else "",
+            "created_at": a.created_at.isoformat() if getattr(a, "created_at", None) else None,
             "topic_id": getattr(a, "topic_id", None),
             "topic_title": topics.get(getattr(a, "topic_id", 0)) if getattr(a, "topic_id", None) else None,
             "max_points": getattr(a, "max_points", 100),
-            "attachment_urls": json.loads(a.attachment_urls) if getattr(a, "attachment_urls", None) else [],
-            "attachment_links": json.loads(a.attachment_links) if getattr(a, "attachment_links", None) else [],
-            "video_urls": json.loads(a.video_urls) if getattr(a, "video_urls", None) else [],
+            "teacher_name": teacher_name,
+            "rubric": rubric,
+            "rubric_grades": rgrades,
+            "attachment_urls": _assignment_json_list(getattr(a, "attachment_urls", None)),
+            "attachment_links": _assignment_json_list(getattr(a, "attachment_links", None)),
+            "video_urls": _assignment_json_list(getattr(a, "video_urls", None)),
             "test_id": getattr(a, "test_id", None),
             "deadline": a.deadline.isoformat() if a.deadline else None,
             "closed": closed,
             "submitted": sub is not None,
-            "grade": float(sub.grade) if sub and sub.grade else None,
+            "submitted_at": sub.submitted_at.isoformat() if sub and getattr(sub, "submitted_at", None) else None,
+            "graded_at": sub.graded_at.isoformat() if sub and getattr(sub, "graded_at", None) else None,
+            "grade": float(sub.grade) if sub and sub.grade is not None else None,
             "teacher_comment": sub.teacher_comment if sub else None,
+            "submission_text": (sub.submission_text if sub else None),
+            "submission_file_urls": _submission_file_urls(sub),
+            "class_comments_count": cc_counts.get(a.id, 0),
         })
     return out
-
-
-@router.post("/{assignment_id}/submit")
-def submit_assignment(
-    assignment_id: int,
-    body: SubmitBody,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Сдать задание."""
-    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
-    now = datetime.now(timezone.utc)
-    is_closed = (getattr(a, "closed_at", None) is not None) or (
-        a.deadline is not None and a.deadline < now
-    )
-    if is_closed:
-        raise HTTPException(status_code=400, detail="Задание закрыто для сдачи или дедлайн истёк")
-    in_group = db.query(GroupStudent).filter(
-        GroupStudent.student_id == current_user.id,
-        GroupStudent.group_id == a.group_id,
-    ).first()
-    if not in_group:
-        raise HTTPException(status_code=403, detail="Вы не в группе этого задания")
-    existing = db.query(AssignmentSubmission).filter(
-        AssignmentSubmission.assignment_id == assignment_id,
-        AssignmentSubmission.student_id == current_user.id,
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Вы уже сдали это задание")
-    file_urls_json = None
-    if body.file_urls:
-        if len(body.file_urls) > 5:
-            raise HTTPException(status_code=400, detail="Максимум 5 файлов")
-        file_urls_json = json.dumps(body.file_urls)
-    sub = AssignmentSubmission(
-        assignment_id=assignment_id,
-        student_id=current_user.id,
-        submission_text=body.submission_text or None,
-        file_url=body.file_url,
-        file_urls=file_urls_json,
-    )
-    db.add(sub)
-    notif = Notification(
-        user_id=a.teacher_id,
-        type="assignment_submitted",
-        title="Проверьте задание",
-        message=f"Студент {current_user.full_name or current_user.email} сдал задание «{a.title}».",
-        link=f"/app/teacher/assignment/{assignment_id}",
-    )
-    db.add(notif)
-    db.commit()
-    db.refresh(sub)
-    return {"id": sub.id, "message": "Тапсырма сәтті жіберілді"}
 
 
 @router.get("/my/submissions")
@@ -194,7 +242,6 @@ def list_my_submissions(
     assignment_ids = list({r.assignment_id for r in rows})
     assignments = {a.id: a for a in db.query(TeacherAssignment).filter(TeacherAssignment.id.in_(assignment_ids)).all()}
     courses = {c.id: c for c in db.query(Course).filter(Course.id.in_([a.course_id for a in assignments.values()])).all()}
-    import json
     return [
         {
             "id": r.id,
@@ -203,7 +250,7 @@ def list_my_submissions(
             "course_title": courses.get(assignments.get(r.assignment_id).course_id).title if r.assignment_id in assignments and assignments[r.assignment_id].course_id in courses else "",
             "submission_text": r.submission_text,
             "file_url": r.file_url,
-            "file_urls": json.loads(r.file_urls) if r.file_urls else [],
+            "file_urls": _assignment_json_list(getattr(r, "file_urls", None)),
             "grade": float(r.grade) if r.grade else None,
             "teacher_comment": r.teacher_comment,
             "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
@@ -233,11 +280,175 @@ def list_my_materials(
             "course_id": m.course_id,
             "course_title": courses[m.course_id].title if m.course_id in courses else "",
             "topic_id": m.topic_id,
-            "video_urls": json.loads(m.video_urls) if m.video_urls else [],
-            "image_urls": json.loads(m.image_urls) if m.image_urls else [],
-            "attachment_urls": json.loads(m.attachment_urls) if m.attachment_urls else [],
-            "attachment_links": json.loads(m.attachment_links) if m.attachment_links else [],
+            "video_urls": _assignment_json_list(getattr(m, "video_urls", None)),
+            "image_urls": _assignment_json_list(getattr(m, "image_urls", None)),
+            "attachment_urls": _assignment_json_list(getattr(m, "attachment_urls", None)),
+            "attachment_links": _assignment_json_list(getattr(m, "attachment_links", None)),
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
         for m in materials
     ]
+
+
+@router.get("/{assignment_id}/class-comments")
+def list_assignment_class_comments(
+    assignment_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    if not _can_access_assignment_class_comments(db, current_user, a):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    rows = (
+        db.query(AssignmentClassComment, User)
+        .join(User, User.id == AssignmentClassComment.author_id)
+        .filter(AssignmentClassComment.assignment_id == assignment_id)
+        .order_by(AssignmentClassComment.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "author_id": c.author_id,
+            "author_name": (u.full_name or u.email or "") if u else "",
+            "author_role": u.role if u else None,
+            "text": c.text,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c, u in rows
+    ]
+
+
+@router.post("/{assignment_id}/class-comments")
+def post_assignment_class_comment(
+    assignment_id: int,
+    body: ClassCommentBody,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    if not _can_access_assignment_class_comments(db, current_user, a):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    row = AssignmentClassComment(assignment_id=assignment_id, author_id=current_user.id, text=body.text.strip())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": row.id,
+        "author_id": row.author_id,
+        "author_name": current_user.full_name or current_user.email or "",
+        "author_role": current_user.role,
+        "text": row.text,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+# Backward-compatible alias expected by some student UIs.
+# Returns only the current student's assignments (through their groups).
+@router.get("")
+def list_student_assignments_alias(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    return list_my_assignments(db=db, current_user=current_user)
+
+
+@router.post("/{assignment_id}/submit")
+def submit_assignment(
+    assignment_id: int,
+    body: SubmitBody,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Сдать задание."""
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    now = datetime.now(timezone.utc)
+    is_closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
+    if is_closed:
+        raise HTTPException(status_code=400, detail="Задание закрыто для сдачи или дедлайн истёк")
+    in_group = db.query(GroupStudent).filter(
+        GroupStudent.student_id == current_user.id,
+        GroupStudent.group_id == a.group_id,
+    ).first()
+    if not in_group:
+        raise HTTPException(status_code=403, detail="Вы не в группе этого задания")
+    existing = db.query(AssignmentSubmission).filter(
+        AssignmentSubmission.assignment_id == assignment_id,
+        AssignmentSubmission.student_id == current_user.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Вы уже сдали это задание")
+    text_ok = bool(body.submission_text and str(body.submission_text).strip())
+    has_files = bool(body.file_url) or bool(body.file_urls and len(body.file_urls) > 0)
+    if not text_ok and not has_files:
+        raise HTTPException(status_code=400, detail="Добавьте текст ответа или прикрепите файл")
+    file_urls_json = None
+    if body.file_urls:
+        if len(body.file_urls) > 5:
+            raise HTTPException(status_code=400, detail="Максимум 5 файлов")
+        file_urls_json = json.dumps(body.file_urls)
+    sub = AssignmentSubmission(
+        assignment_id=assignment_id,
+        student_id=current_user.id,
+        submission_text=(body.submission_text.strip() if body.submission_text else None) or None,
+        file_url=body.file_url,
+        file_urls=file_urls_json,
+    )
+    db.add(sub)
+    notif = Notification(
+        user_id=a.teacher_id,
+        type="assignment_submitted",
+        title="Проверьте задание",
+        message=f"Студент {current_user.full_name or current_user.email} сдал задание «{a.title}».",
+        link=f"/app/teacher/view-answers/{assignment_id}",
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(sub)
+    return {"id": sub.id, "message": "Тапсырма сәтті жіберілді"}
+
+
+@router.post("/{assignment_id}/unsubmit")
+def unsubmit_assignment(
+    assignment_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Unsubmit an assignment (deletes the student's submission).
+
+    Note: Re-submission is still blocked by the due date/closed assignment logic in submit endpoint.
+    """
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    submission = (
+        db.query(AssignmentSubmission)
+        .filter(AssignmentSubmission.assignment_id == assignment_id, AssignmentSubmission.student_id == current_user.id)
+        .first()
+    )
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Avoid breaking already-graded work.
+    if submission.graded_at is not None or submission.grade is not None:
+        raise HTTPException(status_code=400, detail="Cannot unsubmit a graded submission")
+
+    now = datetime.now(timezone.utc)
+    is_closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
+    if is_closed:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя отменить сдачу: срок сдачи истёк или задание закрыто",
+        )
+
+    db.delete(submission)
+    db.commit()
+    return {"ok": True, "message": "Submission removed"}

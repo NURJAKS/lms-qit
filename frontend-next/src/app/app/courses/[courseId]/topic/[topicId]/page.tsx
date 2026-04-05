@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
+import { isAxiosError } from "axios";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
@@ -29,10 +30,12 @@ export default function TopicViewPage() {
   const params = useParams();
   const { t } = useLanguage();
   const user = useAuthStore((s) => s.user);
+  const userId = user?.id;
   const courseId = params.courseId as string;
   const topicId = params.topicId as string;
   const cId = Number(courseId);
   const tId = Number(topicId);
+  const validTopicId = Number.isFinite(tId) && tId > 0;
   const queryClient = useQueryClient();
   const [showTest, setShowTest] = useState(false);
   const [testId, setTestId] = useState<number | null>(null);
@@ -43,37 +46,51 @@ export default function TopicViewPage() {
   const [localWatchedSeconds, setLocalWatchedSeconds] = useState<number>(0);
   const isPremium = user?.is_premium === 1;
 
-  const { data: topic } = useQuery({
+  const {
+    data: topic,
+    isPending: topicPending,
+    isError: topicError,
+    error: topicErr,
+  } = useQuery({
     queryKey: ["topic", tId],
     queryFn: async () => {
-      const { data } = await api.get<{ id: number; title: string; video_url?: string; video_duration?: number; description?: string }>(`/topics/${tId}`);
+      const { data } = await api.get<{
+        id: number;
+        title: string;
+        video_url?: string;
+        video_duration?: number;
+        description?: string | null;
+        theory_unlocked?: boolean;
+      }>(`/topics/${tId}`);
       return data;
     },
-    enabled: !!tId,
+    enabled: validTopicId,
   });
 
-  const { data: access } = useQuery({
+  const {
+    data: access,
+    isPending: accessPending,
+    isError: accessError,
+  } = useQuery({
     queryKey: ["topic-access", tId],
     queryFn: async () => {
       const { data } = await api.get<{ allowed: boolean }>(`/topics/${tId}/access`);
       return data;
     },
-    enabled: !!tId,
+    enabled: validTopicId,
   });
 
   const { data: progressList = [] } = useQuery({
-    queryKey: ["progress", cId],
+    queryKey: ["progress", cId, userId],
     queryFn: async () => {
       const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean; video_watched_seconds?: number }>>(`/progress/course/${cId}`);
       return data;
     },
-    enabled: !!cId,
+    enabled: !!cId && userId != null,
   });
 
-  // Compute isVideoTopic BEFORE it's used in the dailyVideoLimit query to avoid TDZ error
-  const isVideoTopic = topic && hasVideo(topic);
+  const isVideoTopic = Boolean(topic && hasVideo(topic));
 
-  // Sync local watched seconds when progress data loads
   useEffect(() => {
     const progress = progressList.find((p) => p.topic_id === tId);
     if (progress) {
@@ -82,7 +99,7 @@ export default function TopicViewPage() {
   }, [progressList, tId]);
 
   const { data: dailyVideoLimit } = useQuery({
-    queryKey: ["daily-video-limit"],
+    queryKey: ["daily-video-limit", userId],
     queryFn: async () => {
       const { data } = await api.get<{
         is_premium: boolean;
@@ -93,8 +110,8 @@ export default function TopicViewPage() {
       }>("/progress/daily-video-limit");
       return data;
     },
-    enabled: isVideoTopic && !isPremium,
-    refetchInterval: 30000, // Обновляем каждые 30 секунд
+    enabled: userId != null && !!isVideoTopic && !isPremium,
+    refetchInterval: 30000,
   });
 
   const progress = progressList.find((p) => p.topic_id === tId);
@@ -103,6 +120,7 @@ export default function TopicViewPage() {
   const duration = actualVideoDuration ?? dbDuration;
   const watchedPercent = duration ? Math.min(100, (localWatchedSeconds / duration) * 100) : 0;
   const canTakeTest = isVideoTopic ? watchedPercent >= 90 || !!progress?.is_completed : true;
+  const canViewTheory = canTakeTest;
 
   const { data: topicTest } = useQuery({
     queryKey: ["topic-test", tId],
@@ -110,40 +128,53 @@ export default function TopicViewPage() {
       const { data } = await api.get<{ test_id: number }>(`/topics/${tId}/test`);
       return data;
     },
-    enabled: !!tId && canTakeTest,
+    enabled: validTopicId && !!topic && canTakeTest,
   });
 
   useEffect(() => {
     if (topicTest?.test_id) setTestId(topicTest.test_id);
   }, [topicTest?.test_id]);
 
-  // Сбрасываем флаг показа toast при изменении темы
   useEffect(() => {
     setHasShownTheoryCoinsToast(false);
   }, [tId]);
 
+  useEffect(() => {
+    setActualVideoDuration(null);
+  }, [tId]);
+
   const lastSavedSeconds = useRef<number>(0);
+  const lastProgressTopicIdRef = useRef<number>(tId);
+
+  useEffect(() => {
+    if (lastProgressTopicIdRef.current !== tId) {
+      lastProgressTopicIdRef.current = tId;
+      lastSavedSeconds.current = videoWatched;
+    } else if (videoWatched > lastSavedSeconds.current) {
+      lastSavedSeconds.current = videoWatched;
+    }
+  }, [tId, videoWatched]);
 
   const onVideoProgress = (seconds: number) => {
-    // Обновляем локальное состояние сразу для плавности UI
     setLocalWatchedSeconds(seconds);
-    
-    // Сохраняем в базу только раз в 5 секунд или если видео почти закончено (90%+)
-    // Это существенно уменьшает количество ре-рендеров и сетевую нагрузку
-    const isMajorMilestone = topic?.video_duration ? (seconds / topic.video_duration) >= 0.9 : false;
-    const shouldSave = Math.abs(seconds - lastSavedSeconds.current) >= 5 || isMajorMilestone;
+
+    const denom = duration > 0 ? duration : 1;
+    const isMajorMilestone = seconds / denom >= 0.9;
+    const isNearOrAtEnd = duration > 0 && seconds >= duration - 1;
+    const shouldSave =
+      Math.abs(seconds - lastSavedSeconds.current) >= 5 || isMajorMilestone || isNearOrAtEnd;
 
     if (shouldSave) {
       lastSavedSeconds.current = seconds;
       api.post("/progress/video", { topic_id: tId, video_watched_seconds: seconds })
         .then(() => {
-          queryClient.invalidateQueries({ queryKey: ["progress", cId] });
-          queryClient.invalidateQueries({ queryKey: ["daily-video-limit"] });
+          queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
+          queryClient.invalidateQueries({ queryKey: ["topic", tId] });
+          queryClient.invalidateQueries({ queryKey: ["daily-video-limit", userId] });
           queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-          
-          // Проверяем, достиг ли пользователь 90% просмотра для начисления coins за теорию
-          if (topic && topic.video_duration && topic.video_duration > 0) {
-            const currentPercent = (seconds / topic.video_duration) * 100;
+
+          if (topic && duration > 0) {
+            const currentPercent = (seconds / duration) * 100;
             if (currentPercent >= 90 && !hasShownTheoryCoinsToast && !progress?.is_completed) {
               setCoinsToastMessage(
                 t("topicCoinsTheory")
@@ -157,14 +188,15 @@ export default function TopicViewPage() {
         })
         .catch((error) => {
           if (error?.response?.status === 429) {
-            queryClient.invalidateQueries({ queryKey: ["daily-video-limit"] });
+            queryClient.invalidateQueries({ queryKey: ["daily-video-limit", userId] });
           }
         });
     }
   };
 
   const onTestPassed = () => {
-    queryClient.invalidateQueries({ queryKey: ["progress", cId] });
+    queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
+    queryClient.invalidateQueries({ queryKey: ["topic", tId] });
     queryClient.invalidateQueries({ queryKey: ["topic-access", tId] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
     queryClient.invalidateQueries({ queryKey: ["course-structure", cId] });
@@ -177,8 +209,52 @@ export default function TopicViewPage() {
     setShowTest(false);
   };
 
-  if (!topic) return <p className="text-gray-500">{t("loading")}</p>;
-  if (access && !access.allowed) {
+  if (!validTopicId) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-12">
+        <p className="text-red-600 dark:text-red-400 font-medium mb-4">{t("topicInvalidId")}</p>
+        <Link href={`/app/courses/${cId}`} className="text-[#1a237e] dark:text-[#00b0ff] hover:underline">
+          {t("topicBackToCourse")}
+        </Link>
+      </div>
+    );
+  }
+
+  if (topicError) {
+    const status = isAxiosError(topicErr) ? topicErr.response?.status : undefined;
+    return (
+      <div className="max-w-2xl mx-auto text-center py-12">
+        <p className="text-red-600 dark:text-red-400 font-medium mb-2">{t("topicLoadError")}</p>
+        {status != null && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">HTTP {status}</p>
+        )}
+        <Link href={`/app/courses/${cId}`} className="text-[#1a237e] dark:text-[#00b0ff] hover:underline">
+          {t("topicBackToCourse")}
+        </Link>
+      </div>
+    );
+  }
+
+  if (topicPending || !topic) {
+    return <p className="text-gray-500">{t("loading")}</p>;
+  }
+
+  if (accessError) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-12">
+        <p className="text-red-600 dark:text-red-400 font-medium mb-4">{t("topicAccessLoadError")}</p>
+        <Link href={`/app/courses/${cId}`} className="text-[#1a237e] dark:text-[#00b0ff] hover:underline">
+          {t("topicBackToCourse")}
+        </Link>
+      </div>
+    );
+  }
+
+  if (accessPending || !access) {
+    return <p className="text-gray-500">{t("loading")}</p>;
+  }
+
+  if (!access.allowed) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
         <p className="text-amber-600 font-medium mb-4">{t("topicAccessCompletePrevTopic")}</p>
@@ -208,8 +284,7 @@ export default function TopicViewPage() {
       <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">
         {getLocalizedTopicTitle(topic.title, t as any)}
       </h1>
-      
-      {/* Блок с информацией о наградах - только для не премиум пользователей */}
+
       {!isPremium && (
       <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
         <div className="flex items-start gap-3">
@@ -320,7 +395,7 @@ export default function TopicViewPage() {
                 <VideoPlayer
                   key={`video-${tId}`}
                   src={buildVideoSrc(topic.video_url)}
-                  duration={topic.video_duration ?? 300}
+                  duration={duration}
                   initialWatched={videoWatched}
                   onProgress={onVideoProgress}
                   onDurationLoaded={setActualVideoDuration}
@@ -341,7 +416,13 @@ export default function TopicViewPage() {
                   </p>
                 )}
               </div>
-              {topic.description && (
+              {isVideoTopic && !canViewTheory && (
+                <div className="mb-6 flex items-start gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
+                  <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">{t("topicTheoryLockedUntilVideo")}</p>
+                </div>
+              )}
+              {canViewTheory && topic.description && (
                 <div className="mb-6">
                   <TopicTheoryContent content={topic.description} />
                 </div>
@@ -359,18 +440,22 @@ export default function TopicViewPage() {
               {isPremium && <TopicNotes topicId={tId} />}
             </>
           )}
-          {canTakeTest && currentTestId && (
-            <button
-              type="button"
-              onClick={() => setShowTest(true)}
-              className="py-2 px-4 rounded-lg text-white"
-              style={{ background: "var(--qit-primary)" }}
-            >
-              {t("topicTestButton")}
-            </button>
-          )}
-          {canTakeTest && !currentTestId && (
-            <p className="text-gray-500">{t("topicTestLoading")}</p>
+          {canTakeTest && (
+            <div className="mt-6 space-y-3">
+              <h3 className="text-base font-semibold text-gray-800 dark:text-white">{t("topicControlTestTitle")}</h3>
+              {currentTestId ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTest(true)}
+                  className="py-2 px-4 rounded-lg text-white"
+                  style={{ background: "var(--qit-primary)" }}
+                >
+                  {t("topicTestButton")}
+                </button>
+              ) : (
+                <p className="text-gray-500">{t("topicTestLoading")}</p>
+              )}
+            </div>
           )}
           {!canTakeTest && isVideoTopic && (
             <p className="text-amber-600">{t("topicWatchEnoughToUnlock")}</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, TrendingDown } from "lucide-react";
+import { ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getDashboardCardStyle, getTextColors } from "@/utils/themeStyles";
@@ -17,30 +17,33 @@ export function OverallProgressWidget() {
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
 
-  const { data: progressData } = useQuery({
-    queryKey: ["overall-progress", period],
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["dashboard-stats"],
     queryFn: async () => {
-      // TODO: Replace with actual API call
-      // const { data } = await api.get(`/dashboard/overall-progress?period=${period}`);
-      // return data;
-      return {
-        progress: 22,
-        change: 10,
-        isPositive: true,
-      };
+      const { data } = await api.get<{
+        progress_percent: number;
+      }>("/dashboard/stats");
+      return data;
     },
   });
 
-  const progress = progressData?.progress ?? 0;
-  const change = progressData?.change ?? 0;
-  const isPositive = progressData?.isPositive ?? true;
+  const activityPeriod = period === "week" ? "7_days" : "30_days";
+  const { data: activity } = useQuery({
+    queryKey: ["learning-activity-sources", activityPeriod],
+    queryFn: async () => {
+      const { data } = await api.get<{ change_percent: number }>("/dashboard/learning-activity-sources", {
+        params: { period: activityPeriod },
+      });
+      return data;
+    },
+  });
+
+  const progress = stats?.progress_percent ?? 0;
+  const change = activity?.change_percent ?? 0;
+  const isPositive = change >= 0;
 
   return (
-    <div
-      className="rounded-xl p-6 transition-all duration-300 hover:shadow-lg"
-      style={cardStyle}
-    >
-      {/* Header */}
+    <div className="rounded-xl p-6 transition-all duration-300 hover:shadow-lg" style={cardStyle}>
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: textColors.primary }}>
           {t("overallProgress")}
@@ -48,6 +51,7 @@ export function OverallProgressWidget() {
         </h3>
         <div className="flex items-center gap-1.5">
           <button
+            type="button"
             onClick={() => setPeriod("total")}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
               period === "total"
@@ -60,6 +64,7 @@ export function OverallProgressWidget() {
             {t("total")}
           </button>
           <button
+            type="button"
             onClick={() => setPeriod("week")}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
               period === "week"
@@ -74,23 +79,30 @@ export function OverallProgressWidget() {
         </div>
       </div>
 
-      {/* Radial Chart */}
       <div className="flex justify-center mb-6">
-        <RadialProgressChart value={progress} size={180} strokeWidth={16} />
+        {statsLoading ? (
+          <div className="h-[180px] w-[180px] rounded-full animate-pulse bg-black/10 dark:bg-white/10" />
+        ) : (
+          <RadialProgressChart value={progress} size={180} strokeWidth={16} />
+        )}
       </div>
 
-      {/* Progress info */}
       <div className="text-center">
         <p className="text-sm mb-2" style={{ color: textColors.secondary }}>
           {t("progress")} {progress}% {t("moreThanLastWeek")}
         </p>
         <div className="flex items-center justify-center gap-2">
-          <TrendingDown className="w-4 h-4" style={{ color: isPositive ? "#10B981" : "#EF4444" }} />
+          {isPositive ? (
+            <TrendingUp className="w-4 h-4" style={{ color: "#10B981" }} />
+          ) : (
+            <TrendingDown className="w-4 h-4" style={{ color: "#EF4444" }} />
+          )}
           <span
             className={`text-sm font-semibold ${
               isPositive ? (isDark ? "text-green-400" : "text-green-600") : isDark ? "text-red-400" : "text-red-600"
             }`}
           >
+            {change > 0 ? "+" : ""}
             {change}%
           </span>
         </div>

@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     PREMIUM_PRICE_TENGE: int = 199999  # цена Premium в тенге
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
     DEBUG: bool = True  # Set to False in production
+    # Явный course_id для AI Challenge (трек Web), если название в БД не совпадает с seed
+    AI_CHALLENGE_WEB_COURSE_ID: int | None = None
+    # Явный course_id для AI Challenge (трек Информатика / общая ИТ)
+    AI_CHALLENGE_INFORMATICS_COURSE_ID: int | None = None
+    # Явный course_id для AI Challenge (трек «Основы кибербезопасности»)
+    AI_CHALLENGE_CYBER_COURSE_ID: int | None = None
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

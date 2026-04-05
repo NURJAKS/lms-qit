@@ -39,6 +39,7 @@ export const PRODUCT_TITLE_KEYS: Record<string, string> = {
   "A4 дәптер": "productA4Notebook",
   "IT дәптер": "productITNotebook",
   "Қалам қалам": "productPen",
+  "Қалам": "productPen",
   "А4 қағаз пачка": "productA4PaperPack",
   "Қаламша түрлі": "productVariousColoredPencils",
 };

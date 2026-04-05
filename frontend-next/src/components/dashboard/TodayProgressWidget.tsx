@@ -18,52 +18,65 @@ export function TodayProgressWidget() {
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
 
-  // В реальности будет запрос к API
-  const { data: progressData } = useQuery({
+  const { data: progressData, isLoading } = useQuery({
     queryKey: ["today-progress", metric],
     queryFn: async () => {
-      // TODO: Replace with actual API call
-      // const { data } = await api.get(`/dashboard/today-progress?metric=${metric}`);
-      // return data;
-      return {
-        value: 532,
-        change: 12,
-        isPositive: true,
-      };
+      const { data } = await api.get<{ value: number; change: number; is_positive: boolean }>(
+        "/dashboard/today-progress",
+        { params: { metric } }
+      );
+      return data;
     },
   });
 
   const value = progressData?.value ?? 0;
   const change = progressData?.change ?? 0;
-  const isPositive = progressData?.isPositive ?? true;
+  const isPositive = progressData?.is_positive ?? true;
 
   const metricLabels: Record<MetricType, string> = {
-    lessons: t("lessonsCompleted" as any) || "Уроков завершено",
-    assignments: t("assignmentsCompleted" as any) || "Заданий выполнено",
-    tests: t("testsCompleted" as any) || "Тестов пройдено",
+    lessons: t("lessonsCompleted"),
+    assignments: t("assignmentsCompleted"),
+    tests: t("testsCompleted"),
   };
 
   return (
-    <div
-      className="rounded-xl p-6 transition-all duration-300 hover:shadow-lg"
-      style={cardStyle}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
+    <div className="rounded-xl p-6 transition-all duration-300 hover:shadow-lg" style={cardStyle}>
+      <div className="flex items-center gap-2 mb-3">
         <ChevronDown className="w-4 h-4 rotate-180" style={{ color: textColors.secondary }} />
         <h3 className="text-sm font-medium" style={{ color: textColors.secondary }}>
-          {t("todayProgress" as any) || "Сегодня"}
+          {t("todayProgress")}
         </h3>
       </div>
 
-      {/* Value */}
-      <div className="mb-4">
-        <p className="text-4xl font-bold mb-2" style={{ color: textColors.primary }}>
-          {value.toLocaleString()}
-        </p>
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {(Object.keys(metricLabels) as MetricType[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMetric(m)}
+            className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+              metric === m
+                ? "bg-blue-600 text-white"
+                : isDark
+                  ? "bg-white/10 text-white/80 hover:bg-white/15"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            {metricLabels[m]}
+          </button>
+        ))}
       </div>
 
-      {/* Change indicator */}
+      <div className="mb-4">
+        {isLoading ? (
+          <div className="h-12 w-20 rounded animate-pulse bg-black/10 dark:bg-white/10" />
+        ) : (
+          <p className="text-4xl font-bold mb-2" style={{ color: textColors.primary }}>
+            {value.toLocaleString()}
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
         <div
           className={`flex items-center gap-1 px-2 py-1 rounded-lg ${
@@ -76,11 +89,7 @@ export function TodayProgressWidget() {
                 : "bg-red-50 text-red-600"
           }`}
         >
-          {isPositive ? (
-            <TrendingUp className="w-3.5 h-3.5" />
-          ) : (
-            <TrendingDown className="w-3.5 h-3.5" />
-          )}
+          {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
           <span className="text-xs font-semibold">{Math.abs(change)}%</span>
         </div>
         <ChevronDown className="w-4 h-4" style={{ color: textColors.secondary }} />

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, inspect, text
 
 from app.core.database import engine
 
@@ -310,6 +310,76 @@ def _ensure_user_purchases_price_paid_column(db_engine: Engine) -> None:
         return
 
 
+def _ensure_teacher_assignments_submission_columns(db_engine: Engine) -> None:
+    """Add reject_after_deadline / student comment / edit flags (legacy DBs)."""
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("teacher_assignments"):
+            return
+        existing = {c["name"] for c in insp.get_columns("teacher_assignments")}
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        with db_engine.begin() as conn:
+            if "reject_submissions_after_deadline" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 1" if sqlite else "BOOLEAN NOT NULL DEFAULT TRUE"
+                conn.execute(text(f"ALTER TABLE teacher_assignments ADD COLUMN reject_submissions_after_deadline {ddl}"))
+            if "allow_student_class_comments" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 1" if sqlite else "BOOLEAN NOT NULL DEFAULT TRUE"
+                conn.execute(text(f"ALTER TABLE teacher_assignments ADD COLUMN allow_student_class_comments {ddl}"))
+            if "allow_student_edit_submission" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 0" if sqlite else "BOOLEAN NOT NULL DEFAULT FALSE"
+                conn.execute(text(f"ALTER TABLE teacher_assignments ADD COLUMN allow_student_edit_submission {ddl}"))
+    except Exception:
+        return
+
+
+def _ensure_teacher_questions_extended_columns(db_engine: Engine) -> None:
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("teacher_questions"):
+            return
+        existing = {c["name"] for c in insp.get_columns("teacher_questions")}
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        dt = "DATETIME" if sqlite else "TIMESTAMPTZ"
+        with db_engine.begin() as conn:
+            if "description" not in existing:
+                conn.execute(text("ALTER TABLE teacher_questions ADD COLUMN description TEXT"))
+            if "deadline" not in existing:
+                conn.execute(text(f"ALTER TABLE teacher_questions ADD COLUMN deadline {dt}"))
+            if "max_points" not in existing:
+                conn.execute(text("ALTER TABLE teacher_questions ADD COLUMN max_points INTEGER DEFAULT 100"))
+            if "attachment_urls" not in existing:
+                conn.execute(text("ALTER TABLE teacher_questions ADD COLUMN attachment_urls TEXT"))
+            if "attachment_links" not in existing:
+                conn.execute(text("ALTER TABLE teacher_questions ADD COLUMN attachment_links TEXT"))
+            if "video_urls" not in existing:
+                conn.execute(text("ALTER TABLE teacher_questions ADD COLUMN video_urls TEXT"))
+            if "reject_submissions_after_deadline" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 1" if sqlite else "BOOLEAN NOT NULL DEFAULT TRUE"
+                conn.execute(text(f"ALTER TABLE teacher_questions ADD COLUMN reject_submissions_after_deadline {ddl}"))
+            if "allow_student_class_comments" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 1" if sqlite else "BOOLEAN NOT NULL DEFAULT TRUE"
+                conn.execute(text(f"ALTER TABLE teacher_questions ADD COLUMN allow_student_class_comments {ddl}"))
+            if "allow_student_edit_submission" not in existing:
+                ddl = "INTEGER NOT NULL DEFAULT 0" if sqlite else "BOOLEAN NOT NULL DEFAULT FALSE"
+                conn.execute(text(f"ALTER TABLE teacher_questions ADD COLUMN allow_student_edit_submission {ddl}"))
+    except Exception:
+        return
+
+
+def _ensure_teacher_question_answers_answer_text(db_engine: Engine) -> None:
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("teacher_question_answers"):
+            return
+        existing = {c["name"] for c in insp.get_columns("teacher_question_answers")}
+        if "answer_text" in existing:
+            return
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE teacher_question_answers ADD COLUMN answer_text TEXT"))
+    except Exception:
+        return
+
+
 def run_migrations() -> None:
     """Entry point for running lightweight, in‑app migrations."""
     _ensure_user_city_column(engine)
@@ -321,4 +391,7 @@ def run_migrations() -> None:
     _ensure_teacher_materials_columns(engine)
     _ensure_student_progress_updated_at_column(engine)
     _ensure_user_purchases_price_paid_column(engine)
+    _ensure_teacher_assignments_submission_columns(engine)
+    _ensure_teacher_questions_extended_columns(engine)
+    _ensure_teacher_question_answers_answer_text(engine)
 

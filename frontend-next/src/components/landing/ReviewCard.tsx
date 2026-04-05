@@ -4,12 +4,12 @@ import React from "react";
 import { Star } from "lucide-react";
 import { MagicCard } from "@/components/ui/magic-card";
 import { cn } from "@/lib/utils";
-import { type Review } from "@/data/mockReviews";
+import type { PublicReview } from "@/types/publicReview";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatDateLocalized } from "@/lib/dateUtils";
 
 interface ReviewCardProps {
-  review: Review;
+  review: PublicReview;
   className?: string;
 }
 
@@ -24,9 +24,8 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
     .toUpperCase()
     .slice(0, 2);
 
-  const courseTitle = review.course_title[lang] || review.course_title["ru"];
-  const reviewText = review.text[lang] || review.text["ru"];
-  const adminReply = review.admin_reply ? (review.admin_reply[lang] || review.admin_reply["ru"]) : null;
+  const courseTitle = review.course_title;
+  const reviewText = review.text?.trim() || "—";
 
   return (
     <MagicCard
@@ -37,7 +36,6 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
         className
       )}
     >
-      {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-lg shadow-purple-500/20">
@@ -47,9 +45,6 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
             <h4 className="font-semibold text-gray-900 dark:text-white truncate text-sm">
               {review.user_name}
             </h4>
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-              {review.user_email}
-            </p>
           </div>
         </div>
         {review.is_featured && (
@@ -59,7 +54,6 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
         )}
       </div>
 
-      {/* Rating & Course */}
       <div className="flex items-center gap-2 mb-3">
         <div className="flex">
           {[...Array(5)].map((_, i) => (
@@ -71,31 +65,28 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
         </span>
       </div>
 
-      {/* Review Text */}
       <div className="flex-grow">
         <p className="text-gray-700 dark:text-gray-300 text-[13px] leading-relaxed line-clamp-4 italic font-medium">
-          "{reviewText}"
+          &ldquo;{reviewText}&rdquo;
         </p>
       </div>
 
-      {/* Admin Reply */}
-      {adminReply && (
+      {review.admin_reply && (
         <div className="mt-4 pt-3 border-t border-gray-100 dark:border-white/5 bg-blue-50/30 dark:bg-blue-900/10 rounded-b-xl -mx-6 -mb-6 px-6 pb-6">
           <div className="flex items-start gap-2">
             <div className="w-0.5 h-full bg-blue-500/50 rounded-full self-stretch" />
             <div>
               <p className="text-[9px] font-bold text-blue-500/80 uppercase tracking-tight mb-0.5">
-                {t("adminResponse")}
+                {t("reviewAdminResponse")}
               </p>
               <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2">
-                {adminReply}
+                {review.admin_reply}
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Date if no reply to keep bottom clean */}
       {!review.admin_reply && review.created_at && (
         <div className="mt-4 text-[9px] text-gray-400 dark:text-gray-600 text-right">
           {formatDateLocalized(review.created_at, lang, { day: "2-digit", month: "2-digit", year: "numeric" })}

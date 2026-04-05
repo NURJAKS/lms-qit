@@ -1,5 +1,6 @@
 import re
 from app.core.config import settings
+from app.i18n.translations import AI_CHALLENGE_TRANSLATIONS
 
 # Prefer OpenAI when key is set, otherwise fall back to Gemini
 USE_GEMINI = not bool(settings.OPENAI_API_KEY) and bool(settings.GEMINI_API_KEY)
@@ -225,14 +226,18 @@ def chat_with_openai(message: str, context: str = "", is_test_context: bool = Fa
 def get_challenge_recommendations(
     wrong_topic_titles: list[str],
     course_title: str,
+    lang: str = "ru",
 ) -> str:
     """Генерирует рекомендации по темам, в которых студент ошибся."""
     if not wrong_topic_titles:
         return ""
-    fallback = "Рекомендуем повторить темы: " + ", ".join(wrong_topic_titles) + "."
+    
+    locale = lang if lang in AI_CHALLENGE_TRANSLATIONS else "ru"
+    trans = AI_CHALLENGE_TRANSLATIONS[locale]
+    
     topics_str = ", ".join(wrong_topic_titles)
-    prompt = f"""Студент прошёл соревнование AI vs Студент по курсу «{course_title}» и ошибся в темах: {topics_str}.
-Дай краткие рекомендации (2-3 предложения на русском или казахском): что повторить, на что обратить внимание. Без приветствий и общих фраз."""
+    fallback = trans["recommendations_fallback"].format(topics=topics_str)
+    prompt = trans["ai_prompt"].format(course=course_title, topics=topics_str)
 
     if USE_GEMINI:
         if not settings.GEMINI_API_KEY:

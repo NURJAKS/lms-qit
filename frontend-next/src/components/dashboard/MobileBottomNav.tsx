@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Trophy, User, Users } from "lucide-react";
+import { LayoutDashboard, BookOpen, Trophy, User, Users, ClipboardList } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
  
@@ -19,20 +19,20 @@ export function MobileBottomNav() {
     },
     ...(isTeacher() ? [
       {
-        href: "/app/teacher",
-        icon: Users,
-        label: t("teacher"),
-      },
-      {
         href: "/app/teacher/courses",
         icon: BookOpen,
         label: t("teacherCoursesTab"),
-      }
+      },
+      {
+        href: "/app/teacher/courses/review",
+        icon: ClipboardList,
+        label: t("unreviewedAssignments"),
+      },
     ] : [
       {
         href: "/app/courses",
         icon: BookOpen,
-        label: t("myCourses"),
+        label: t("studentCoursesTabHint"),
       },
       {
         href: "/app/leaderboard",

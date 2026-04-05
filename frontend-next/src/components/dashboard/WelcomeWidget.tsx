@@ -89,8 +89,7 @@ export function WelcomeWidget() {
         
         <div className="space-y-3 mt-5">
           {pendingCount > 0 && (
-            <Link
-              href="/app/teacher?tab=assignments"
+            <div
               className="group flex items-center gap-4 p-4 rounded-xl hover:scale-[1.02] transition-all duration-300 relative overflow-hidden"
               style={{
                 background: isDark 
@@ -102,6 +101,11 @@ export function WelcomeWidget() {
                   : "0 4px 12px rgba(245, 158, 11, 0.1)",
               }}
             >
+              <Link
+                href="/app/teacher?tab=assignments"
+                className="absolute inset-0 z-10"
+                aria-label={t("teacherStatsPending")}
+              />
               <div className="relative">
                 <div 
                   className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg"
@@ -120,7 +124,7 @@ export function WelcomeWidget() {
                   {t("teacherDashboardHint")}
                 </p>
               </div>
-            </Link>
+            </div>
           )}
 
           {nextEvent && (

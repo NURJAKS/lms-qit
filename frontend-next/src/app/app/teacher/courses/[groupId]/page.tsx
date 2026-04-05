@@ -2,27 +2,30 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { Lang } from "@/i18n/translations";
-import type { TranslationKey } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { CreateAssignmentFullPageModal } from "@/components/teacher/CreateAssignmentFullPageModal";
+import { TeacherGradebook } from "@/components/teacher/TeacherGradebook";
 import {
+  AlertTriangle,
+  ArrowLeft,
   BookOpen,
   ChevronDown,
   ChevronUp,
-  Copy,
   FileText,
   GripVertical,
+  Loader2,
   MessageCircle,
   MoreVertical,
   Plus,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -71,6 +74,14 @@ type QuestionListRow = {
   answers_count: number;
 };
 
+type AssignmentRubricRow = {
+  id: number;
+  name: string;
+  max_points: number;
+  description?: string;
+  levels?: { text: string; points: number }[];
+};
+
 type AssignmentDetails = {
   title: string;
   description: string | null;
@@ -80,7 +91,7 @@ type AssignmentDetails = {
   attachment_urls: string[];
   attachment_links: string[];
   video_urls: string[];
-  rubric: { name: string; max_points: number }[];
+  rubric: AssignmentRubricRow[];
 };
 
 type MaterialDetails = {
@@ -98,7 +109,11 @@ type GroupStudent = { id: number; full_name: string; email: string };
 
 type StudentWithoutGroup = { id: number; full_name: string; email: string };
 
-type TabId = "stream" | "classwork" | "people" | "grades";
+type TabId = "classwork" | "people" | "grades";
+
+/** Стабильные ссылки — иначе `data ?? []` в деструктуризации useQuery даёт новый [] каждый рендер и useEffect([assignments]) уходит в бесконечный цикл. */
+const EMPTY_ASSIGNMENT_LIST: Assignment[] = [];
+const EMPTY_TOPIC_LIST: CourseTopic[] = [];
 
 function yearFromCreated(s: string | null | undefined): string {
   if (!s) return "";
@@ -107,31 +122,6 @@ function yearFromCreated(s: string | null | undefined): string {
   } catch {
     return "";
   }
-}
-
-function pickNearestDeadline(assignments: Assignment[]) {
-  const now = Date.now();
-  const candidates = assignments.filter((a) => a.type === "assignment" && a.deadline && !a.is_closed);
-  if (candidates.length === 0) return null;
-  const scored = candidates.map((a) => ({
-    a,
-    t: new Date(a.deadline!).getTime(),
-  }));
-  const upcoming = scored.filter((x) => x.t >= now).sort((x, y) => x.t - y.t);
-  if (upcoming.length > 0) return upcoming[0].a;
-  return scored.sort((x, y) => y.t - x.t)[0]?.a ?? null;
-}
-
-function formatDueWhen(iso: string, lang: Lang): string {
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
 }
 
 function formatDueClasswork(iso: string, lang: Lang): string {
@@ -176,19 +166,6 @@ function formatPostedClassworkLine(iso: string | null, lang: Lang): string {
   }).format(d);
 }
 
-function sortByCreatedDesc(a: Assignment, b: Assignment) {
-  const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-  const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-  return tb - ta;
-}
-
-function activityMessage(item: Assignment, t: (k: TranslationKey) => string): string {
-  const title = item.title || "—";
-  if (item.type === "question") return t("courseActivityPublishedQuestion").replace("{title}", title);
-  if (item.type === "material") return t("courseActivityPublishedMaterial").replace("{title}", title);
-  return t("courseActivityPublishedAssignment").replace("{title}", title);
-}
-
 function TypeIcon({ type }: { type: Assignment["type"] }) {
   if (type === "question") return <MessageCircle className="w-5 h-5 shrink-0 text-violet-500" />;
   if (type === "material") return <BookOpen className="w-5 h-5 shrink-0 text-emerald-500" />;
@@ -209,6 +186,8 @@ function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: () => vo
 export default function TeacherCourseGroupPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
   const rawId = params.groupId;
   const groupId = typeof rawId === "string" ? Number(rawId) : NaN;
 
@@ -222,7 +201,11 @@ export default function TeacherCourseGroupPage() {
   const inputStyle = getInputStyle(theme);
   const modalStyle = getModalStyle(theme);
 
-  const [activeTab, setActiveTab] = useState<TabId>("stream");
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (tabParam === "people" || tabParam === "grades") return tabParam;
+    if (tabParam === "classwork" || tabParam === "stream") return "classwork";
+    return "classwork";
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const [topicFilterOpen, setTopicFilterOpen] = useState(false);
   const [topicFilter, setTopicFilter] = useState<"all" | number>("all");
@@ -231,7 +214,9 @@ export default function TeacherCourseGroupPage() {
   const [selectedStudents, setSelectedStudents] = useState<Record<number, boolean>>({});
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
 
-  const [assignmentModalMode, setAssignmentModalMode] = useState<"assignment" | "question" | "material">("assignment");
+  const [assignmentModalMode, setAssignmentModalMode] = useState<
+    "assignment" | "assignmentWithTest" | "question" | "material"
+  >("assignment");
   const [clonedItemData, setClonedItemData] = useState<any>(null);
 
   const [expandedItem, setExpandedItem] = useState<{ type: Assignment["type"]; id: number } | null>(null);
@@ -239,6 +224,15 @@ export default function TeacherCourseGroupPage() {
   const [topicModalOpen, setTopicModalOpen] = useState(false);
   const [topicTitle, setTopicTitle] = useState("");
   const [topicTitleTouched, setTopicTitleTouched] = useState(false);
+
+  const [renameTopicModalOpen, setRenameTopicModalOpen] = useState(false);
+  const [renamingTopic, setRenamingTopic] = useState<CourseTopic | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+
+  const [activeTopicMenu, setActiveTopicMenu] = useState<number | null>(null);
+  const [topicIdPendingDelete, setTopicIdPendingDelete] = useState<number | null>(null);
+  const topicMenuRef = useRef<HTMLDivElement>(null);
+  useClickOutside(topicMenuRef, () => setActiveTopicMenu(null));
 
   const [localAssignments, setLocalAssignments] = useState<Assignment[]>([]);
   const [localTopics, setLocalTopics] = useState<CourseTopic[]>([]);
@@ -257,6 +251,13 @@ export default function TeacherCourseGroupPage() {
     }
   }, [user, isTeacher, router]);
 
+  useEffect(() => {
+    if (!tabParam) return;
+    if (tabParam === "people") setActiveTab("people");
+    else if (tabParam === "grades") setActiveTab("grades");
+    else if (tabParam === "classwork" || tabParam === "stream") setActiveTab("classwork");
+  }, [tabParam]);
+
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ["teacher-groups"],
     queryFn: async () => {
@@ -267,15 +268,15 @@ export default function TeacherCourseGroupPage() {
 
   const group = useMemo(() => groups.find((g) => g.id === groupId), [groups, groupId]);
 
-  const { data: assignments = [], isLoading: assignmentsLoading } = useQuery({
+  const { data: assignmentsData } = useQuery({
     queryKey: ["teacher-assignments", groupId],
     queryFn: async () => {
       const { data } = await api.get<Assignment[]>(`/teacher/assignments?group_id=${groupId}`);
-      setLocalAssignments(data);
       return data;
     },
     enabled: Number.isFinite(groupId) && !!group,
   });
+  const assignments = assignmentsData ?? EMPTY_ASSIGNMENT_LIST;
 
   const { data: submissionsInbox = [] } = useQuery({
     queryKey: ["teacher-submissions-inbox", groupId],
@@ -295,15 +296,28 @@ export default function TeacherCourseGroupPage() {
     enabled: Number.isFinite(groupId) && !!group,
   });
 
-  const { data: topics = [] } = useQuery({
+  const { data: topicsData } = useQuery({
     queryKey: ["course-topics", group?.course_id],
     queryFn: async () => {
       const { data } = await api.get<CourseTopic[]>(`/courses/${group!.course_id}/topics`);
-      setLocalTopics(data);
       return data;
     },
     enabled: !!group?.course_id,
   });
+  const topics = topicsData ?? EMPTY_TOPIC_LIST;
+
+  useEffect(() => {
+    setLocalAssignments(assignments);
+  }, [assignments]);
+
+  useEffect(() => {
+    setLocalTopics(topics);
+  }, [topics]);
+
+  useEffect(() => {
+    setCollapsedTopics({});
+    setTopicFilter("all");
+  }, [groupId]);
 
   const { data: students = [] } = useQuery({
     queryKey: ["teacher-group-students", groupId],
@@ -391,8 +405,28 @@ export default function TeacherCourseGroupPage() {
     },
   });
 
-  const nearest = useMemo(() => pickNearestDeadline(assignments), [assignments]);
-  const streamItems = useMemo(() => [...assignments].sort(sortByCreatedDesc).slice(0, 30), [assignments]);
+  const renameTopicMutation = useMutation({
+    mutationFn: async ({ id, title }: { id: number; title: string }) => {
+      await api.patch(`/teacher/topics/${id}`, { title });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-topics", group?.course_id] });
+      setRenameTopicModalOpen(false);
+      setRenamingTopic(null);
+      setRenameTitle("");
+    },
+  });
+
+  const deleteTopicMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/teacher/topics/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-topics", group?.course_id] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-assignments", groupId] });
+      setTopicIdPendingDelete(null);
+    },
+  });
 
   const topicSections = useMemo(() => {
     const filtered = (arr: Assignment[]) =>
@@ -402,21 +436,21 @@ export default function TeacherCourseGroupPage() {
 
     const sections: { key: string; topicId: number | null; title: string; items: Assignment[] }[] = [];
 
-    for (const tp of localTopics) {
-      sections.push({
-        key: `t-${tp.id}`,
-        topicId: tp.id,
-        title: tp.title,
-        items: filtered(localAssignments.filter((a) => a.topic_id === tp.id)),
-      });
-    }
-
     if (uncategorized.length > 0) {
       sections.push({
         key: "uncategorized",
         topicId: null,
         title: t("courseTopicUncategorized"),
         items: uncategorized,
+      });
+    }
+
+    for (const tp of localTopics) {
+      sections.push({
+        key: `t-${tp.id}`,
+        topicId: tp.id,
+        title: tp.title,
+        items: filtered(localAssignments.filter((a) => a.topic_id === tp.id)),
       });
     }
 
@@ -472,7 +506,17 @@ export default function TeacherCourseGroupPage() {
     setCollapsedTopics((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const collapseAllTopics = () => {
+  const allSectionsCollapsed = useMemo(() => {
+    if (topicSections.length === 0) return false;
+    return topicSections.every((s) => !!collapsedTopics[s.key]);
+  }, [topicSections, collapsedTopics]);
+
+  const toggleCollapseAllTopics = () => {
+    if (topicSections.length === 0) return;
+    if (topicSections.every((s) => !!collapsedTopics[s.key])) {
+      setCollapsedTopics({});
+      return;
+    }
     const next: Record<string, boolean> = {};
     for (const s of topicSections) {
       next[s.key] = true;
@@ -488,6 +532,13 @@ export default function TeacherCourseGroupPage() {
   const openTeacherCreateAssignment = () => {
     setCreateOpen(false);
     setAssignmentModalMode("assignment");
+    setClonedItemData(null);
+    setAssignmentModalOpen(true);
+  };
+
+  const openTeacherCreateAssignmentWithTest = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignmentWithTest");
     setClonedItemData(null);
     setAssignmentModalOpen(true);
   };
@@ -524,12 +575,6 @@ export default function TeacherCourseGroupPage() {
     setClonedItemData(item);
     setAssignmentModalOpen(true);
   };
-
-  const deadlineLine =
-    nearest?.deadline &&
-    t("teacherCourseCardDeadlineLine")
-      .replace("{when}", formatDueWhen(nearest.deadline, lang))
-      .replace("{title}", nearest.title);
 
   const tabClass = (id: TabId) =>
     `pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
@@ -601,9 +646,6 @@ export default function TeacherCourseGroupPage() {
       </BlurFade>
 
       <div className="flex flex-wrap gap-6 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
-        <button type="button" className={tabClass("stream")} style={{ color: activeTab === "stream" ? undefined : textColors.primary }} onClick={() => setActiveTab("stream")}>
-          {t("courseStream")}
-        </button>
         <button type="button" className={tabClass("classwork")} style={{ color: activeTab === "classwork" ? undefined : textColors.primary }} onClick={() => setActiveTab("classwork")}>
           {t("courseClasswork")}
         </button>
@@ -615,166 +657,10 @@ export default function TeacherCourseGroupPage() {
         </button>
       </div>
 
-      {activeTab === "stream" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
-          <div className="space-y-4">
-            <div className="rounded-2xl p-4" style={{ ...glassStyle }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ color: textColors.primary }}>
-                {t("courseCode")}
-              </h3>
-              <div className="flex items-center justify-between gap-2">
-                <code className="text-lg font-mono font-bold tracking-wider" style={{ color: textColors.primary }}>
-                  {group.id}
-                </code>
-                <button
-                  type="button"
-                  title={t("courseCopyCode")}
-                  onClick={() => navigator.clipboard.writeText(String(group.id))}
-                  className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                  style={{ color: textColors.secondary }}
-                >
-                  <Copy className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-2xl p-4" style={{ ...glassStyle }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ color: textColors.primary }}>
-                {t("upcoming")}
-              </h3>
-              {deadlineLine ? (
-                <p className="text-sm leading-snug" style={{ color: textColors.secondary }}>
-                  {deadlineLine}
-                </p>
-              ) : (
-                <p className="text-sm" style={{ color: textColors.secondary }}>
-                  {t("teacherNoUpcomingDeadline")}
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={() => setActiveTab("classwork")}
-                className="mt-3 text-sm font-medium text-blue-500 hover:underline"
-              >
-                {t("viewAll")}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-4 min-w-0">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {}}
-                disabled
-                className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors opacity-50 cursor-not-allowed"
-                style={{ ...glassStyle, color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)" }}
-                title={t("comingSoon") || "Coming soon"}
-              >
-                {t("newAnnouncement")}
-              </button>
-              <button
-                type="button"
-                onClick={() => {}}
-                disabled
-                className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors opacity-50 cursor-not-allowed"
-                style={{ ...glassStyle, color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)" }}
-                title={t("comingSoon") || "Coming soon"}
-              >
-                {t("republish")}
-              </button>
-            </div>
-
-            <div className="rounded-2xl p-4 sm:p-6 space-y-4" style={{ ...glassStyle }}>
-              <h3 className="text-sm font-semibold" style={{ color: textColors.primary }}>
-                {t("currentAssignments")}
-              </h3>
-              {assignmentsLoading ? (
-                <p className="text-sm" style={{ color: textColors.secondary }}>
-                  {t("loading")}
-                </p>
-              ) : streamItems.length === 0 ? (
-                <p className="text-sm" style={{ color: textColors.secondary }}>
-                  {t("teacherNoAssignments")}
-                </p>
-              ) : (
-                <ul className="space-y-4">
-                  {streamItems.map((item) => (
-                    <li key={`${item.type}-${item.id}`} className="flex gap-3">
-                      <div className="mt-0.5">
-                        <TypeIcon type={item.type} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium leading-snug" style={{ color: textColors.primary }}>
-                          {activityMessage(item, t)}
-                        </p>
-                        <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                          {t("teacherPostedAt").replace("{when}", formatPostedAt(item.created_at, lang))}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {activeTab === "classwork" && (
-        <div className="space-y-6">
-          {/* SECTION 1: Topics management */}
-          <div className="rounded-2xl p-5 sm:p-6" style={{ ...glassStyle }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
-                  {t("courseTopicsSection")}
-                </h2>
-                <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                  {t("courseTopicsSectionHint")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={openTeacherCreateTopic}
-                className="p-2.5 rounded-xl text-white shrink-0"
-                style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}
-                aria-label={t("teacherCreateTopic")}
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
-
-            {topics.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-sm" style={{ color: textColors.secondary }}>
-                  {t("teacherTopicEmptyHint")}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {topics.map((tp) => (
-                  <div
-                    key={tp.id}
-                    className="flex items-center justify-between p-3 rounded-xl border"
-                    style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
-                  >
-                    <span className="font-medium text-sm" style={{ color: textColors.primary }}>
-                      {tp.title}
-                    </span>
-                    <span className="text-xs px-2 py-1 rounded-lg" style={{ background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", color: textColors.secondary }}>
-                      {localAssignments.filter((a) => a.topic_id === tp.id).length} {t("tasksCount")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* SECTION 2: Assignments and materials */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative" ref={createRef}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative" ref={createRef}>
               <button
                 type="button"
                 aria-expanded={createOpen}
@@ -812,6 +698,7 @@ export default function TeacherCourseGroupPage() {
                       style={{ color: textColors.primary }}
                       onClick={() => {
                         if (key === "teacherCreateAssignment") openTeacherCreateAssignment();
+                        else if (key === "teacherCreateAssignmentWithTest") openTeacherCreateAssignmentWithTest();
                         else if (key === "teacherCreateMaterial") openTeacherCreateMaterial();
                         else if (key === "teacherCreateQuestion") openTeacherCreateQuestion();
                         else if (key === "teacherCreateTopic") openTeacherCreateTopic();
@@ -871,23 +758,14 @@ export default function TeacherCourseGroupPage() {
               ) : null}
             </div>
 
+
             <button
               type="button"
-              onClick={() => {}}
-              disabled
-              className="text-sm font-medium px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 opacity-50 cursor-not-allowed"
-              style={{ color: textColors.secondary }}
-              title={t("comingSoon") || "Coming soon"}
-            >
-              {t("viewYourWork")}
-            </button>
-            <button
-              type="button"
-              onClick={collapseAllTopics}
+              onClick={toggleCollapseAllTopics}
               className="text-sm font-medium px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
               style={{ color: textColors.secondary }}
             >
-              {t("collapseAll")}
+              {allSectionsCollapsed ? t("expandAll") : t("collapseAll")}
             </button>
           </div>
 
@@ -937,22 +815,50 @@ export default function TeacherCourseGroupPage() {
                                   <h3 className="flex-1 text-sm font-semibold font-geologica min-w-0 truncate" style={{ color: textColors.primary }}>
                                     {section.title}
                                   </h3>
-                                  <div className="relative group">
+                                  <div className="relative" ref={section.topicId ? (activeTopicMenu === section.topicId ? topicMenuRef : null) : null}>
                                     <button
                                       type="button"
                                       className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 opacity-60"
                                       aria-label={t("teacherMoreOptions")}
-                                      onClick={() => {}}
-                                      disabled
-                                      title={t("comingSoon") || "Coming soon"}
+                                      onClick={() => {
+                                        if (section.topicId) {
+                                          setActiveTopicMenu(activeTopicMenu === section.topicId ? null : section.topicId);
+                                        }
+                                      }}
                                     >
                                       <MoreVertical className="w-5 h-5" style={{ color: textColors.secondary }} />
                                     </button>
-                                    <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50 min-w-[140px] rounded-xl py-1 shadow-xl border" style={{ ...glassStyle }}>
-                                      <button className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10" style={{ color: textColors.primary }}>Переименовать</button>
-                                      <button className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10" style={{ color: textColors.primary }}>Удалить</button>
-                                      <button className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10" style={{ color: textColors.primary }}>Переместить</button>
-                                    </div>
+                                    {section.topicId && activeTopicMenu === section.topicId && (
+                                      <div 
+                                        className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-xl py-1 shadow-xl border animate-in fade-in zoom-in duration-100" 
+                                        style={{ ...glassStyle }}
+                                      >
+                                        <button 
+                                          className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10" 
+                                          style={{ color: textColors.primary }}
+                                          onClick={() => {
+                                            const tp = localTopics.find(t => t.id === section.topicId);
+                                            if (tp) {
+                                              setRenamingTopic(tp);
+                                              setRenameTitle(tp.title);
+                                              setRenameTopicModalOpen(true);
+                                            }
+                                            setActiveTopicMenu(null);
+                                          }}
+                                        >
+                                          Переименовать
+                                        </button>
+                                        <button 
+                                          className="w-full text-left px-4 py-2 text-xs hover:bg-red-500/10 text-red-500" 
+                                          onClick={() => {
+                                            setTopicIdPendingDelete(section.topicId!);
+                                            setActiveTopicMenu(null);
+                                          }}
+                                        >
+                                          Удалить
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 {!collapsed && (
@@ -1205,7 +1111,7 @@ export default function TeacherCourseGroupPage() {
                                                                           } catch {
                                                                             // Keep raw url as a fallback label
                                                                           }
-                                                                          const label = lower.includes("forms") ? "Google Формы" : host;
+                                                                          const label = lower.includes("forms") ? t("googleForms") : host;
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1277,7 +1183,7 @@ export default function TeacherCourseGroupPage() {
                                                                           } catch {
                                                                             // Keep raw url as a fallback label
                                                                           }
-                                                                          const label = lower.includes("forms") ? "Google Формы" : host;
+                                                                          const label = lower.includes("forms") ? t("googleForms") : host;
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1337,7 +1243,6 @@ export default function TeacherCourseGroupPage() {
               </DragDropContext>
             )}
           </div>
-          </div>
         </div>
       )}
 
@@ -1354,7 +1259,7 @@ export default function TeacherCourseGroupPage() {
                 disabled
                 className="text-sm font-medium px-3 py-2 rounded-xl border opacity-50 cursor-not-allowed"
                 style={{ borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)", color: textColors.primary }}
-                title={t("comingSoon") || "Coming soon"}
+                title={t("courseSoon")}
               >
                 {t("inviteTeacher")}
               </button>
@@ -1407,7 +1312,7 @@ export default function TeacherCourseGroupPage() {
                 disabled
                 className="px-3 py-1.5 rounded-lg text-sm border opacity-50 cursor-not-allowed"
                 style={{ borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)", color: textColors.primary }}
-                title={t("comingSoon") || "Coming soon"}
+                title={t("courseSoon")}
               >
                 {t("actions")}
               </button>
@@ -1439,7 +1344,7 @@ export default function TeacherCourseGroupPage() {
                       {s.email}
                     </p>
                   </div>
-                  <button type="button" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 opacity-50" aria-label={t("teacherMoreOptions")} onClick={() => {}} disabled title={t("comingSoon") || "Coming soon"}>
+                  <button type="button" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 opacity-50" aria-label={t("teacherMoreOptions")} onClick={() => {}} disabled title={t("courseSoon")}>
                     <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
                   </button>
                 </li>
@@ -1449,40 +1354,14 @@ export default function TeacherCourseGroupPage() {
         </div>
       )}
 
-      {activeTab === "grades" && (
-        <div className="rounded-2xl p-10 sm:p-14 flex flex-col items-center text-center max-w-lg mx-auto" style={{ ...glassStyle }}>
-          <div className="mb-6 text-blue-500/90">
-            <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <defs>
-                <linearGradient id="g1" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#3B82F6" />
-                  <stop offset="1" stopColor="#8B5CF6" />
-                </linearGradient>
-              </defs>
-              <circle cx="60" cy="60" r="52" fill="url(#g1)" opacity="0.15" />
-              <path
-                d="M38 78 L52 64 L66 74 L82 48"
-                stroke="url(#g1)"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              <circle cx="82" cy="48" r="4" fill="url(#g1)" />
-            </svg>
-          </div>
-          <p className="text-base leading-relaxed" style={{ color: textColors.primary }}>
-            {t("gradesEmptyHint")}
-          </p>
-          <button
-            type="button"
-            onClick={() => setActiveTab("people")}
-            className="mt-6 text-sm font-semibold text-blue-500 hover:underline"
-          >
-            {t("inviteStudents")}
-          </button>
+      {activeTab === "grades" && Number.isFinite(groupId) && group ? (
+        <div className="rounded-2xl p-4 sm:p-6" style={{ ...glassStyle }}>
+          <h2 className="mb-4 font-geologica text-lg font-bold sm:text-xl" style={{ color: textColors.primary }}>
+            {t("courseGrades")}
+          </h2>
+          <TeacherGradebook groupId={groupId} />
         </div>
-      )}
+      ) : null}
 
       {addStudentOpen && group ? (
         <div
@@ -1592,7 +1471,7 @@ export default function TeacherCourseGroupPage() {
           >
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-semibold font-geologica" style={{ color: textColors.primary }}>
-                Добавить тему
+                {t("teacherAddTopic")}
               </h3>
               <button
                 type="button"
@@ -1607,7 +1486,7 @@ export default function TeacherCourseGroupPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Тема*"
+                    placeholder={`${t("teacherCreateTopic")}*`}
                     value={topicTitle}
                     maxLength={100}
                     onChange={(e) => setTopicTitle(e.target.value)}
@@ -1625,8 +1504,40 @@ export default function TeacherCourseGroupPage() {
                   </div>
                 </div>
                 {topicTitleTouched && !topicTitle.trim() && (
-                  <p className="text-xs text-red-500 ml-1">*Это поле должно быть заполнено</p>
+                  <p className="text-xs text-red-500 ml-1">*{t("fieldRequired")}</p>
                 )}
+              </div>
+
+              {/* Quick topics suggestions */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider opacity-60" style={{ color: textColors.secondary }}>
+                  {t("teacherCourseTopics")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    t("topicSuggestion1"),
+                    t("topicSuggestion2"),
+                    t("topicSuggestion3"),
+                    t("topicSuggestion4"),
+                    t("topicSuggestion5"),
+                    t("topicSuggestion6"),
+                    t("topicSuggestion7"),
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => setTopicTitle(suggestion)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-blue-500 hover:text-white hover:border-blue-500"
+                      style={{ 
+                        borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+                        color: textColors.primary,
+                        background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)"
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
@@ -1639,7 +1550,7 @@ export default function TeacherCourseGroupPage() {
                   color: textColors.secondary,
                 }}
               >
-                Отмена
+                {t("teacherCancel")}
               </button>
               <button
                 type="button"
@@ -1648,7 +1559,141 @@ export default function TeacherCourseGroupPage() {
                 className="flex-1 py-2.5 rounded-xl text-white font-medium text-sm disabled:opacity-50 transition-all hover:shadow-lg"
                 style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
               >
-                {createTopicMutation.isPending ? "Добавление..." : "Добавить тему"}
+                {createTopicMutation.isPending ? t("teacherAdding") : t("teacherAddTopic")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {topicIdPendingDelete !== null && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200"
+          onClick={() => !deleteTopicMutation.isPending && setTopicIdPendingDelete(null)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border animate-in zoom-in-95 duration-200"
+            style={{
+              ...modalStyle,
+              borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => !deleteTopicMutation.isPending && setTopicIdPendingDelete(null)}
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              style={{ color: textColors.secondary }}
+              aria-label={t("back")}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="p-8 text-center">
+              <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle className="w-10 h-10 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 font-geologica" style={{ color: textColors.primary }}>
+                {t("confirmDelete")}
+              </h3>
+              <p className="text-sm mb-8 px-4 leading-relaxed" style={{ color: textColors.secondary }}>
+                {t("teacherDeleteTopicConfirm")}
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => deleteTopicMutation.mutate(topicIdPendingDelete)}
+                  disabled={deleteTopicMutation.isPending}
+                  className="w-full py-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold transition-all shadow-lg shadow-red-500/30 flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {deleteTopicMutation.isPending ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-5 h-5" />
+                  )}
+                  {t("delete")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTopicIdPendingDelete(null)}
+                  disabled={deleteTopicMutation.isPending}
+                  className="w-full py-4 rounded-2xl font-semibold transition-all flex items-center justify-center gap-2"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+                    color: textColors.primary,
+                  }}
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  {t("back")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameTopicModalOpen && renamingTopic && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
+          onClick={() => setRenameTopicModalOpen(false)}
+        >
+          <div
+            className="rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 animate-slide-up"
+            style={modalStyle}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold font-geologica" style={{ color: textColors.primary }}>
+                {t("teacherRenameTopic")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setRenameTopicModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" style={{ color: textColors.secondary }} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={`${t("teacherCreateTopic")}*`}
+                    value={renameTitle}
+                    maxLength={100}
+                    onChange={(e) => setRenameTitle(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/40"
+                    style={{ ...inputStyle, color: textColors.primary }}
+                  />
+                  <div
+                    className="absolute right-3 bottom-3 text-[10px] opacity-50"
+                    style={{ color: textColors.secondary }}
+                  >
+                    {renameTitle.length}/100
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setRenameTopicModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{
+                  background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)",
+                  color: textColors.secondary,
+                }}
+              >
+                {t("teacherCancel")}
+              </button>
+              <button
+                type="button"
+                disabled={renameTopicMutation.isPending || !renameTitle.trim() || renameTitle === renamingTopic.title}
+                onClick={() => renameTopicMutation.mutate({ id: renamingTopic.id, title: renameTitle })}
+                className="flex-1 py-2.5 rounded-xl text-white font-medium text-sm disabled:opacity-50 transition-all hover:shadow-lg"
+                style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
+              >
+                {renameTopicMutation.isPending ? t("teacherSaving") : t("teacherSave")}
               </button>
             </div>
           </div>
@@ -1732,7 +1777,7 @@ function ReuseItemDialog({
       >
         <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
           <h3 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
-            {selectedGroup ? `Выберите запись (${selectedGroup.group_name})` : "Выберите курс"}
+            {selectedGroup ? `${t("reuseSelectRecord")} (${selectedGroup.group_name})` : t("reuseSelectCourse")}
           </h3>
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10">
             <X className="w-5 h-5" style={{ color: textColors.secondary }} />
@@ -1758,7 +1803,7 @@ function ReuseItemDialog({
                     <p className="font-semibold truncate" style={{ color: textColors.primary }}>{g.group_name}</p>
                     <p className="text-xs truncate" style={{ color: textColors.secondary }}>{g.course_title}</p>
                     <p className="text-[10px] mt-1 opacity-60" style={{ color: textColors.secondary }}>
-                      Создано: {formatPostedAt(g.created_at, lang)}
+                      {t("createdLabel")}: {formatPostedAt(g.created_at, lang)}
                     </p>
                   </div>
                 </button>
@@ -1770,13 +1815,13 @@ function ReuseItemDialog({
                 onClick={() => setSelectedGroup(null)}
                 className="text-sm font-medium text-blue-500 hover:underline mb-4 flex items-center gap-1"
               >
-                ← Назад к выбору курса
+                ← {t("reuseBackToSelection")}
               </button>
               
               {itemsLoading ? (
-                <p className="text-center py-10" style={{ color: textColors.secondary }}>Загрузка...</p>
+                <p className="text-center py-10" style={{ color: textColors.secondary }}>{t("loading")}</p>
               ) : items.length === 0 ? (
-                <p className="text-center py-10" style={{ color: textColors.secondary }}>В этом курсе записей нет.</p>
+                <p className="text-center py-10" style={{ color: textColors.secondary }}>{t("reuseNoRecords")}</p>
               ) : (
                 items.map((item) => (
                   <button
@@ -1807,7 +1852,7 @@ function ReuseItemDialog({
               className="w-4 h-4 rounded accent-blue-500"
             />
             <span className="text-sm font-medium" style={{ color: textColors.primary }}>
-              Скопировать все прикрепленные файлы
+              {t("reuseCopyAttachments")}
             </span>
           </label>
         </div>

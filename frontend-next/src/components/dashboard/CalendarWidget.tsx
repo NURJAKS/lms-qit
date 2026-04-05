@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
 import { cn } from "@/lib/utils";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
@@ -32,6 +33,8 @@ const EVENT_COLORS_DARK = [
 
 export function CalendarWidget() {
   const { t, lang } = useLanguage();
+  const { user } = useAuthStore();
+  const userId = user?.id;
   const { theme } = useTheme();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -63,11 +66,12 @@ export function CalendarWidget() {
   });
 
   const { data: enrollments = [] } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", userId],
     queryFn: async () => {
       const { data } = await api.get<Array<{ course_id: number; course?: { id: number; title: string } }>>("/courses/my/enrollments");
       return data;
     },
+    enabled: userId != null,
   });
 
   const addMutation = useMutation({

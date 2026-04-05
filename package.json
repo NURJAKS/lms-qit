@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "start": "bash ./start.sh",
+    "dev": "bash ./start.sh"
+  },
   "devDependencies": {
     "shadcn": "^3.8.5"
   }

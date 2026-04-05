@@ -59,6 +59,7 @@ def main() -> None:
     parser.add_argument("--email", default=None, help="If omitted, will be auto-generated.")
     parser.add_argument("--password", default="student123")
     parser.add_argument("--courses-count", type=int, default=2)
+    parser.add_argument("--course-id", type=int, default=None, help="Enroll only in this course (ignores --courses-count).")
     parser.add_argument("--teacher-id", type=int, default=None, help="Use specific teacher for groups.")
     args = parser.parse_args()
 
@@ -69,11 +70,24 @@ def main() -> None:
         if not teacher:
             raise RuntimeError("No teacher found in DB. Run `python seed_data.py` first.")
 
-        courses = _pick_courses_with_topics(db, limit=max(1, args.courses_count))
-        if len(courses) < 1:
-            raise RuntimeError("No active courses with topics found. Run `python seed_data.py` first.")
+        if args.course_id is not None:
+            course = (
+                db.query(Course)
+                .filter(Course.id == args.course_id, Course.is_active == True)  # noqa: E712
+                .first()
+            )
+            if not course:
+                raise RuntimeError(f"Active course id={args.course_id} not found.")
+            has_topics = db.query(CourseTopic).filter(CourseTopic.course_id == course.id).first() is not None
+            if not has_topics:
+                raise RuntimeError(f"Course id={args.course_id} has no topics.")
+            selected_courses = [course]
+        else:
+            courses = _pick_courses_with_topics(db, limit=max(1, args.courses_count))
+            if len(courses) < 1:
+                raise RuntimeError("No active courses with topics found. Run `python seed_data.py` first.")
 
-        selected_courses = courses[: max(1, args.courses_count)]
+            selected_courses = courses[: max(1, args.courses_count)]
 
         base_email = args.email or f"test_student_purchased_{uuid.uuid4().hex[:10]}@edu.kz"
         email = base_email

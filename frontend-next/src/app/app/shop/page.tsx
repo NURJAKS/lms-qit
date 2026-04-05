@@ -372,6 +372,20 @@ export default function ShopPage() {
     },
   });
 
+  const deletePurchaseMutation = useMutation({
+    mutationFn: async (purchaseId: number) => {
+      await api.delete(`/shop/purchases/${purchaseId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shop-my-purchases"] });
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
+      const errorMessage = err?.response?.data?.detail || err?.message || t("shopDeletePurchaseError");
+      alert(errorMessage);
+    },
+  });
+
   const handlePurchase = (item: ShopItem) => {
     if (points < item.price_coins) return;
     setPendingPurchase({ type: "single", itemId: item.id });
@@ -565,9 +579,20 @@ export default function ShopPage() {
                       />
                     )}
                     {p.delivery_status === "cancelled" && (
-                      <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(239, 68, 68, 0.1)", color: "#EF4444" }}>
-                        <X className="w-3.5 h-3.5" />
-                        <span>{t("shopOrderCancelled")}</span>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(239, 68, 68, 0.1)", color: "#EF4444" }}>
+                          <X className="w-3.5 h-3.5" />
+                          <span>{t("shopOrderCancelled")}</span>
+                        </div>
+                        <DeleteConfirmButton
+                          onDelete={() => deletePurchaseMutation.mutate(p.id)}
+                          isLoading={deletePurchaseMutation.isPending}
+                          text={t("shopDeletePurchase")}
+                          title={t("shopDeletePurchaseConfirm")}
+                          description={t("confirmDelete")}
+                          size="sm"
+                          className="w-full justify-center"
+                        />
                       </div>
                     )}
                   </div>

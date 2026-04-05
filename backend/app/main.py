@@ -13,7 +13,8 @@ from app.core.database import engine, Base
 from app.core.migrations import run_migrations
 from app.core.config import settings
 from app.models import *  # noqa: F401 - register all models
-from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community
+from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community, private_comments
+from app.api.routes import analytics_student as analytics_student_insights
 from app.jobs.daily_rewards import run_daily_leaderboard_rewards
 
 limiter = Limiter(key_func=get_remote_address)
@@ -83,11 +84,13 @@ app.include_router(student_analytics.router, prefix="/api")
 app.include_router(parent.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(assignments.router, prefix="/api")
+app.include_router(private_comments.router, prefix="/api")
 app.include_router(shop.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(premium.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(community.router, prefix="/api")
+app.include_router(analytics_student_insights.router, prefix="/api")
 
 
 @app.get("/")

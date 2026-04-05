@@ -1,35 +1,8 @@
-import csv
+from typing import List, Any, Optional, Iterable
 import io
-from typing import Any, Iterable, List, Dict
+from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
-from fastapi.responses import StreamingResponse
-
-def generate_csv_response(
-    data: Iterable[List[Any]], 
-    filename: str, 
-    headers: List[str] | None = None
-) -> StreamingResponse:
-    """
-    Generates a StreamingResponse for a CSV file.
-    Includes UTF-8 BOM for Excel compatibility.
-    """
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    if headers:
-        writer.writerow(headers)
-    
-    for row in data:
-        writer.writerow(row)
-        
-    # Prepend UTF-8 BOM
-    content = "\ufeff" + output.getvalue()
-    return StreamingResponse(
-        iter([content.encode("utf-8")]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename={filename}.csv"},
-    )
 
 def generate_xlsx_response(
     data: Iterable[List[Any]], 

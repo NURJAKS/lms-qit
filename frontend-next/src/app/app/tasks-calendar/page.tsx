@@ -127,7 +127,7 @@ export default function TasksCalendarPage() {
     },
   });
 
-  const { data: assignments = [] } = useQuery({
+  const { data: assignments = [], isPending: assignmentsPending } = useQuery({
     queryKey: ["my-assignments"],
     queryFn: async () => {
       const { data } = await api.get<Assignment[]>("/assignments/my");
@@ -181,11 +181,12 @@ export default function TasksCalendarPage() {
   const isAdmin = user?.role && ["admin", "director", "curator"].includes(user.role);
 
   const { data: enrollments = [] } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", user?.id],
     queryFn: async () => {
       const { data } = await api.get<Array<{ course_id: number; course?: { id: number; title: string } }>>("/courses/my/enrollments");
       return data;
     },
+    enabled: user?.id != null,
   });
 
   const { data: allCourses = [] } = useQuery({
@@ -250,10 +251,10 @@ export default function TasksCalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-events"] });
       setSelectedEvent(null);
-      alert(t("scheduleDeleted") || "Удалено");
+      alert(t("scheduleDeleted"));
     },
     onError: (err) => {
-      alert(t("scheduleDeleteError") || "Ошибка удаления");
+      alert(t("scheduleDeleteError"));
     },
   });
 
@@ -391,7 +392,7 @@ export default function TasksCalendarPage() {
                 {t("tasksCalendar")}
               </h1>
               <p className="text-white/80 text-lg font-medium max-w-md">
-                {t("tasksCalendarSubtitle") || "Управляйте своими задачами и расписанием в интерактивном режиме"}
+                {t("tasksCalendarSubtitle")}
               </p>
             </div>
             <button
@@ -405,45 +406,8 @@ export default function TasksCalendarPage() {
         </div>
       </BlurFade>
 
-      {/* Tabs */}
-      <BlurFade delay={0.15}>
-        <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
-        <button
-          type="button"
-          onClick={() => setActiveTab("by-date")}
-          className={cn(
-            "flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl font-medium transition-all min-h-[2.5rem]",
-            activeTab === "by-date"
-              ? "text-white shadow-md"
-              : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-          )}
-          style={activeTab === "by-date" ? { background: "var(--qit-primary)" } : undefined}
-        >
-          <Calendar className="w-5 h-5" />
-          {t("tasksCalendarByDate")}
-        </button>
-        {user?.role !== "teacher" && (
-          <button
-            type="button"
-            onClick={() => setActiveTab("all-assignments")}
-            className={cn(
-              "flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl font-medium transition-all min-h-[2.5rem]",
-              activeTab === "all-assignments"
-                ? "text-white shadow-md"
-                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            )}
-            style={activeTab === "all-assignments" ? { background: "var(--qit-primary)" } : undefined}
-          >
-            <FileText className="w-5 h-5" />
-            {t("tasksCalendarAllAssignments")}
-          </button>
-        )}
-      </div>
-      </BlurFade>
-
       {/* Tab: By Date - Calendar and Add Panel Side by Side */}
-      {activeTab === "by-date" && (
-        <BlurFade delay={0.2}>
+      <BlurFade delay={0.2}>
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 sm:gap-6">
           {/* Календарь слева */}
           <div className="lg:col-span-1">
@@ -502,8 +466,7 @@ export default function TasksCalendarPage() {
             />
           </div>
         </div>
-        </BlurFade>
-      )}
+      </BlurFade>
 
       {/* Event Details Modal: pass live event from schedule so modal updates after toggle/edit */}
       {selectedEvent && (
@@ -540,216 +503,6 @@ export default function TasksCalendarPage() {
           topics={topicsForSelect}
           isUpdating={updateMutation.isPending || deleteMutation.isPending || toggleMutation.isPending}
         />
-      )}
-
-      {/* Tab: All Assignments */}
-      {activeTab === "all-assignments" && (
-        <BlurFade delay={0.2}>
-          <div className="space-y-8">
-          {pending.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">{t("assignmentsToSubmit")}</h2>
-              <div className="space-y-4">
-                {pending.map((a) => (
-                  <div
-                    key={a.id}
-                    className="bg-white dark:bg-gray-800 rounded-[20px] border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-md hover:shadow-lg transition-all"
-                  >
-                    <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
-                      <div className="flex gap-3 sm:gap-4 min-w-0 flex-1">
-                        <div
-                          className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-white"
-                          style={{ background: "var(--qit-gradient-3)" }}
-                        >
-                          <FileText className="w-6 h-6" />
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="font-medium text-gray-800 dark:text-white">
-                            <span className="text-[var(--qit-primary)] font-bold">{t("assignmentTopic")}:</span> {a.title}
-                          </h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            <span className="font-medium">{t("assignmentCourse")}:</span> {getLocalizedCourseTitle({ title: a.course_title } as any, t)}
-                          </p>
-                          {a.deadline && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                              {t("assignmentDeadline")}: {new Date(a.deadline).toLocaleDateString(locale)}
-                            </p>
-                          )}
-                          {a.description && (
-                            <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
-                              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-                                {t("assignmentCriteria")}:
-                              </p>
-                              <div
-                                className="text-sm text-gray-600 dark:text-gray-300 break-words"
-                                dangerouslySetInnerHTML={{ __html: a.description }}
-                              />
-                            </div>
-                          )}
-                          {((a.attachment_urls?.length ?? 0) > 0 || (a.attachment_links?.length ?? 0) > 0) && (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {a.attachment_urls?.map((u, i) => (
-                                <a
-                                  key={`url-${i}`}
-                                  href={u}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-[var(--qit-primary)] hover:underline"
-                                >
-                                  <Paperclip className="w-3 h-3" /> {u.split("/").pop()}
-                                </a>
-                              ))}
-                              {a.attachment_links?.map((link, i) => (
-                                <a
-                                  key={`link-${i}`}
-                                  href={link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-[var(--qit-primary)] hover:underline"
-                                >
-                                  <LinkIcon className="w-3 h-3" /> {link.slice(0, 40)}...
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {submittingId === a.id ? (
-                        <div className="w-full lg:max-w-md space-y-3">
-                          <textarea
-                            value={submitText}
-                            onChange={(e) => setSubmitText(e.target.value)}
-                            placeholder={t("assignmentPlaceholder")}
-                            className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white"
-                            rows={5}
-                          />
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              {t("assignmentAttachFiles")} ({submitFileUrls.length}/5)
-                            </p>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.pdf,.doc,.docx,.txt"
-                                onChange={(e) => handleUploadSubmissionFile(a.id, e)}
-                                className="hidden"
-                                disabled={submitFileUrls.length >= 5 || uploadingFile}
-                              />
-                              <Paperclip className="w-4 h-4 text-gray-500" />
-                              <span className="text-sm text-[var(--qit-primary)] hover:underline">
-                                {uploadingFile ? t("loading") : t("assignmentUploadFile")}
-                              </span>
-                            </label>
-                            {submitFileUrls.length > 0 && (
-                              <ul className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                                {submitFileUrls.map((u, i) => (
-                                  <li key={i} className="flex items-center gap-2">
-                                    <a href={u} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">
-                                      {u.split("/").pop()}
-                                    </a>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSubmitFileUrls((prev) => prev.filter((_, j) => j !== i))}
-                                      className="text-red-500 shrink-0"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                submitMutation.mutate({
-                                  id: a.id,
-                                  submission_text: submitText,
-                                  file_urls: submitFileUrls,
-                                })
-                              }
-                              disabled={submitMutation.isPending}
-                              className="flex items-center gap-1 py-2 px-3 rounded-lg bg-[var(--qit-primary)] text-white text-sm hover:opacity-90 min-h-[2.5rem]"
-                            >
-                              <Send className="w-4 h-4" /> {t("assignmentSubmit")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubmittingId(null);
-                                setSubmitText("");
-                                setSubmitFileUrls([]);
-                              }}
-                              className="py-2 px-3 rounded-lg border dark:border-gray-600 text-sm min-h-[2.5rem]"
-                            >
-                              {t("cancel")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubmittingId(a.id);
-                            setSubmitText("");
-                            setSubmitFileUrls([]);
-                          }}
-                          className="py-2.5 px-4 rounded-lg bg-[var(--qit-primary)] text-white text-sm hover:opacity-90 min-h-[2.5rem] w-full sm:w-auto"
-                        >
-                          {t("assignmentSubmit")}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {submitted.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">{t("assignmentsSubmitted")}</h2>
-              <div className="space-y-4">
-                {submitted.map((a) => (
-                  <div
-                    key={a.id}
-                    className="bg-white dark:bg-gray-800 rounded-[20px] border border-gray-200 dark:border-gray-700 p-5 shadow-md hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-white"
-                        style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
-                      >
-                        <CheckCircle className="w-6 h-6" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-gray-800 dark:text-white">{a.title}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{getLocalizedCourseTitle({ title: a.course_title } as any, t)}</p>
-                        {a.grade != null && (
-                          <p className="text-sm font-medium text-[var(--qit-primary)] mt-1">
-                            {t("assignmentGrade")}: {a.grade}
-                            {a.grade >= 90 && (
-                              <span className="ml-2 text-green-600 dark:text-green-400">{t("assignmentCoinsBonus")}</span>
-                            )}
-                          </p>
-                        )}
-                        {a.teacher_comment && (
-                          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{a.teacher_comment}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {assignments.length === 0 && (
-            <p className="text-gray-500 dark:text-gray-400">{t("assignmentNoTasks")}</p>
-          )}
-        </div>
-        </BlurFade>
       )}
     </div>
   );

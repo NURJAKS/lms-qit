@@ -24,3 +24,4 @@ class CourseTopic(Base):
     study_schedules = relationship("StudySchedule", back_populates="topic")
     assignments = relationship("TeacherAssignment", back_populates="topic")
     teacher_materials = relationship("TeacherMaterial", back_populates="topic")
+    teacher_questions = relationship("TeacherQuestion", back_populates="topic")

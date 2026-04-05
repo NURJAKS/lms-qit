@@ -52,7 +52,12 @@ export function AiAssistantWidget() {
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm">{t("aiAssistant")}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm">{t("aiAssistant")}</h3>
+                <span className="text-[9px] bg-white/20 px-1 py-0.5 rounded uppercase tracking-wider font-bold">
+                  AI
+                </span>
+              </div>
               <span className="text-xs text-white/80">{t("askAiHomework")}</span>
             </div>
           </div>

@@ -53,7 +53,7 @@ export function ActivityFeedWidget() {
             subtext: `${t("activitySubtext_submitted")} ${s.assignment_title}`,
             group: s.group_name,
             time: s.submitted_at,
-            link: `/app/teacher/assignment/${s.assignment_id}`
+            link: `/app/teacher/view-answers/${s.assignment_id}`
           }));
         } else {
           const { data } = await api.get<Array<any>>("/dashboard/events");

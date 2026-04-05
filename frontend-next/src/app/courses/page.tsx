@@ -181,12 +181,12 @@ function CatalogPageContent() {
   });
 
   const { data: enrollments = [], isLoading: enrollmentsLoading } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", user?.id],
     queryFn: async () => {
       const { data } = await api.get<Array<{ course_id: number }>>("/courses/my/enrollments");
       return data;
     },
-    enabled: !!token,
+    enabled: !!token && user?.id != null,
   });
   const enrolledIds = new Set(enrollments.map((e) => e.course_id));
   const regularCourses = courses.filter((c) => !c.is_premium_only);
@@ -260,7 +260,7 @@ function CatalogPageContent() {
     
     // Проверка данных карты
     if (!cardData.number || !cardData.expiry || !cardData.cvv) {
-      setSubmitError("Пожалуйста, заполните все поля карты");
+      setSubmitError(t("paymentFillAllFields"));
       return;
     }
 
@@ -895,7 +895,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">Kaspi.kz</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Төлемді растау</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentKaspiConfirm")}</p>
                     </div>
                   </button>
 
@@ -913,7 +913,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">Halyk Bank</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Жылдам төлем</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentHalykFast")}</p>
                     </div>
                   </button>
 
@@ -931,7 +931,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">{t("eurasianBank")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
 
@@ -949,7 +949,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">{t("jusan")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
 
@@ -967,7 +967,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">{t("forte")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Банк картасы</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
                     </div>
                   </button>
                 </div>
@@ -1060,11 +1060,11 @@ function CatalogPageContent() {
                     />
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                    {paymentProgress < 30 && "Проверка данных карты..."}
-                    {paymentProgress >= 30 && paymentProgress < 60 && "Подключение к банку..."}
-                    {paymentProgress >= 60 && paymentProgress < 90 && "Обработка платежа..."}
-                    {paymentProgress >= 90 && paymentProgress < 100 && "Завершение транзакции..."}
-                    {paymentProgress >= 100 && "Платеж успешно обработан!"}
+                    {paymentProgress < 30 && t("catalogPaymentProgressVerifyCard")}
+                    {paymentProgress >= 30 && paymentProgress < 60 && t("catalogPaymentProgressBank")}
+                    {paymentProgress >= 60 && paymentProgress < 90 && t("catalogPaymentProgressPay")}
+                    {paymentProgress >= 90 && paymentProgress < 100 && t("catalogPaymentProgressFinalize")}
+                    {paymentProgress >= 100 && t("catalogPaymentProgressDone")}
                   </p>
                 </div>
               </div>
@@ -1077,14 +1077,14 @@ function CatalogPageContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h3 className="text-2xl font-bold text-emerald-500 mb-3">Оплачено!</h3>
+                <h3 className="text-2xl font-bold text-emerald-500 mb-3">{t("catalogPaymentPaidTitle")}</h3>
                 {user && token ? (
                   <>
                     <p className="text-gray-600 dark:text-gray-300 text-base leading-relaxed mb-3 px-4">
-                      Курс «{buyModal.title}» успешно куплен! Теперь вы можете начать обучение.
+                      {t("catalogPaymentCoursePurchased").replace("{title}", buyModal.title)}
                     </p>
                     <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-8 px-4">
-                      Преподаватель получит уведомление и добавит вас в группу. Курс уже доступен в разделе «Мои курсы».
+                      {t("catalogPaymentCoursePurchasedHint")}
                     </p>
                     <div className="flex gap-4 w-full max-w-sm">
                       <button
@@ -1096,38 +1096,39 @@ function CatalogPageContent() {
                         className="flex-1 min-h-[44px] py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all touch-manipulation"
                         style={{ background: "var(--qit-gradient-1)" }}
                       >
-                        Перейти к курсу
+                        {t("catalogGoToCourse")}
                       </button>
                       <button
                         type="button"
                         onClick={() => closeBuyModal("done")}
                         className="flex-1 min-h-[44px] py-4 rounded-2xl font-bold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors touch-manipulation"
                       >
-                        Закрыть
+                        {t("close")}
                       </button>
                     </div>
                   </>
                 ) : (
                   <>
                     <p className="text-gray-600 dark:text-gray-300 text-base leading-relaxed mb-3 px-4">
-                      Оплата прошла успешно.
+                      {t("catalogPaymentGuestSuccess")}
                     </p>
                     {emailError ? (
                       <div className="w-full max-w-md mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                        <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Письмо не отправлено</p>
+                        <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ {t("catalogEmailNotSentTitle")}</p>
                         <p className="text-yellow-300 text-xs mb-2">{emailError}</p>
                         <p className="text-yellow-200 text-xs">
-                          Проверьте настройки SMTP в <code className="bg-yellow-900/30 px-1 rounded">.env.local</code> и убедитесь, что EMAIL_PASS — это реальный пароль приложения Gmail.
+                          {t("catalogSmtpSetupHint")}
                         </p>
                         {confirmationToken && (
                           <p className="text-yellow-200 text-xs mt-2">
-                            Ссылка для подтверждения: <a href={`${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/confirm-purchase/${confirmationToken}`} className="underline break-all" target="_blank" rel="noopener noreferrer">{typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/confirm-purchase/{confirmationToken}</a>
+                            {t("catalogConfirmPurchaseLink")}{" "}
+                            <a href={`${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/confirm-purchase/${confirmationToken}`} className="underline break-all" target="_blank" rel="noopener noreferrer">{typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/confirm-purchase/{confirmationToken}</a>
                           </p>
                         )}
                       </div>
                     ) : (
                       <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-8 px-4">
-                        На ваш email <span className="text-blue-400 font-semibold">{formData.email}</span> отправлено письмо с просьбой подтвердить покупку. Перейдите по ссылке в письме, чтобы получить логин и пароль.
+                        {t("catalogEmailConfirmBody").replace("{email}", formData.email)}
                       </p>
                     )}
                     <button
@@ -1136,7 +1137,7 @@ function CatalogPageContent() {
                       className="w-full max-w-sm min-h-[44px] py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all touch-manipulation"
                       style={{ background: "var(--qit-gradient-1)" }}
                     >
-                      Платформаға оралу
+                      {t("paymentReturnToPlatform")}
                     </button>
                   </>
                 )}

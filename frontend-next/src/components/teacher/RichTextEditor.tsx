@@ -6,6 +6,8 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import { useEffect } from "react";
 import { Bold, Italic, List, ListOrdered } from "lucide-react";
+import Underline from "@tiptap/extension-underline";
+import Strike from "@tiptap/extension-strike";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
 
@@ -49,6 +51,28 @@ function Toolbar({ editor, t }: { editor: Editor | null; t: (key: TranslationKey
       >
         <ListOrdered className="w-4 h-4" />
       </button>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        className={`p-2 rounded ${editor.isActive("underline") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
+        title="Underline"
+      >
+        <span className="block text-sm leading-none" style={{ textDecoration: "underline" }}>
+          U
+        </span>
+      </button>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        className={`p-2 rounded ${editor.isActive("strike") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
+        title="Strikethrough"
+      >
+        <span className="block text-sm leading-none" style={{ textDecoration: "line-through" }}>
+          S
+        </span>
+      </button>
     </div>
   );
 }
@@ -69,6 +93,8 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
+      Underline,
+      Strike,
       Image.configure({ inline: false }),
       Link.configure({ openOnClick: false }),
     ],

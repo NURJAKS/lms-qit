@@ -838,25 +838,6 @@ export default function TeacherPage() {
     }));
   };
 
-  const handleExportCsv = async (groupId: number) => {
-    try {
-      const { data } = await api.get(`/teacher/groups/${groupId}/progress/csv`, {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(data as Blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `group_${groupId}_progress.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to export CSV:", error);
-      const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
-      alert(errorMessage);
-    }
-  };
-
   const handleExportExcel = async (groupId: number) => {
     try {
       const { data } = await api.get(`/teacher/groups/${groupId}/progress/excel`, {
@@ -871,7 +852,7 @@ export default function TeacherPage() {
     } catch (error) {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const errorMessage = err?.response?.data?.detail || err?.message || t("csvExportError");
+      const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
       alert(errorMessage);
     }
   };
@@ -899,7 +880,6 @@ export default function TeacherPage() {
 
   const tabItems = [
     { key: "groups" as const, icon: Users, label: t("teacherGroups"), count: groups.length },
-    { key: "assignments" as const, icon: BookOpen, label: t("teacherAssignments"), count: assignments.length },
     { key: "students" as const, icon: GraduationCap, label: t("profileStudents"), count: allStudents.length },
     { key: "requests" as const, icon: ListTodo, label: t("teacherRequests"), count: addStudentTasks.length },
   ];
@@ -926,7 +906,7 @@ export default function TeacherPage() {
               {t("teacherDashboardGreeting")}
             </h1>
             <p className="text-sm mt-0.5" style={{ color: textColors.secondary }}>
-              {t("teacherGroups")}, {t("teacherAssignments").toLowerCase()}, {t("teacherStudentsList").toLowerCase()}
+              {t("teacherGroups")}, {t("teacherStudentsList").toLowerCase()}
             </p>
           </div>
         </div>
@@ -1158,25 +1138,14 @@ export default function TeacherPage() {
                                 <UserPlus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">{t("teacherAddStudent")}</span>
                                 <span className="xs:hidden">{t("save")}</span>
                               </button>
-                              <div className="flex gap-1">
-                                <ShimmerButton
-                                  onClick={() => handleExportCsv(g.id)}
-                                  background={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(243, 244, 246, 1)"}
-                                  shimmerColor={isDark ? "#ffffff" : "#000000"}
-                                  className="flex items-center gap-1.5 py-2 px-3 rounded-l-lg text-[10px] sm:text-xs font-medium border-0 text-gray-900 dark:text-white"
-                                  borderRadius="8px"
-                                >
-                                  <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">CSV</span>
-                                </ShimmerButton>
-                                <ShimmerButton
-                                  onClick={() => handleExportExcel(g.id)}
-                                  className="flex items-center gap-1.5 py-2 px-3 rounded-r-lg text-white text-[10px] sm:text-xs font-medium border-0 bg-gradient-to-r from-blue-600 to-purple-600"
-                                  shimmerColor="#ffffff"
-                                  borderRadius="8px"
-                                >
-                                  <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Excel</span>
-                                </ShimmerButton>
-                              </div>
+                              <ShimmerButton
+                                onClick={() => handleExportExcel(g.id)}
+                                className="flex items-center gap-1.5 py-2 px-3 rounded-lg text-white text-[10px] sm:text-xs font-medium border-0 bg-gradient-to-r from-blue-600 to-purple-600"
+                                shimmerColor="#ffffff"
+                                borderRadius="8px"
+                              >
+                                <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Excel</span>
+                              </ShimmerButton>
                             </div>
                           </div>
                         </div>

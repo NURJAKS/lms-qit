@@ -404,6 +404,10 @@ const EXACT: Record<string, LocalizedByLang> = {
     ru: { title: "Ручка", description: "Обычная ручка" },
     en: { title: "Pen", description: "Regular pen" },
   },
+  "Қалам": {
+    ru: { title: "Ручка", description: "Обычная ручка" },
+    en: { title: "Pen", description: "Regular pen" },
+  },
   "Көзәйнек": {
     ru: { title: "Очки", description: "Защитные очки" },
     en: { title: "Glasses", description: "Protective glasses" },

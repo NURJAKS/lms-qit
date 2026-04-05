@@ -14,7 +14,7 @@ export default function AIChallengeListPage() {
       return;
     }
     if (user) {
-      // Всегда уводим на "красивый" маршрут игры
+      // Always redirect to the "pretty" game route
       router.replace("/app/ai-challenge/1");
     }
   }, [router, user]);

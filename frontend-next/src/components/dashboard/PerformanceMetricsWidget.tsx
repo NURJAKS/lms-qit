@@ -1,55 +1,12 @@
 "use client";
 
-import { TrendingUp, TrendingDown, BarChart3, Lock } from "lucide-react";
+import { TrendingUp, BarChart3, Lock } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "@/context/ThemeContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getDashboardCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-
-type PerformanceMetric = {
-  name: string;
-  value: number;
-  change: number;
-  isPositive: boolean;
-};
-
-const generateMockMetrics = (): PerformanceMetric[] => {
-  return [
-    {
-      name: "averageScore",
-      value: 87,
-      change: 5,
-      isPositive: true,
-    },
-    {
-      name: "completionRate",
-      value: 92,
-      change: 3,
-      isPositive: true,
-    },
-    {
-      name: "testAccuracy",
-      value: 85,
-      change: -2,
-      isPositive: false,
-    },
-  ];
-};
-
-const getMetricLabel = (name: string, t: (k: string) => string) => {
-  switch (name) {
-    case "averageScore":
-      return t("averageScore");
-    case "completionRate":
-      return t("completionRate");
-    case "testAccuracy":
-      return t("testAccuracy");
-    default:
-      return name;
-  }
-};
 
 export function PerformanceMetricsWidget() {
   const { theme } = useTheme();
@@ -68,14 +25,6 @@ export function PerformanceMetricsWidget() {
 
   const isPremium = data?.is_premium;
   const performance = data?.performance || [];
-  
-  // Transform performance data to metrics format
-  const metrics = performance.slice(-3).map((p: any) => ({
-    name: "avgScore",
-    value: p.avg_quiz_score,
-    change: 0, 
-    isPositive: true
-  }));
 
   if (isLoading) {
     return (
@@ -128,14 +77,14 @@ export function PerformanceMetricsWidget() {
               <div className="flex items-center justify-center gap-1">
                 <TrendingUp className="w-3 h-3 text-green-500" />
                 <span className="text-[10px] font-semibold text-green-500">
-                  {p.topics_completed} тем
+                  {t("topicsCount").replace("{count}", String(p.topics_completed))}
                 </span>
               </div>
             </div>
           ))
         ) : (
           <div className="col-span-3 py-4 text-center text-sm text-gray-500">
-            Нет данных за текущие дни
+            {t("noPerformanceData")}
           </div>
         )}
       </div>
@@ -145,16 +94,16 @@ export function PerformanceMetricsWidget() {
         <div className="absolute inset-0 z-10 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
           <Lock className="w-8 h-8 text-purple-600 mb-2" />
           <h4 className="font-bold text-gray-900 dark:text-white mb-1">
-            {t("premiumAnalyticsTitle") || "Продвинутая аналитика"}
+            {t("premiumAnalyticsTitle")}
           </h4>
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-            {t("premiumAnalyticsDesc") || "Откройте детальные тренды вашего обучения с Premium."}
+            {t("premiumAnalyticsDesc")}
           </p>
           <Link
             href="/app/premium"
             className="px-4 py-2 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 transition-colors"
           >
-            {t("unlockPremium") || "Активировать"}
+            {t("unlockPremium")}
           </Link>
         </div>
       )}

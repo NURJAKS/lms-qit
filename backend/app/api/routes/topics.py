@@ -29,6 +29,23 @@ def _check_enrollment(db: Session, user_id: int, course_id: int) -> None:
         raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
 
 
+def _theory_unlocked(db: Session, user_id: int, topic: CourseTopic) -> bool:
+    """Теория (description) для видео-тем — только после 90% просмотра или завершения темы."""
+    if not (topic.video_url or "").strip():
+        return True
+    prog = db.query(StudentProgress).filter(
+        StudentProgress.user_id == user_id,
+        StudentProgress.topic_id == topic.id,
+    ).first()
+    if prog and prog.is_completed:
+        return True
+    effective_duration = (topic.video_duration or 0) or 300
+    if effective_duration <= 0:
+        return True
+    watched = (prog.video_watched_seconds if prog else 0) or 0
+    return watched / effective_duration >= 0.9
+
+
 @router.get("/{topic_id}", response_model=CourseTopicResponse)
 def get_topic(
     topic_id: int,
@@ -39,7 +56,11 @@ def get_topic(
     if not topic:
         raise HTTPException(status_code=404, detail="Тема не найдена")
     _check_enrollment(db, current_user.id, topic.course_id)
-    return topic
+    unlocked = _theory_unlocked(db, current_user.id, topic)
+    data = CourseTopicResponse.model_validate(topic)
+    if unlocked:
+        return data.model_copy(update={"theory_unlocked": True})
+    return data.model_copy(update={"description": None, "theory_unlocked": False})
 
 
 @router.get("/{topic_id}/test")

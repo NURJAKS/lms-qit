@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -85,51 +85,6 @@ def _serialize_post(post: CommunityPost, current_user: User) -> CommunityPostRes
     )
 
 
-def _seed_demo_posts_if_empty(db: Session) -> None:
-    existing_count = db.query(CommunityPost).count()
-    target_count = 8
-    if existing_count >= target_count:
-        return
-
-    students = (
-        db.query(User)
-        .filter(User.role == "student")
-        .order_by(User.id.asc())
-        .limit(5)
-        .all()
-    )
-    if len(students) < 5:
-        return
-
-    demo_specs = [
-        (0, "tip", "Когда я учился на курсе, мне очень помогал короткий конспект после каждого урока. 5-10 минут на запись экономят часы перед тестами."),
-        (1, "strategy", "Я сначала решаю задачу на бумаге, потом пишу pseudo-code и только потом код. Ошибок становится намного меньше, а логика сразу понятна."),
-        (2, "tip", "Если застрял на задаче, объясни её вслух другому человеку или даже самому себе. Это реально помогает заметить, где именно ты запутался."),
-        (3, "strategy", "После выпуска я перестал учить всё подряд и начал делать маленькие проекты. Так знания закрепляются намного лучше, чем от одного чтения."),
-        (4, "tip", "Не бойтесь задавать вопросы в чате курса. Часто один короткий вопрос экономит целый вечер поиска."),
-        (0, "strategy", "Мой рабочий ритм: 25 минут учу, 5 минут отдыхаю. Такой формат помогает не перегореть и держать фокус до конца занятия."),
-        (1, "tip", "Когда код не запускается, я сначала читаю первую ошибку до конца, а потом уже ищу решение. Это убирает половину лишних догадок."),
-        (2, "strategy", "Выпускникам советую пересматривать старые задания через пару недель. Во второй раз решения уже пишутся намного увереннее."),
-        (3, "tip", "Если тема сложная, найдите в чате студента, который уже понял её, и попросите объяснить простыми словами. Это супер-работает."),
-        (4, "strategy", "Я всегда оставляю заметку 'что я понял сегодня'. Даже одна строка в конце урока помогает потом быстро вспомнить материал."),
-    ]
-
-    demo_posts: list[CommunityPost] = []
-    # Используем недавнее время (последние 2 часа), чтобы подпись «X назад» не вводила в заблуждение
-    base_created_at = datetime.now(timezone.utc) - timedelta(hours=2)
-    for index, (student_index, tag, text) in enumerate(demo_specs[existing_count:target_count], start=existing_count):
-        demo_posts.append(
-            CommunityPost(
-                user_id=students[student_index].id,
-                tag=tag,  # type: ignore[arg-type]
-                text=text,
-                created_at=base_created_at + timedelta(minutes=index * 15),
-            )
-        )
-    db.add_all(demo_posts)
-    db.commit()
-
-
 @router.get("/posts", response_model=list[CommunityPostResponse])
 def list_posts(
     db: Annotated[Session, Depends(get_db)],
@@ -139,8 +94,6 @@ def list_posts(
 ):
     if current_user.role == "parent":
         raise HTTPException(status_code=403, detail="Доступ запрещён")
-
-    _seed_demo_posts_if_empty(db)
 
     q = (
         db.query(CommunityPost)

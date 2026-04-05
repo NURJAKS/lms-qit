@@ -56,6 +56,17 @@ if not cur.fetchone():
     """)
     print("Created teacher_assignment_rubrics table")
 
+cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teacher_assignment_rubrics'")
+if cur.fetchone():
+    cur.execute("PRAGMA table_info(teacher_assignment_rubrics)")
+    rubric_cols = [r[1] for r in cur.fetchall()]
+    if "description" not in rubric_cols:
+        cur.execute("ALTER TABLE teacher_assignment_rubrics ADD COLUMN description TEXT")
+        print("Added teacher_assignment_rubrics.description")
+    if "levels_json" not in rubric_cols:
+        cur.execute("ALTER TABLE teacher_assignment_rubrics ADD COLUMN levels_json TEXT")
+        print("Added teacher_assignment_rubrics.levels_json")
+
 # assignment_submission_grades
 cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='assignment_submission_grades'")
 if not cur.fetchone():

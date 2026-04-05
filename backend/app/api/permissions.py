@@ -46,7 +46,7 @@ def can_manage_categories(user) -> bool:
 
 
 def can_export_users(user) -> bool:
-    """Экспорт пользователей в CSV."""
+    """Экспорт пользователей в Excel."""
     return is_admin_or_director(user)
 
 

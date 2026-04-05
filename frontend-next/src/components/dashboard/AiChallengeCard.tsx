@@ -16,7 +16,7 @@ export function AiChallengeCard() {
   const cardStyle = getDashboardCardStyle(theme);
   const textColors = getTextColors(theme);
 
-  // Получаем первый активный курс (Python)
+  // Get the first active course (Python)
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-active"],
     queryFn: async () => {
@@ -25,7 +25,7 @@ export function AiChallengeCard() {
     },
   });
 
-  // Находим курс Python или берем первый активный
+  // Find Python course or take the first active one
   const pythonCourse = courses.find((c) => 
     c.title?.toLowerCase().includes("python") || 
     c.title?.includes("Python программалау")

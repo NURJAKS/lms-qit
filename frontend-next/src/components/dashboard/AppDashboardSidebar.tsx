@@ -33,6 +33,7 @@ import {
   ArrowRight,
   Zap,
   X,
+  ListTodo,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
@@ -42,9 +43,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import { getLocalizedNotificationText } from "@/lib/notificationText";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function AppDashboardSidebar() {
   const { user, logout, isAdmin, isTeacher, canManageUsers } = useAuthStore();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const { t, lang, setLang } = useLanguage();
@@ -102,7 +105,9 @@ export function AppDashboardSidebar() {
     const isActive =
       href === "/app"
         ? pathname === "/app" || pathname === "/app/"
-        : pathname === href || pathname.startsWith(href + "/");
+        : href === "/app/teacher"
+          ? pathname === "/app/teacher" || pathname === "/app/teacher/"
+          : pathname === href || (href !== "/app" && pathname.startsWith(href + "/"));
     if (isActive) {
       return "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-white font-medium";
     }
@@ -117,7 +122,9 @@ export function AppDashboardSidebar() {
     const isActive =
       href === "/app"
         ? pathname === "/app" || pathname === "/app/"
-        : pathname === href || pathname.startsWith(href + "/");
+        : href === "/app/teacher"
+          ? pathname === "/app/teacher" || pathname === "/app/teacher/"
+          : pathname === href || (href !== "/app" && pathname.startsWith(href + "/"));
     if (!isActive) return undefined;
     if (isPremiumLink) {
       return { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.4)" };
@@ -140,13 +147,10 @@ export function AppDashboardSidebar() {
         : [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
           ...(isTeacher() ? [] : [
-            { href: "/app/courses", icon: BookOpen, label: t("myCourses") },
             { href: "/courses", icon: Library, label: t("courseCatalog") },
             { href: "/app/analytics", icon: BarChart3, label: t("studentAnalytics") },
-            { href: "/app/materials", icon: FileText, label: t("studentMaterials") },
           ]),
           { href: "/app/ai-challenge/1", icon: Zap, label: t("aiVsStudent") },
-          { href: "/app/tasks-calendar", icon: Calendar, label: t("tasksCalendar") },
           { href: "/app/shop", icon: ShoppingBag, label: t("shop") },
           { href: "/app/leaderboard", icon: Trophy, label: t("rating") },
           { href: "/app/community", icon: MessageCircle, label: t("communitySidebarLink") },
@@ -162,7 +166,6 @@ export function AppDashboardSidebar() {
         // Premium показывается только для студентов (не для учителей, директора, админа, куратора, родителя)
         ...(user?.role === "student" ? [{ href: "/app/premium", icon: Sparkles, label: t("premiumTab"), isPremium: true }] : []),
         ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacher") }] : []),
-        ...(isTeacher() ? [{ href: "/app/teacher/courses", icon: BookOpen, label: t("teacherCoursesTab") }] : []),
         ...(isParent ? [] : isAdmin() ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
         ...(isAdmin() || isTeacher() || user?.role === "curator" ? [{ href: "/app/people", icon: Users, label: t("peopleList") }] : []),
         ...(user?.role === "curator" ? [
@@ -187,6 +190,16 @@ export function AppDashboardSidebar() {
 
   const NavContent = ({ compact = false }: { compact?: boolean }) => {
     const isManagerSectionActive = pathname.startsWith("/app/admin");
+
+    
+    const { data: teacherGroups = [] } = useQuery({
+      queryKey: ["teacher-groups-sidebar"],
+      queryFn: async () => {
+        const res = await api.get("/teacher/groups");
+        return res.data as { id: number; group_name: string }[];
+      },
+      enabled: isTeacher() && !compact,
+    });
     
     return (
       <>
@@ -206,6 +219,46 @@ export function AppDashboardSidebar() {
               {!compact && <span className="text-sm font-semibold">{label}</span>}
             </Link>
           ))}
+
+          {/* Teacher Courses Section */}
+          {!compact && isTeacher() && (
+            <div className={`pt-4 mt-4 border-t ${theme === "dark" ? "border-white/10" : "border-gray-100"}`}>
+              <Link
+                href="/app/teacher/courses"
+                onClick={() => setMobileOpen(false)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
+                  pathname === "/app/teacher/courses"
+                    ? "bg-gradient-to-r from-[#FF4181] to-[#B938EB] text-white font-semibold shadow-lg shadow-[#FF4181]/30"
+                    : theme === "dark"
+                      ? "text-white/70 hover:text-white hover:bg-white/10"
+                      : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                }`}
+              >
+                <span className="text-sm font-semibold">{t("teacherCoursesTabHint")}</span>
+                <BookOpen className="w-4 h-4 shrink-0" />
+              </Link>
+            </div>
+          )}
+
+          {/* Student: courses I take (same style as teacher) */}
+          {!compact && user?.role === "student" && user?.has_group_access && (
+            <div className={`pt-4 mt-4 border-t ${theme === "dark" ? "border-white/10" : "border-gray-100"}`}>
+              <Link
+                href="/app/courses"
+                onClick={() => setMobileOpen(false)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
+                  pathname === "/app/courses" || pathname.startsWith("/app/courses/")
+                    ? "bg-gradient-to-r from-[#FF4181] to-[#B938EB] text-white font-semibold shadow-lg shadow-[#FF4181]/30"
+                    : theme === "dark"
+                      ? "text-white/70 hover:text-white hover:bg-white/10"
+                      : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                }`}
+              >
+                <span className="text-sm font-semibold">{t("studentCoursesTabHint")}</span>
+                <BookOpen className="w-4 h-4 shrink-0" />
+              </Link>
+            </div>
+          )}
           
           {extraLinksBeforeManager.length > 0 && (
             <div className={`pt-4 mt-4 border-t ${theme === "dark" ? "border-white/10" : "border-gray-100"}`}>
@@ -342,6 +395,7 @@ export function AppDashboardSidebar() {
               <button
                 type="button"
                 onClick={() => {
+                  queryClient.clear();
                   logout();
                   router.push("/");
                 }}

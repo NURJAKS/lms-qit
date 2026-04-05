@@ -1,6 +1,8 @@
 # === Backend (Python) ===
 backend/venv/
+backend/.venv/
 venv/
+.venv/
 backend/.env
 backend/data/
 backend/uploads/

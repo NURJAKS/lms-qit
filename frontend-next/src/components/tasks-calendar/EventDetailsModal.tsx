@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, Calendar, BookOpen, FileText, Trash2, CheckCircle2, Circle, Pencil, Save } from "lucide-react";
@@ -24,6 +25,7 @@ type Assignment = {
   id: number;
   title: string;
   description: string | null;
+  course_id: number;
   course_title: string;
   deadline: string | null;
 };
@@ -370,6 +372,19 @@ export function EventDetailsModal({
                   description={t("confirmDelete")}
                 />
               )}
+            </div>
+          )}
+
+          {/* Assignment Detail Link */}
+          {!isSchedule && assignment && (
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Link
+                href={`/app/courses/${assignment.course_id}?tab=classwork&assignmentId=${assignment.id}`}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-[#7C3AED] text-white font-bold hover:opacity-90 transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+              >
+                <FileText className="w-5 h-5" />
+                <span>{t("viewInstructions")}</span>
+              </Link>
             </div>
           )}
         </div>

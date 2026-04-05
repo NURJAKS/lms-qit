@@ -44,6 +44,23 @@ export const COURSE_TITLE_KEYS: Record<string, string> = {
   "Machine Learning Fundamentals": "courseMLTitle",
 };
 
+/** Maps API course title to custom banner image URL */
+export const COURSE_BANNER_IMAGES: Record<string, string> = {
+  "Web-әзірлеу негіздері": "/courses/web-development.png",
+  "Основы веб-разработки": "/courses/web-development.png",
+  "Web Development": "/courses/web-development.png",
+  "Web Development Fundamentals": "/courses/web-development.png",
+  "Python программалау негіздері": "/courses/python.png",
+  "Python для начинающих": "/courses/python.png",
+  "Основы программирования на Python": "/courses/python.png",
+  "Python Programming": "/courses/python.png",
+  "Python Programming Fundamentals": "/courses/python.png",
+  "Машиналық оқыту негіздері": "/courses/machine-learning.png",
+  "Машинное обучение": "/courses/machine-learning.png",
+  "Machine Learning": "/courses/machine-learning.png",
+  "Machine Learning Fundamentals": "/courses/machine-learning.png",
+};
+
 export const COURSE_DESC_KEYS: Record<string, string> = {
   "Python программалау негіздері": "coursePythonDesc",
   "Web-әзірлеу негіздері": "courseWebDesc",
@@ -93,6 +110,10 @@ export const TOPIC_TITLE_KEYS: Record<string, string> = {
   "Циклдар": "topicPythonLoopsTitle",
   "Циклы": "topicPythonLoopsTitle",
   "Loops": "topicPythonLoopsTitle",
+  // Web course — HTML intro
+  "HTML дегеніміз не?": "topicHtmlWhatIsTitle",
+  "Что такое HTML?": "topicHtmlWhatIsTitle",
+  "What is HTML?": "topicHtmlWhatIsTitle",
   // Web course — HTML tags
   "HTML тегтері": "topicHtmlTagsTitle",
   "HTML‑теги": "topicHtmlTagsTitle",
@@ -174,16 +195,32 @@ export const CATEGORY_METRICS: Record<string, { durationKey: string; levelKey: s
   data: { durationKey: "coursesDuration5", levelKey: "coursesLevelMedium", students: "250+" },
 };
 
+/** Локальный нейтральный плейсхолдер, без внешних stock/mock URL. */
+export function coursePlaceholderImageUrl(): string {
+  return "/course-placeholder.svg";
+}
+
 export function courseImageUrl(c: Course): string {
   if (c.image_url) return c.image_url;
-  const seeds: Record<number, string> = {
-    1: "python-programming",
-    2: "web-development",
-    3: "react-framework",
-    4: "machine-learning",
-  };
-  const seed = seeds[c.id] ?? `course-${c.id}`;
-  return `https://picsum.photos/seed/${seed}/400/240`;
+  return getCourseBannerUrl(c);
+}
+
+/** Returns a high-quality banner image for the course detail page */
+export function getCourseBannerUrl(c: { title?: string; image_url?: string }): string {
+  const apiTitle = (c.title ?? "").trim();
+  if (COURSE_BANNER_IMAGES[apiTitle]) return COURSE_BANNER_IMAGES[apiTitle];
+
+  // Try substring match for common course names if exact match fails
+  const lowerTitle = apiTitle.toLowerCase();
+  if (lowerTitle.includes("python")) return "/courses/python.png";
+  if (lowerTitle.includes("web") || lowerTitle.includes("веб") || lowerTitle.includes("әзірлеу")) 
+    return "/courses/web-development.png";
+  if (lowerTitle.includes("машина") || lowerTitle.includes("machine") || lowerTitle.includes("ml")) 
+    return "/courses/machine-learning.png";
+  
+  // Fallback to category-based banners if needed, or just use course image
+  if (c.image_url) return c.image_url;
+  return coursePlaceholderImageUrl();
 }
 
 export function getCategoryFromCourse(c: Course): { key: string; labelKey: string } {

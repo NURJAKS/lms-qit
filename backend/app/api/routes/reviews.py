@@ -67,12 +67,16 @@ def create_review(
 def list_approved_reviews(
     db: Annotated[Session, Depends(get_db)],
     course_id: int | None = Query(None),
+    is_featured: bool | None = Query(None, description="Только избранные для лендинга"),
+    limit: int = Query(100, ge=1, le=200),
 ):
     """Одобренные отзывы (публичные)."""
     q = db.query(CourseReview).filter(CourseReview.is_approved == True)
     if course_id:
         q = q.filter(CourseReview.course_id == course_id)
-    rows = q.order_by(CourseReview.created_at.desc()).all()
+    if is_featured is True:
+        q = q.filter(CourseReview.is_featured == True)
+    rows = q.order_by(CourseReview.created_at.desc()).limit(limit).all()
     return [
         {
             "id": r.id,

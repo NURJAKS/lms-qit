@@ -4,9 +4,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 from app.models.test_question import TestQuestion
@@ -23,6 +25,144 @@ from app.data.challenge_questions import (
 )
 
 router = APIRouter(prefix="/challenge", tags=["ai_challenge"])
+
+AI_CHALLENGE_ERRORS = {
+    "no_topics": {
+        "ru": "В выбранном курсе нет доступных тем с вопросами.",
+        "kk": "Таңдалған курста сұрақтары бар қолжетімді тақырыптар жоқ.",
+        "en": "There are no available topics with questions in the selected course.",
+    },
+    "web_requirement": {
+        "ru": "Для Web-соревнования нужно пройти хотя бы одну тему в курсе «Web-әзірлеу негіздері».",
+        "kk": "Web-жарыс үшін «Web-әзірлеу негіздері» курсында кемінде бір тақырыпты аяқтау керек.",
+        "en": "For the Web challenge, you need to complete at least one topic in the 'Web Development Basics' course.",
+    },
+    "informatics_requirement": {
+        "ru": "Для трека «Информатика» пройдите хотя бы одну тему курса «Информатика және ақпараттық технологиялар негіздері».",
+        "kk": "«Информатика» трегі үшін «Информатика және ақпараттық технологиялар негіздері» курсының кемінде бір тақырыбын аяқтаңыз.",
+        "en": "For the 'Informatics' track, complete at least one topic of the 'Informatics and IT Basics' course.",
+    },
+    "cybersecurity_requirement": {
+        "ru": "Для трека «Основы кибербезопасности» пройдите хотя бы одну тему в соответствующем курсе.",
+        "kk": "«Киберқауіпсіздік негіздері» трегі үшін тиісті курста кемінде бір тақырыпты аяқтаңыз.",
+        "en": "For the 'Cybersecurity Fundamentals' track, complete at least one topic in the corresponding course.",
+    },
+    "python_requirement": {
+        "ru": "Для Python-соревнования нужно пройти хотя бы одну тему в курсе «Python программалау негіздері».",
+        "kk": "Python-жарысы үшін «Python программалау негіздері» курсында кемінде бір тақырыпты аяқтау керек.",
+        "en": "For the Python challenge, you need to complete at least one topic in the 'Python Programming Basics' course.",
+    },
+    "memory_web": {
+        "ru": "Для игры «Память» (Web) пройдите хотя бы одну тему.",
+        "kk": "«Жад» ойыны үшін (Web) кемінде бір тақырыпты аяқтаңыз.",
+        "en": "To play 'Memory' (Web), please complete at least one topic.",
+    },
+    "memory_informatics": {
+        "ru": "Для игры «Память» (Информатика) пройдите хотя бы одну тему.",
+        "kk": "«Жад» ойыны үшін (Информатика) кемінде бір тақырыпты аяқтаңыз.",
+        "en": "To play 'Memory' (Informatics), please complete at least one topic.",
+    },
+    "memory_cybersecurity": {
+        "ru": "Для игры «Память» (кибербезопасность) пройдите хотя бы одну тему соответствующего курса.",
+        "kk": "«Жад» ойыны үшін (киберқауіпсіздік) тиісті курстың кемінде бір тақырыбын аяқтаңыз.",
+        "en": "To play 'Memory' (cybersecurity), please complete at least one topic in the corresponding course.",
+    },
+    "memory_python": {
+        "ru": "Для игры «Память» (Python) пройдите хотя бы одну тему.",
+        "kk": "«Жад» ойыны үшін (Python) кемінде бір тақырыпты аяқтаңыз.",
+        "en": "To play 'Memory' (Python), please complete at least one topic.",
+    },
+    "memory_more_topics": {
+        "ru": "Пройдите больше тем для игры «Память».",
+        "kk": "«Жад» ойыны үшін көбірек тақырыпты аяқтаңыз.",
+        "en": "Complete more topics to play 'Memory'.",
+    },
+    "challenge_not_found": {
+        "ru": "Челлендж не найден",
+        "kk": "Челлендж табылмады",
+        "en": "Challenge not found",
+    },
+    "unknown_mode": {
+        "ru": "Неизвестный режим: {mode}",
+        "kk": "Белгісіз режим: {mode}",
+        "en": "Unknown mode: {mode}",
+    },
+    "not_enough_questions": {
+        "ru": "Недостаточно вопросов для этого режима.",
+        "kk": "Бұл режим үшін сұрақтар жеткіліксіз.",
+        "en": "Not enough questions for this mode.",
+    },
+    "new_modes_only": {
+        "ru": "Этот эндпоинт только для новых режимов",
+        "kk": "Бұл эндпоинт тек жаңа режимдерге арналған",
+        "en": "This endpoint is only for new modes",
+    },
+    "web_not_found": {
+        "ru": "Web-курс не найден в базе. Обратитесь к администратору.",
+        "kk": "Web-курс базадан табылмады. Администраторға хабарласыңыз.",
+        "en": "Web course not found. Please contact administrator.",
+    },
+    "web_no_questions": {
+        "ru": "В Web-курсе нет тестовых вопросов для AI Challenge.",
+        "kk": "Web-курсында AI Challenge үшін тест сұрақтары жоқ.",
+        "en": "There are no test questions for AI Challenge in the Web course.",
+    },
+    "informatics_not_found": {
+        "ru": "Курс информатики не найден. Обратитесь к администратору.",
+        "kk": "Информатика курсы табылмады. Администраторға хабарласыңыз.",
+        "en": "Informatics course not found. Please contact administrator.",
+    },
+    "informatics_no_questions": {
+        "ru": "В курсе информатики нет тестовых вопросов для AI Challenge.",
+        "kk": "Информатика курсында AI Challenge үшін тест сұрақтары жоқ.",
+        "en": "There are no test questions for AI Challenge in the Informatics course.",
+    },
+    "cyber_not_found": {
+        "ru": "Курс по кибербезопасности не найден. Обратитесь к администратору.",
+        "kk": "Киберқауіпсіздік курсы табылмады. Администраторға хабарласыңыз.",
+        "en": "Cybersecurity course not found. Please contact administrator.",
+    },
+    "cyber_no_questions": {
+        "ru": "В курсе по кибербезопасности нет тестовых вопросов для AI Challenge.",
+        "kk": "Киберқауіпсіздік курсында AI Challenge үшін тест сұрақтары жоқ.",
+        "en": "There are no test questions for AI Challenge in the Cybersecurity course.",
+    },
+    "python_not_found": {
+        "ru": "Python курс не найден.",
+        "kk": "Python курсы табылмады.",
+        "en": "Python course not found.",
+    },
+    "notif_title_classic": {
+        "ru": "AI vs Студент - результат",
+        "kk": "AI vs Студент - нәтиже",
+        "en": "AI vs Student - result",
+    },
+    "notif_message_classic": {
+        "ru": "Вы: {user_correct}/{total}. AI: {ai_correct}/{total}. Время: Вы {user_time:.1f}с, AI {ai_time:.1f}с.",
+        "kk": "Сіз {user_correct}/{total} дұрыс. AI: {ai_correct}/{total}. Уақыт: сіз {user_time:.1f}с, AI {ai_time:.1f}с.",
+        "en": "You: {user_correct}/{total}. AI: {ai_correct}/{total}. Time: You {user_time:.1f}s, AI {ai_time:.1f}s.",
+    },
+    "notif_title_new": {
+        "ru": "AI vs Студент — {mode}",
+        "kk": "AI vs Студент — {mode}",
+        "en": "AI vs Student — {mode}",
+    },
+    "notif_message_new": {
+        "ru": "Вы: {user_correct}/{total}. AI: {ai_correct}/{total}.",
+        "kk": "Сіз {user_correct}/{total} дұрыс. AI: {ai_correct}/{total}.",
+        "en": "You: {user_correct}/{total}. AI: {ai_correct}/{total}.",
+    },
+    "find_bug": {"ru": "Найди баг", "kk": "Багты тап", "en": "Find bug"},
+    "guess_output": {"ru": "Угадай вывод", "kk": "Нәтижені тап", "en": "Guess output"},
+    "speed_code": {"ru": "Скоростной код", "kk": "Жылдам код", "en": "Speed code"},
+}
+
+def get_error_msg(key: str, lang: str | None = "ru", **kwargs) -> str:
+    locale = lang if lang in ("ru", "kk", "en") else "ru"
+    msg = AI_CHALLENGE_ERRORS.get(key, {}).get(locale, AI_CHALLENGE_ERRORS.get(key, {}).get("ru", key))
+    if kwargs:
+        return msg.format(**kwargs)
+    return msg
 
 AI_LEVELS = ("beginner", "intermediate", "expert")
 AI_TIME_RANGES = {
@@ -41,7 +181,261 @@ QUESTIONS_LIMIT_BY_LEVEL = {
     "intermediate": 7,
     "expert": 12,
 }
-MIN_QUESTIONS_TO_START = 3
+MIN_QUESTIONS_TO_START = 1
+
+# Классикалық режимдер үшін сұрақ қай курстан алынатыны (URLдағы course_id — тек навигация)
+CLASSIC_TRACK_PYTHON = "python"
+CLASSIC_TRACK_WEB = "web"
+CLASSIC_TRACK_INFORMATICS = "informatics"
+CLASSIC_TRACK_CYBERSECURITY = "cybersecurity"
+CLASSIC_TRACKS = (
+    CLASSIC_TRACK_PYTHON,
+    CLASSIC_TRACK_WEB,
+    CLASSIC_TRACK_INFORMATICS,
+    CLASSIC_TRACK_CYBERSECURITY,
+)
+PYTHON_COURSE_TITLE = "Python программалау негіздері"
+WEB_COURSE_TITLE = "Web-әзірлеу негіздері"
+INFORMATICS_COURSE_TITLE = "Информатика және ақпараттық технологиялар негіздері"
+# Резервті іздеу (атауы өзгертілген немесе басқа тілдегі БД)
+_INFORMATICS_TITLE_ILIKE_PATTERNS = (
+    "%информатика%",
+    "%ақпараттық технология%",
+    "%Информатика%",
+)
+_WEB_TITLE_ILIKE_PATTERNS = (
+    "%Web-әзірлеу негіздері%",
+    "%Web-әзірлеу%",
+    "%Веб-разработка%",
+    "%веб-разработка%",
+    "%Web әзірлеу%",
+)
+
+CYBER_COURSE_TITLE = "Кибер қауіпсіздік негіздері"
+_CYBER_TITLE_ILIKE_PATTERNS = (
+    "%Кибер қауіпсіздік%",
+    "%кибер%",
+    "%қауіпсіздік%",
+    "%cybersecurity%",
+    "%кибербезопасност%",
+)
+
+
+def _course_has_nonfinal_topic_questions(db: Session, course_id: int) -> bool:
+    """Курста topic-тесттерінде кем дегенде бір MCQ бар ма (AI challenge үшін)."""
+    from app.models.test import Test
+
+    row = (
+        db.query(TestQuestion.id)
+        .join(Test, TestQuestion.test_id == Test.id)
+        .filter(
+            Test.course_id == course_id,
+            Test.is_final == 0,
+            Test.topic_id.isnot(None),
+        )
+        .first()
+    )
+    return row is not None
+
+
+def _resolve_web_content_course_id(db: Session, lang: str | None = "ru") -> int:
+    """Курс Web с непустыми topic-тестами. Иначе HTTP 400 с пояснением."""
+    if settings.AI_CHALLENGE_WEB_COURSE_ID is not None and settings.AI_CHALLENGE_WEB_COURSE_ID > 0:
+        cid = int(settings.AI_CHALLENGE_WEB_COURSE_ID)
+        c = db.query(Course).filter(Course.id == cid).first()
+        if not c:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("web_not_found", lang),
+            )
+        if not _course_has_nonfinal_topic_questions(db, cid):
+            raise HTTPException(status_code=400, detail=get_error_msg("web_no_questions", lang))
+        return cid
+
+    exact = db.query(Course).filter(Course.title == WEB_COURSE_TITLE).first()
+    if exact and _course_has_nonfinal_topic_questions(db, exact.id):
+        return exact.id
+
+    q = db.query(Course).filter(
+        or_(*[Course.title.ilike(p) for p in _WEB_TITLE_ILIKE_PATTERNS])
+    )
+    for c in q.order_by(Course.id).all():
+        if _course_has_nonfinal_topic_questions(db, c.id):
+            return c.id
+
+    if exact:
+        raise HTTPException(status_code=400, detail=get_error_msg("web_no_questions", lang))
+    if db.query(Course).filter(or_(*[Course.title.ilike(p) for p in _WEB_TITLE_ILIKE_PATTERNS])).first():
+        raise HTTPException(status_code=400, detail=get_error_msg("web_no_questions", lang))
+    raise HTTPException(status_code=400, detail=get_error_msg("web_not_found", lang))
+
+
+def _resolve_informatics_content_course_id(db: Session, lang: str | None = "ru") -> int:
+    """Курс «Информатика» с непустыми topic-тестами (жалпы ИТ, не Python)."""
+    if settings.AI_CHALLENGE_INFORMATICS_COURSE_ID is not None and settings.AI_CHALLENGE_INFORMATICS_COURSE_ID > 0:
+        cid = int(settings.AI_CHALLENGE_INFORMATICS_COURSE_ID)
+        c = db.query(Course).filter(Course.id == cid).first()
+        if not c:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("informatics_not_found", lang),
+            )
+        if not _course_has_nonfinal_topic_questions(db, cid):
+            raise HTTPException(status_code=400, detail=get_error_msg("informatics_no_questions", lang))
+        return cid
+
+    exact = db.query(Course).filter(Course.title == INFORMATICS_COURSE_TITLE).first()
+    if exact and _course_has_nonfinal_topic_questions(db, exact.id):
+        return exact.id
+
+    q = db.query(Course).filter(
+        or_(*[Course.title.ilike(p) for p in _INFORMATICS_TITLE_ILIKE_PATTERNS])
+    )
+    for c in q.order_by(Course.id).all():
+        if _course_has_nonfinal_topic_questions(db, c.id):
+            return c.id
+
+    if exact:
+        raise HTTPException(status_code=400, detail=get_error_msg("informatics_no_questions", lang))
+    if db.query(Course).filter(or_(*[Course.title.ilike(p) for p in _INFORMATICS_TITLE_ILIKE_PATTERNS])).first():
+        raise HTTPException(status_code=400, detail=get_error_msg("informatics_no_questions", lang))
+    raise HTTPException(status_code=400, detail=get_error_msg("informatics_not_found", lang))
+
+
+def _informatics_course_id_for_navigation(db: Session) -> int | None:
+    """Сілтеме үшін course_id (тест сұрақтарының болуы міндетті емес)."""
+    if settings.AI_CHALLENGE_INFORMATICS_COURSE_ID is not None and settings.AI_CHALLENGE_INFORMATICS_COURSE_ID > 0:
+        cid = int(settings.AI_CHALLENGE_INFORMATICS_COURSE_ID)
+        if db.query(Course.id).filter(Course.id == cid).first():
+            return cid
+        return None
+    row = db.query(Course.id).filter(Course.title == INFORMATICS_COURSE_TITLE).first()
+    if row:
+        return row[0]
+    c = (
+        db.query(Course)
+        .filter(or_(*[Course.title.ilike(p) for p in _INFORMATICS_TITLE_ILIKE_PATTERNS]))
+        .order_by(Course.id)
+        .first()
+    )
+    return c.id if c else None
+
+
+def _resolve_cyber_content_course_id(db: Session, lang: str | None = "ru") -> int:
+    """Курс кибербезопасности с непустыми topic-тестами."""
+    if settings.AI_CHALLENGE_CYBER_COURSE_ID is not None and settings.AI_CHALLENGE_CYBER_COURSE_ID > 0:
+        cid = int(settings.AI_CHALLENGE_CYBER_COURSE_ID)
+        c = db.query(Course).filter(Course.id == cid).first()
+        if not c:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("cyber_not_found", lang),
+            )
+        if not _course_has_nonfinal_topic_questions(db, cid):
+            raise HTTPException(status_code=400, detail=get_error_msg("cyber_no_questions", lang))
+        return cid
+
+    exact = db.query(Course).filter(Course.title == CYBER_COURSE_TITLE).first()
+    if exact and _course_has_nonfinal_topic_questions(db, exact.id):
+        return exact.id
+
+    q = db.query(Course).filter(
+        or_(*[Course.title.ilike(p) for p in _CYBER_TITLE_ILIKE_PATTERNS])
+    )
+    for c in q.order_by(Course.id).all():
+        if _course_has_nonfinal_topic_questions(db, c.id):
+            return c.id
+
+    if exact:
+        raise HTTPException(status_code=400, detail=get_error_msg("cyber_no_questions", lang))
+    if db.query(Course).filter(or_(*[Course.title.ilike(p) for p in _CYBER_TITLE_ILIKE_PATTERNS])).first():
+        raise HTTPException(status_code=400, detail=get_error_msg("cyber_no_questions", lang))
+    raise HTTPException(status_code=400, detail=get_error_msg("cyber_not_found", lang))
+
+
+def _cyber_course_id_for_navigation(db: Session) -> int | None:
+    """Сілтеме үшін course_id (тест сұрақтарының болуы міндетті емес)."""
+    if settings.AI_CHALLENGE_CYBER_COURSE_ID is not None and settings.AI_CHALLENGE_CYBER_COURSE_ID > 0:
+        cid = int(settings.AI_CHALLENGE_CYBER_COURSE_ID)
+        if db.query(Course.id).filter(Course.id == cid).first():
+            return cid
+        return None
+    row = db.query(Course.id).filter(Course.title == CYBER_COURSE_TITLE).first()
+    if row:
+        return row[0]
+    c = (
+        db.query(Course)
+        .filter(or_(*[Course.title.ilike(p) for p in _CYBER_TITLE_ILIKE_PATTERNS]))
+        .order_by(Course.id)
+        .first()
+    )
+    return c.id if c else None
+
+
+def _ai_challenge_anchor_course_id(db: Session) -> int:
+    """course_id для AIChallenge при FK на courses: новые мини-игры не привязаны к курсу, но id=0 часто ломает FK."""
+    row = db.query(Course.id).filter(Course.is_active == True).order_by(Course.id).first()
+    if row:
+        return row[0]
+    row_any = db.query(Course.id).order_by(Course.id).first()
+    if row_any:
+        return row_any[0]
+    return 1
+
+
+def _resolve_main_courses(db: Session):
+    """Canonical Python және Web курстары (seed бойынша атауы бойынша)."""
+    py = db.query(Course).filter(Course.title == PYTHON_COURSE_TITLE).first()
+    web = db.query(Course).filter(Course.title == WEB_COURSE_TITLE).first()
+    if web is None:
+        web = (
+            db.query(Course)
+            .filter(or_(*[Course.title.ilike(p) for p in _WEB_TITLE_ILIKE_PATTERNS]))
+            .order_by(Course.id)
+            .first()
+        )
+    return py, web
+
+
+def _classic_content_course_ids(db: Session, classic_track: str | None, page_course_id: int, lang: str | None = "ru") -> list[int]:
+    """quiz / flashcard / memory үшін сұрақтар алынатын course_id тізімі."""
+    track = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
+    if track not in CLASSIC_TRACKS:
+        track = CLASSIC_TRACK_PYTHON
+    py, web = _resolve_main_courses(db)
+    if track == CLASSIC_TRACK_WEB:
+        return [_resolve_web_content_course_id(db, lang)]
+    if track == CLASSIC_TRACK_INFORMATICS:
+        return [_resolve_informatics_content_course_id(db, lang)]
+    if track == CLASSIC_TRACK_CYBERSECURITY:
+        return [_resolve_cyber_content_course_id(db, lang)]
+    # python: URLдегі курс бойынша сұрақтар болса — сол курсты қолдану (атауы өзгерсе де / id сәйкес келмесе де)
+    if _course_has_nonfinal_topic_questions(db, page_course_id):
+        return [page_course_id]
+    if py and _course_has_nonfinal_topic_questions(db, py.id):
+        return [py.id]
+    if py:
+        return [py.id]
+    return [page_course_id]
+
+
+def _get_completed_topic_ids_for_courses(db: Session, user_id: int, course_ids: list[int]) -> list[int]:
+    progs = db.query(StudentProgress).filter(
+        StudentProgress.user_id == user_id,
+        StudentProgress.course_id.in_(course_ids),
+        StudentProgress.is_completed == True,
+    ).all()
+    return [p.topic_id for p in progs if p.topic_id]
+
+
+def _get_all_topic_ids_for_courses(db: Session, course_ids: list[int]) -> list[int]:
+    return [
+        t.id
+        for t in db.query(CourseTopic)
+        .filter(CourseTopic.course_id.in_(course_ids))
+        .order_by(CourseTopic.course_id, CourseTopic.order_number)
+        .all()
+    ]
 
 
 def _calc_bonus_points(correct_sequence: list[bool]) -> int:
@@ -86,11 +480,22 @@ def _get_questions_from_topics(
     limit: int = 5,
     ai_level: str = "intermediate",
 ) -> list:
+    return _get_questions_from_topics_multi(db, [course_id], topic_ids, limit, ai_level)
+
+
+def _get_questions_from_topics_multi(
+    db: Session,
+    course_ids: list[int],
+    topic_ids: list[int],
+    limit: int = 5,
+    ai_level: str = "intermediate",
+) -> list:
     from app.models.test import Test
-    if not topic_ids:
+
+    if not topic_ids or not course_ids:
         return []
     test_ids = db.query(Test.id).filter(
-        Test.course_id == course_id,
+        Test.course_id.in_(course_ids),
         Test.topic_id.in_(topic_ids),
         Test.is_final == 0,
     ).distinct().all()
@@ -100,8 +505,6 @@ def _get_questions_from_topics(
     all_q = db.query(TestQuestion).filter(TestQuestion.test_id.in_(test_ids)).all()
     if len(all_q) <= limit:
         return all_q
-    # Делаем детерминированный отбор, чтобы уровни были заметно разными.
-    # `order_number` у вопросов обычно отражает прогрессию внутри темы: ранние проще, поздние сложнее.
     sorted_q = sorted(
         all_q,
         key=lambda q: (
@@ -114,7 +517,6 @@ def _get_questions_from_topics(
         return sorted_q[:limit]
     if ai_level == "expert":
         return list(reversed(sorted_q))[:limit]
-    # intermediate: "средний срез" около медианы
     n = len(sorted_q)
     start = max(0, (n - limit) // 2)
     end = start + limit
@@ -143,6 +545,27 @@ def _get_topic_ids_by_level(db: Session, course_id: int, base_topic_ids: list[in
     return base_topic_ids
 
 
+def _get_topic_ids_by_level_multi(db: Session, course_ids: list[int], base_topic_ids: list[int], ai_level: str) -> list[int]:
+    """Бірнеше курс темалары үшін деңгей бойынша іріктеу (course_id, order_number бойынша сұрыптау)."""
+    if not base_topic_ids:
+        return base_topic_ids
+    topics = db.query(CourseTopic).filter(
+        CourseTopic.id.in_(base_topic_ids),
+        CourseTopic.course_id.in_(course_ids),
+    ).order_by(CourseTopic.course_id, CourseTopic.order_number).all()
+    n = len(topics)
+    if n <= 1:
+        return base_topic_ids
+    third = max(1, n // 3)
+    if ai_level == "beginner":
+        return [t.id for t in topics[:third]]
+    if ai_level == "expert":
+        return [t.id for t in topics[-third:]]
+    if n - 2 * third > 0:
+        return [t.id for t in topics[third : n - third]]
+    return base_topic_ids
+
+
 def _get_all_topic_ids(db: Session, course_id: int) -> list[int]:
     return [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == course_id).order_by(CourseTopic.order_number).all()]
 
@@ -161,24 +584,85 @@ class MemoryCardsResponse(BaseModel):
     cards: list[dict]
 
 
-@router.get("/memory", response_model=MemoryCardsResponse)
-def get_memory_cards(
-    course_id: int,
-    lang: str | None = None,
+class ClassicHelpCourseIdResponse(BaseModel):
+    course_id: int
+
+
+@router.get("/classic-help-course-id", response_model=ClassicHelpCourseIdResponse)
+def classic_help_course_id(
+    classic_track: str | None = None,
+    lang: str | None = "ru",
     db: Annotated[Session, Depends(get_db)] = ...,
     current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
+    """Классикалық тректер үшін «курсқа өту» сілтемесінің нақты course_id (БД бойынша)."""
+    t = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
+    if t not in CLASSIC_TRACKS:
+        t = CLASSIC_TRACK_PYTHON
+    if t == CLASSIC_TRACK_WEB:
+        try:
+            return ClassicHelpCourseIdResponse(course_id=_resolve_web_content_course_id(db, lang))
+        except HTTPException:
+            exact = db.query(Course).filter(Course.title == WEB_COURSE_TITLE).first()
+            if exact:
+                return ClassicHelpCourseIdResponse(course_id=exact.id)
+            c = (
+                db.query(Course)
+                .filter(or_(*[Course.title.ilike(p) for p in _WEB_TITLE_ILIKE_PATTERNS]))
+                .order_by(Course.id)
+                .first()
+            )
+            if c:
+                return ClassicHelpCourseIdResponse(course_id=c.id)
+            raise HTTPException(status_code=404, detail=get_error_msg("web_not_found", lang))
+    if t == CLASSIC_TRACK_INFORMATICS:
+        cid = _informatics_course_id_for_navigation(db)
+        if cid is None:
+            raise HTTPException(status_code=404, detail=get_error_msg("informatics_not_found", lang))
+        return ClassicHelpCourseIdResponse(course_id=cid)
+    if t == CLASSIC_TRACK_CYBERSECURITY:
+        cid = _cyber_course_id_for_navigation(db)
+        if cid is None:
+            raise HTTPException(status_code=404, detail=get_error_msg("cyber_not_found", lang))
+        return ClassicHelpCourseIdResponse(course_id=cid)
+    py, _ = _resolve_main_courses(db)
+    if not py:
+        raise HTTPException(status_code=404, detail=get_error_msg("python_not_found", lang))
+    return ClassicHelpCourseIdResponse(course_id=py.id)
+
+
+@router.get("/memory", response_model=MemoryCardsResponse)
+def get_memory_cards(
+    course_id: int,
+    classic_track: str | None = None,
+    lang: str | None = "ru",
+    db: Annotated[Session, Depends(get_db)] = ...,
+    current_user: Annotated[User, Depends(get_current_user)] = ...,
+):
+    norm_track = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
+    if norm_track not in CLASSIC_TRACKS:
+        norm_track = CLASSIC_TRACK_PYTHON
+    content_course_ids = _classic_content_course_ids(db, classic_track, course_id, lang)
     is_admin = current_user.role in ("admin", "director", "curator")
     if is_admin:
-        base_topic_ids = _get_all_topic_ids(db, course_id)
+        base_topic_ids = _get_all_topic_ids_for_courses(db, content_course_ids)
     else:
-        base_topic_ids = _get_completed_topic_ids(db, current_user.id, course_id)
-        # Если у студента нет завершенных тем, используем все темы курса (fallback)
-        if not base_topic_ids:
-            base_topic_ids = _get_all_topic_ids(db, course_id)
-    questions = _get_questions_from_topics(db, course_id, base_topic_ids, 4)
+        base_topic_ids = _get_completed_topic_ids_for_courses(db, current_user.id, content_course_ids)
+    
+    questions = _get_questions_from_topics_multi(db, content_course_ids, base_topic_ids, 4)
     if len(questions) < 4:
-        raise HTTPException(status_code=400, detail="Пройдите больше тем для игры «Память».")
+        if not base_topic_ids:
+            if norm_track == CLASSIC_TRACK_WEB:
+                raise HTTPException(status_code=400, detail=get_error_msg("memory_web", lang))
+            if norm_track == CLASSIC_TRACK_INFORMATICS:
+                raise HTTPException(status_code=400, detail=get_error_msg("memory_informatics", lang))
+            if norm_track == CLASSIC_TRACK_CYBERSECURITY:
+                raise HTTPException(
+                    status_code=400,
+                    detail=get_error_msg("memory_cybersecurity", lang),
+                )
+            raise HTTPException(status_code=400, detail=get_error_msg("memory_python", lang))
+        raise HTTPException(status_code=400, detail=get_error_msg("memory_more_topics", lang))
     questions = questions[:4]
     cards: list[dict] = []
     # TODO: lang can be used here in future to return localized question/answer texts
@@ -195,7 +679,8 @@ def start_challenge(
     course_id: int,
     ai_level: str = "intermediate",
     game_mode: str = "quiz",
-    lang: str | None = None,
+    classic_track: str | None = None,
+    lang: str | None = "ru",
     db: Annotated[Session, Depends(get_db)] = ...,
     current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
@@ -203,25 +688,58 @@ def start_challenge(
         ai_level = "intermediate"
     if game_mode not in GAME_MODES or game_mode == "memory":
         game_mode = "quiz"
+    norm_track = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
+    if norm_track not in CLASSIC_TRACKS:
+        norm_track = CLASSIC_TRACK_PYTHON
+    content_course_ids = _classic_content_course_ids(db, classic_track, course_id, lang)
     is_admin = current_user.role in ("admin", "director", "curator")
     if is_admin:
-        base_topic_ids = _get_all_topic_ids(db, course_id)
+        base_topic_ids = _get_all_topic_ids_for_courses(db, content_course_ids)
     else:
-        base_topic_ids = _get_completed_topic_ids(db, current_user.id, course_id)
-        # Если у студента нет завершенных тем, используем все темы курса (fallback)
-        if not base_topic_ids:
-            base_topic_ids = _get_all_topic_ids(db, course_id)
-    topic_ids = _get_topic_ids_by_level(db, course_id, base_topic_ids, ai_level)
+        base_topic_ids = _get_completed_topic_ids_for_courses(db, current_user.id, content_course_ids)
+    
+    if len(content_course_ids) == 1:
+        topic_ids = _get_topic_ids_by_level(db, content_course_ids[0], base_topic_ids, ai_level)
+    else:
+        topic_ids = _get_topic_ids_by_level_multi(db, content_course_ids, base_topic_ids, ai_level)
     limit = QUESTIONS_LIMIT_BY_LEVEL.get(ai_level, 7)
-    questions = _get_questions_from_topics(db, course_id, topic_ids, limit, ai_level)
+    questions = _get_questions_from_topics_multi(db, content_course_ids, topic_ids, limit, ai_level)
     if len(questions) < limit and topic_ids != base_topic_ids:
-        # fallback: если в band по уровню мало вопросов, попробуем по всем доступным темам
-        questions = _get_questions_from_topics(db, course_id, base_topic_ids, limit, ai_level)
+        questions = _get_questions_from_topics_multi(db, content_course_ids, base_topic_ids, limit, ai_level)
+    # Егер деңгей бойынша таңдалған темаларда сұрақ аз болса — барлық қолжетімді темалардан
+    # «бастаушы» сұрыптаумен қайта алу (орта деңгейдің ортаңғы бөлігі бос қалған жағдайлар үшін).
+    available = len(questions)
+    if available < MIN_QUESTIONS_TO_START and base_topic_ids:
+        wider = _get_questions_from_topics_multi(db, content_course_ids, base_topic_ids, limit, "beginner")
+        if len(wider) > available:
+            questions = wider
+            available = len(questions)
     # Если вопросов меньше, чем требуется уровнем — стартуем с доступным количеством,
     # но не ниже минимального порога (иначе игра теряет смысл).
-    available = len(questions)
     if available < MIN_QUESTIONS_TO_START:
-        raise HTTPException(status_code=400, detail="Пройдите больше тем в курсе, чтобы начать соревнование с AI.")
+        # Егер сұрақтар мүлдем жоқ болса (тіпті fallback-тен кейін) — нақтырақ хабарлама
+        if not base_topic_ids:
+            raise HTTPException(status_code=400, detail=get_error_msg("no_topics", lang))
+        
+        if norm_track == CLASSIC_TRACK_WEB:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("web_requirement", lang),
+            )
+        if norm_track == CLASSIC_TRACK_INFORMATICS:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("informatics_requirement", lang),
+            )
+        if norm_track == CLASSIC_TRACK_CYBERSECURITY:
+            raise HTTPException(
+                status_code=400,
+                detail=get_error_msg("cybersecurity_requirement", lang),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=get_error_msg("python_requirement", lang),
+        )
     effective_limit = min(limit, available)
     questions = questions[:effective_limit]
     # AI opponent: simulated (no LLM). Correct answers for user are always from DB (TestQuestion.correct_answer).
@@ -276,8 +794,9 @@ def start_challenge(
 def submit_challenge(
     challenge_id: int,
     body: ChallengeSubmitRequest,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    lang: str | None = "ru",
+    db: Annotated[Session, Depends(get_db)] = ...,
+    current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
     from app.models.test import Test
     from datetime import datetime, timezone
@@ -287,7 +806,7 @@ def submit_challenge(
         AIChallenge.user_id == current_user.id,
     ).first()
     if not challenge:
-        raise HTTPException(status_code=404, detail="Челлендж не найден")
+        raise HTTPException(status_code=404, detail=get_error_msg("challenge_not_found", lang))
 
     n_q = len(body.answers) if body.answers else 0
 
@@ -382,12 +901,13 @@ def submit_challenge(
                 wrong_topics_for_links.append({"id": t.id, "title": t.title})
         course = db.query(Course).filter(Course.id == challenge.course_id).first()
         course_title = course.title if course else "Курс"
-        recommendations = get_challenge_recommendations(topic_titles, course_title)
+        recommendations = get_challenge_recommendations(topic_titles, course_title, lang=lang or "ru")
         challenge.recommendations = recommendations
 
     # Coins за победу в AI vs Student: 4+ правильных → 250, 3 правильных → 200
+    from app.services.coins import add_coins, has_received_coins_for_reason
+
     if not (challenge.coins_awarded or 0):
-        from app.services.coins import add_coins
         user_wins = not overtime and (
             user_total_score > ai_total_score
             or (user_total_score == ai_total_score and user_time < float(challenge.ai_total_time or 0))
@@ -399,12 +919,26 @@ def submit_challenge(
                 add_coins(db, current_user.id, 200, f"ai_challenge_{challenge.id}")
             if user_correct >= 3:
                 challenge.coins_awarded = 1
-    db.commit()
+
+    if n_q > 0 and user_correct == n_q:
+        perfect_reason = f"ai_challenge_perfect_{challenge.id}"
+        if not has_received_coins_for_reason(db, current_user.id, perfect_reason):
+            add_coins(db, current_user.id, 50, perfect_reason)
+            db.commit() # Commit immediately after adding coins to ensure it's saved even if later parts fail
+
     n = Notification(
         user_id=current_user.id,
         type="ai_challenge_result",
-        title="AI vs Студент - нәтиже",
-        message=f"Сіз {user_correct}/{n_q} дұрыс. AI: {challenge.ai_correct_count}/{n_q}. Уақыт: сіз {user_time:.1f}с, AI {challenge.ai_total_time:.1f}с.",
+        title=get_error_msg("notif_title_classic", lang),
+        message=get_error_msg(
+            "notif_message_classic",
+            lang,
+            user_correct=user_correct,
+            ai_correct=challenge.ai_correct_count,
+            total=n_q,
+            user_time=user_time,
+            ai_time=float(challenge.ai_total_time or 0),
+        ),
         link=f"/app/ai-challenge/{challenge.course_id}",
     )
     db.add(n)
@@ -466,11 +1000,11 @@ NEW_MODE_TIME_LIMIT = {
 
 @router.get("/categories")
 def get_challenge_categories_list(
-    lang: str | None = None,
+    lang: str | None = "ru",
     current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
     """Список доступных категорий вопросов для новых мини-игр."""
-    locale = lang or "ru"
+    locale = lang if lang in ("ru", "kk", "en") else "ru"
     return [
         {"id": cat, "label": CATEGORY_LABELS.get(cat, {}).get(locale, cat)}
         for cat in CHALLENGE_CATEGORIES
@@ -482,13 +1016,13 @@ def start_new_mode_challenge(
     game_mode: str,
     ai_level: str = "intermediate",
     category: str | None = None,
-    lang: str | None = None,
+    lang: str | None = "ru",
     db: Annotated[Session, Depends(get_db)] = ...,
     current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
     """Начать игру в одном из новых режимов: find_bug, guess_output, speed_code."""
     if game_mode not in NEW_GAME_MODES:
-        raise HTTPException(status_code=400, detail=f"Неизвестный режим: {game_mode}")
+        raise HTTPException(status_code=400, detail=get_error_msg("unknown_mode", lang, mode=game_mode))
     if ai_level not in AI_LEVELS:
         ai_level = "intermediate"
 
@@ -503,7 +1037,7 @@ def start_new_mode_challenge(
         # Fallback: попробуем без фильтра по уровню
         questions = get_questions_by_mode(game_mode, category=category, level=None, limit=limit)
     if len(questions) < 2:
-        raise HTTPException(status_code=400, detail="Недостаточно вопросов для этого режима.")
+        raise HTTPException(status_code=400, detail=get_error_msg("not_enough_questions", lang))
 
     # AI opponent simulation
     lo, hi = AI_TIME_RANGES.get(ai_level, (2.0, 3.0))
@@ -517,9 +1051,10 @@ def start_new_mode_challenge(
     else:
         ai_correct = len(questions) - random.randint(0, 2)
 
+    anchor_cid = _ai_challenge_anchor_course_id(db)
     challenge = AIChallenge(
         user_id=current_user.id,
-        course_id=0,  # 0 = standalone challenge (not course-specific)
+        course_id=anchor_cid,
         ai_total_time=sum(ai_times),
         ai_correct_count=ai_correct,
         user_total_time=0,
@@ -536,6 +1071,7 @@ def start_new_mode_challenge(
 
     # Format questions for frontend
     formatted = []
+    locale = lang if lang in ("ru", "kk", "en") else "ru"
     for q in questions:
         item = {"id": q["id"], "category": q.get("category", ""), "level": q.get("level", "")}
         if game_mode == "find_bug":
@@ -545,7 +1081,6 @@ def start_new_mode_challenge(
             item["code"] = q["code"]
             item["options"] = q["options"]
         elif game_mode == "speed_code":
-            locale = lang or "ru"
             if locale == "kk" and "task_kk" in q:
                 item["task"] = q["task_kk"]
             elif locale == "en" and "task_en" in q:
@@ -575,8 +1110,9 @@ class NewModeSubmitRequest(BaseModel):
 def submit_new_mode_challenge(
     challenge_id: int,
     body: NewModeSubmitRequest,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    lang: str | None = "ru",
+    db: Annotated[Session, Depends(get_db)] = ...,
+    current_user: Annotated[User, Depends(get_current_user)] = ...,
 ):
     """Submit ответы для новых мини-игр (find_bug, guess_output, speed_code)."""
     from datetime import datetime, timezone
@@ -586,11 +1122,11 @@ def submit_new_mode_challenge(
         AIChallenge.user_id == current_user.id,
     ).first()
     if not challenge:
-        raise HTTPException(status_code=404, detail="Челлендж не найден")
+        raise HTTPException(status_code=404, detail=get_error_msg("challenge_not_found", lang))
 
     game_type = (challenge.game_type or "").strip().lower()
     if game_type not in NEW_GAME_MODES:
-        raise HTTPException(status_code=400, detail="Этот эндпоинт только для новых режимов")
+        raise HTTPException(status_code=400, detail=get_error_msg("new_modes_only", lang))
 
     # Load questions for verification
     all_questions = get_questions_by_mode(game_type, limit=200)
@@ -662,9 +1198,10 @@ def submit_new_mode_challenge(
     challenge.user_bonus_points = user_bonus
     challenge.completed_at = datetime.now(timezone.utc)
 
+    from app.services.coins import add_coins, has_received_coins_for_reason
+
     # Coins за победу
     if not (challenge.coins_awarded or 0):
-        from app.services.coins import add_coins
         if user_wins:
             if user_correct >= 4:
                 add_coins(db, current_user.id, 250, f"ai_challenge_{challenge.id}")
@@ -673,15 +1210,26 @@ def submit_new_mode_challenge(
             if user_correct >= 3:
                 challenge.coins_awarded = 1
 
-    db.commit()
+    if n_q > 0 and user_correct == n_q:
+        perfect_reason = f"ai_challenge_perfect_{challenge.id}"
+        if not has_received_coins_for_reason(db, current_user.id, perfect_reason):
+            add_coins(db, current_user.id, 50, perfect_reason)
+            db.commit() # Commit immediately after adding coins
 
     # Notification
+    mode_label = get_error_msg(game_type, lang)
     n = Notification(
         user_id=current_user.id,
         type="ai_challenge_result",
-        title=f"AI vs Студент — {game_type}",
-        message=f"Сіз {user_correct}/{n_q} дұрыс. AI: {challenge.ai_correct_count}/{n_q}.",
-        link=f"/app/ai-challenge/1",
+        title=get_error_msg("notif_title_new", lang, mode=mode_label),
+        message=get_error_msg(
+            "notif_message_new",
+            lang,
+            user_correct=user_correct,
+            ai_correct=challenge.ai_correct_count,
+            total=n_q,
+        ),
+        link=f"/app/ai-challenge/{challenge.course_id}",
     )
     db.add(n)
     db.commit()
@@ -716,4 +1264,3 @@ def submit_new_mode_challenge(
             "ai_strategy_bonus": challenge.ai_bonus_points or 0,
         },
     }
-

@@ -11,9 +11,7 @@ import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUti
 
 function courseImageUrl(item: { course_id: number; course_image_url?: string | null }): string {
   if (item.course_image_url) return item.course_image_url;
-  const seeds: Record<number, string> = { 1: "python-programming", 2: "web-development", 3: "react-framework", 4: "machine-learning" };
-  const seed = seeds[item.course_id] ?? `course-${item.course_id}`;
-  return `https://picsum.photos/seed/${seed}/400/200`;
+  return "/course-placeholder.svg";
 }
 
 function formatTime(seconds: number): string {

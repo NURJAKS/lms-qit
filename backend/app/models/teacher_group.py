@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -12,6 +12,7 @@ class TeacherGroup(Base):
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     group_name = Column(String(255), nullable=False)
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", back_populates="taught_groups", foreign_keys=[teacher_id])

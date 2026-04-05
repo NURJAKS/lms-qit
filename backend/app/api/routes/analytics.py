@@ -16,7 +16,7 @@ from app.models.enrollment import CourseEnrollment
 from app.models.daily_leaderboard_reward import DailyLeaderboardReward
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
-from app.services.export_service import generate_csv_response, generate_xlsx_response
+from app.services.export_service import generate_xlsx_response
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -130,36 +130,48 @@ def leaderboard(
     return _leaderboard_data(db, course_id, limit)
 
 
-@router.get("/leaderboard/csv")
-def leaderboard_csv(
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    course_id: int | None = Query(None),
-    limit: int = 100,
-):
-    data = _leaderboard_data(db, course_id, limit)
-    headers = ["Rank", "Full Name", "Email", "Avg Score", "Courses Done", "Activity", "Points"]
-    rows = [
-        [r["rank"], r["full_name"], r["email"], r["avg_score"], r["courses_done"], r["activity"], r.get("points", 0)] 
-        for r in data
-    ]
-    return generate_csv_response(rows, "leaderboard", headers)
-
-
 @router.get("/leaderboard/excel")
 def leaderboard_excel(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    course_id: int | None = Query(None),
-    limit: int = 100,
 ):
-    data = _leaderboard_data(db, course_id, limit)
-    # Используем более дружелюбные заголовки для Excel
+    """Экспорт рейтинга студентов в Excel."""
+    subq = db.query(
+        StudentProgress.user_id,
+        func.avg(StudentProgress.test_score).label("avg_score"),
+        func.count(distinct(StudentProgress.course_id)).label("courses_done"),
+        func.count(StudentProgress.id).label("activity"),
+    ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
+    
+    assign_subq = db.query(
+        AssignmentSubmission.student_id.label("user_id"),
+        func.avg(AssignmentSubmission.grade).label("avg_assignment"),
+    ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
+    
+    all_users_q = db.query(
+        User.id, User.full_name, User.email, User.points,
+        subq.c.avg_score, subq.c.courses_done, subq.c.activity,
+        assign_subq.c.avg_assignment,
+    ).join(subq, User.id == subq.c.user_id).outerjoin(
+        assign_subq, User.id == assign_subq.c.user_id
+    ).order_by(
+        (
+            func.coalesce(subq.c.avg_score, 0) * 0.5
+            + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
+            + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
+            + func.coalesce(subq.c.activity, 0) * 0.15
+        ).desc()
+    )
+    
+    rows = []
     headers = ["Rank", "Full Name", "Email", "Avg Score", "Courses Done", "Activity", "Points"]
-    rows = [
-        [r["rank"], r["full_name"], r["email"], r["avg_score"], r["courses_done"], r["activity"], r.get("points", 0)] 
-        for r in data
-    ]
+    for i, r in enumerate(all_users_q.all()):
+        rows.append([
+            i + 1, r.full_name, r.email,
+            float(r.avg_score) if r.avg_score else 0,
+            r.courses_done or 0, r.activity or 0, r.points or 0
+        ])
+    
     return generate_xlsx_response(rows, "leaderboard", headers, sheet_name="Leaderboard")
 
 

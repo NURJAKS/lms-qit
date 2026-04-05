@@ -15,6 +15,7 @@ type Deadline = {
   title: string;
   type: "assignment" | "test" | "course";
   dueDate: string;
+  courseId?: number;
   courseTitle?: string;
   priority: "high" | "medium" | "low";
   submitted?: boolean;
@@ -87,14 +88,17 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
                 dueDate: a.deadline,
                 courseTitle: a.course_title,
                 priority,
-                link: `/app/teacher/assignment/${a.id}`
+                link: `/app/teacher/view-answers/${a.id}`
               } as Deadline;
             });
         } else {
-          const { data } = await api.get<Deadline[]>("/dashboard/deadlines?limit=10");
-          return (data || []).map(d => ({
+          const { data } = await api.get<Array<Deadline & { courseId?: number }>>("/dashboard/deadlines?limit=10");
+          return (data || []).map((d) => ({
             ...d,
-            link: `/app/tasks-calendar?tab=all-assignments&assignment=${d.id}`
+            link:
+              d.courseId != null
+                ? `/app/courses/${d.courseId}?tab=classwork&assignmentId=${d.id}`
+                : "/app/courses",
           }));
         }
       } catch (error) {

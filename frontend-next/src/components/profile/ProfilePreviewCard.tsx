@@ -1,14 +1,26 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Crown } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import type { SafeProfilePreviewData } from "@/types/profiles";
-import { getLocaleForLang, formatDateLocalized } from "@/lib/dateUtils";
+import { formatDateLocalized } from "@/lib/dateUtils";
+import type { TranslationKey } from "@/i18n/translations";
+import {
+  mapProfileStatus,
+  mapEmploymentStatus,
+  mapEducationLevel,
+  mapSystemRole,
+  mapKinshipDegree,
+  mapEducationalProcessRole,
+  mapStudyForm,
+  profileEmptyDash,
+} from "@/lib/profileFieldLabels";
 
 type ProfilePreviewCardProps = {
   profile: SafeProfilePreviewData;
   className?: string;
+  rank?: number;
 };
 
 type FieldItem = {
@@ -20,6 +32,8 @@ type Section = {
   title: string;
   items: FieldItem[];
 };
+
+type TFn = (key: TranslationKey) => string;
 
 function hasMeaningfulValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -38,45 +52,37 @@ function formatDate(value: string | null | undefined, lang: string): string | nu
   return formatDateLocalized(value, lang, { day: "numeric", month: "long", year: "numeric" });
 }
 
-function pickRoleLabel(profile: SafeProfilePreviewData, t: (key: any) => string): string {
+function pickRoleLabel(profile: SafeProfilePreviewData, t: TFn): string {
   if (profile.role === "director") return t("director");
   if (profile.role === "teacher") return t("teacher");
   if (profile.role === "curator") return t("curator");
   if (profile.role === "admin") return t("roleAdmin");
   if (profile.role === "parent") return t("parent");
   if (profile.role === "student") return t("student");
+  if (profile.role === "courier") return t("adminShopCourier");
   return profile.role;
 }
 
-function mapParentKinshipDegree(value: string | null | undefined, t: (key: any) => string): string {
-  if (!value) return "";
-  const normalizedValue = value.trim().toLowerCase();
-  
-  if (normalizedValue === "отец") return t("kinshipFather");
-  if (normalizedValue === "мать") return t("kinshipMother");
-  if (normalizedValue === "опекун") return t("kinshipGuardian");
-  if (normalizedValue === "другое") return t("kinshipOther");
-  return value;
-}
-
-function mapParentEducationalProcessRole(value: string | null | undefined, t: (key: any) => string): string {
-  if (!value) return "";
-  const normalizedValue = value.trim().toLowerCase();
-  
-  if (normalizedValue === "законный представитель") return t("eduRoleLegalRepresentative");
-  if (normalizedValue === "опекун") return t("eduRoleGuardian");
-  return value;
-}
-
-function mapStudyForm(value: string | null | undefined, t: (key: any) => string): string {
-  if (!value) return "";
-  const normalizedValue = value.trim().toLowerCase();
-
-  if (normalizedValue === "очная") return t("profileStudyFullTime");
-  if (normalizedValue === "заочная") return t("profileStudyPartTime");
-  if (normalizedValue === "очно-заочная") return t("profileStudyMixed");
-  return value;
-}
+const teacherLikeWorkSection = (profile: SafeProfilePreviewData, t: TFn): Section => ({
+  title: t("profileWorkInfo"),
+  items: [
+    { label: t("profilePosition"), value: profile.position ?? "" },
+    { label: t("profileDepartment"), value: profile.department ?? "" },
+    { label: t("profileEducation"), value: profile.education ?? "" },
+    { label: t("profileAcademicDegree"), value: profile.academic_degree ?? "" },
+    { label: t("profileOffice"), value: profile.office ?? "" },
+    {
+      label: t("profileEmploymentStatus"),
+      value: mapEmploymentStatus(profile.employment_status, t) || (profile.employment_status ?? ""),
+    },
+    { label: t("profileEmployeeNumber"), value: profile.employee_number ?? "" },
+    { label: t("profileReceptionHours"), value: profile.reception_hours ?? "" },
+    { label: t("profileConsultationLocation"), value: profile.consultation_location ?? "" },
+    { label: t("profileCuratedCourses"), value: formatList(profile.curated_courses) ?? "" },
+    { label: t("profileSubjectsTaught"), value: formatList(profile.subjects_taught) ?? "" },
+    { label: t("profileAcademicInterests"), value: profile.academic_interests ?? "" },
+  ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
+});
 
 function SectionCard({ title, items, className }: Section & { className?: string }) {
   if (!items.length) return null;
@@ -96,21 +102,18 @@ function SectionCard({ title, items, className }: Section & { className?: string
   );
 }
 
-export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardProps) {
+export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewCardProps) {
   const { t, lang } = useLanguage();
 
   const roleLabel = pickRoleLabel(profile, t);
   const memberSince = formatDate(profile.created_at, lang);
-  
-  // Mapping status to translated string
-  let displayStatus = profile.status;
-  if (profile.role === "student" && (!profile.status || profile.status === "Активный" || profile.status === "Активен")) {
-    displayStatus = t("profileStatusActive");
-  } else if (profile.status === "Активный" || profile.status === "Активен") {
-    displayStatus = t("profileStatusActive");
-  } else if (profile.status === "Неактивный" || profile.status === "Неактивен") {
-    displayStatus = t("profileStatusInactive");
-  }
+
+  const isTopThree = rank != null && rank >= 1 && rank <= 3;
+
+  const mappedStatus = mapProfileStatus(profile.status, t);
+  const displayStatus = mappedStatus || profile.status;
+
+  const dash = profileEmptyDash(t);
 
   const baseSections: Section[] = [
     {
@@ -118,15 +121,15 @@ export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardPro
       items: [
         { label: t("profileFullName"), value: profile.full_name },
         { label: t("role"), value: roleLabel },
-        { label: t("profileStatus"), value: displayStatus ?? "—" },
-        { label: t("profileCity"), value: profile.city ?? "—" },
+        { label: t("profileStatus"), value: displayStatus ? displayStatus : dash },
+        { label: t("profileCity"), value: profile.city ? profile.city : dash },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     },
     {
       title: t("profileContactsSection"),
       items: [
         { label: t("profilePersonalEmail"), value: profile.email },
-        { label: t("profilePhone"), value: profile.phone ?? "—" },
+        { label: t("profilePhone"), value: profile.phone ? profile.phone : dash },
         { label: t("profileWorkEmail"), value: profile.email_work ?? "" },
         { label: t("profileWorkPhone"), value: profile.phone_work ?? "" },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
@@ -140,7 +143,7 @@ export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardPro
         { label: t("profileSpecialty"), value: profile.specialty ?? "" },
         { label: t("profileCourse"), value: profile.course != null ? String(profile.course) : "" },
         { label: t("profileGroups"), value: profile.group ?? "" },
-        { label: t("profileStudyForm"), value: mapStudyForm(profile.study_form, t) },
+        { label: t("profileStudyForm"), value: mapStudyForm(profile.study_form, t) || (profile.study_form ?? "") },
         { label: t("profileParent"), value: profile.parent?.full_name ? `${profile.parent.full_name}` : "" },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     });
@@ -154,41 +157,31 @@ export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardPro
         { label: t("profileAcademicDegree"), value: profile.academic_degree ?? "" },
         {
           label: t("profileKinshipDegree"),
-          value: mapParentKinshipDegree(profile.kinship_degree, t),
+          value: mapKinshipDegree(profile.kinship_degree, t) || (profile.kinship_degree ?? ""),
         },
         {
           label: t("profileEducationalProcessRole"),
-          value: mapParentEducationalProcessRole(profile.educational_process_role, t),
+          value: mapEducationalProcessRole(profile.educational_process_role, t) || (profile.educational_process_role ?? ""),
         },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     });
-  } else if (profile.role === "teacher") {
-    baseSections.push({
-      title: t("profileWorkInfo"),
-      items: [
-        { label: t("profilePosition"), value: profile.position ?? "" },
-        { label: t("profileDepartment"), value: profile.department ?? "" },
-        { label: t("profileEducation"), value: profile.education ?? "" },
-        { label: t("profileAcademicDegree"), value: profile.academic_degree ?? "" },
-        { label: t("profileOffice"), value: profile.office ?? "" },
-        { label: t("profileEmploymentStatus"), value: profile.employment_status ?? "" },
-        { label: t("profileEmployeeNumber"), value: profile.employee_number ?? "" },
-        { label: t("profileReceptionHours"), value: profile.reception_hours ?? "" },
-        { label: t("profileConsultationLocation"), value: profile.consultation_location ?? "" },
-        { label: t("profileCuratedCourses"), value: formatList(profile.curated_courses) ?? "" },
-        { label: t("profileSubjectsTaught"), value: formatList(profile.subjects_taught) ?? "" },
-        { label: t("profileAcademicInterests"), value: profile.academic_interests ?? "" },
-      ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
-    });
+  } else if (profile.role === "teacher" || profile.role === "curator") {
+    baseSections.push(teacherLikeWorkSection(profile, t));
   } else if (profile.role === "admin" || profile.role === "director") {
     baseSections.push({
       title: t("profileAccessInfo"),
       items: [
         { label: t("profilePosition"), value: profile.position ?? "" },
         { label: t("profileDepartment"), value: profile.department ?? "" },
-        { label: t("profileEducationLevel"), value: profile.education_level ?? "" },
+        {
+          label: t("profileEducationLevel"),
+          value: mapEducationLevel(profile.education_level, t) || (profile.education_level ?? ""),
+        },
         { label: t("profileOffice"), value: profile.office ?? "" },
-        { label: t("profileSystemRole"), value: profile.system_role ?? "" },
+        {
+          label: t("profileSystemRole"),
+          value: mapSystemRole(profile.system_role, t) || (profile.system_role ?? ""),
+        },
         { label: t("profilePermissions"), value: formatList(profile.permissions) ?? "" },
         { label: t("profileAreasOfResponsibility"), value: formatList(profile.areas_of_responsibility) ?? "" },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
@@ -210,12 +203,21 @@ export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardPro
             <div className="h-px bg-gray-200 dark:bg-gray-700" />
           </div>
           <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <div className="w-20 h-20 rounded-2xl bg-[var(--qit-primary)]/10 flex items-center justify-center overflow-hidden shrink-0">
-              {profile.photo_url ? (
-                <img src={profile.photo_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[var(--qit-primary)] font-semibold text-2xl">
-                  {profile.full_name.charAt(0).toUpperCase()}
+            <div className="relative shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-[var(--qit-primary)]/10 flex items-center justify-center overflow-hidden">
+                {profile.photo_url ? (
+                  <img src={profile.photo_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[var(--qit-primary)] font-semibold text-2xl">
+                    {profile.full_name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              {isTopThree && (
+                <div className="absolute -top-4 -left-3 z-10 pointer-events-none">
+                  {rank === 1 && <Crown className="w-10 h-10 text-yellow-500 rotate-[-15deg] drop-shadow-lg animate-bounce" />}
+                  {rank === 2 && <Crown className="w-9 h-9 text-gray-400 rotate-[-10deg] drop-shadow-md" />}
+                  {rank === 3 && <Crown className="w-9 h-9 text-orange-400 rotate-[-10deg] drop-shadow-md" />}
                 </div>
               )}
             </div>
@@ -227,12 +229,10 @@ export function ProfilePreviewCard({ profile, className }: ProfilePreviewCardPro
                 {displayStatus &&
                   (profile.role === "student" ? (
                     <>
-                      {/* Desktop/tablet: keep the text badge */}
                       <span className="hidden sm:inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
                         {displayStatus}
                       </span>
 
-                      {/* Mobile: round badge with rotating icon */}
                       <span className="sm:hidden inline-flex items-center justify-center rounded-full bg-[var(--qit-primary)]/10 border border-[var(--qit-primary)]/20 w-9 h-9 shrink-0">
                         <Loader2 className="w-4 h-4 text-[var(--qit-secondary)] animate-spin" />
                       </span>

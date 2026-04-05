@@ -276,9 +276,7 @@ export interface SafeProfilePreviewData {
   teaching_hours?: string | null;
   curated_courses?: string[] | null;
   consultation_location?: string | null;
-  employment_status?: string | null;
   reception_hours?: string | null;
-  employee_number?: string | null;
   groups?: Array<{ id: number; name: string }> | null;
   students_count?: number | null;
 

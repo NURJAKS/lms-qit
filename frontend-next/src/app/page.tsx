@@ -45,7 +45,6 @@ import { CountUpStat } from "@/components/landing/CountUpStat";
 import ScrollVelocity from "@/components/landing/ScrollVelocity";
 import { Slider3D } from "@/components/landing/Slider3D";
 import { ReviewsMarquee } from "@/components/landing/ReviewsMarquee";
-import { mockReviews } from "@/data/mockReviews";
 import {
   getCategoryFromCourse,
   courseImageUrl,
@@ -817,8 +816,7 @@ export default function HomePage() {
           </p>
         </div>
         
-        <ReviewsMarquee speed={60} items={mockReviews.slice(0, 18)} />
-        <ReviewsMarquee speed={80} reverse className="-mt-8" items={mockReviews.slice(18)} />
+        <ReviewsMarquee speed={60} />
       </section>
 
       {/* FAQ */}

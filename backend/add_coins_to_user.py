@@ -23,7 +23,7 @@ def add_coins_to_user(email: str, amount: int, reason: str = "manual_admin_grant
         print(f"✅ Найден пользователь: {user.full_name} (ID: {user.id})")
         print(f"📊 Текущий баланс: {user.points or 0} монет")
         
-        if add_coins(db, user.id, amount, reason):
+        if add_coins(db, user.id, amount, reason, apply_premium_multiplier=False):
             db.commit()
             db.refresh(user)
             print(f"✅ Успешно добавлено {amount} монет")

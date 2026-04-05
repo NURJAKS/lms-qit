@@ -16,7 +16,7 @@ from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
 from sqlalchemy import func, distinct
-from app.services.export_service import generate_csv_response, generate_xlsx_response
+from app.services.export_service import generate_xlsx_response
 
 router = APIRouter(prefix="/parent", tags=["parent"])
 
@@ -326,74 +326,6 @@ def children_leaderboard(
     children_ranked = [r for r in all_ranked if r["user_id"] in child_ids]
     
     return children_ranked
-
-
-@router.get("/children/leaderboard/csv")
-def children_leaderboard_csv(
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Экспорт рейтинга детей родителя в CSV."""
-    if not _is_parent_or_admin(current_user):
-        raise HTTPException(status_code=403, detail="Доступ только для родителей")
-    
-    # Получаем всех детей родителя
-    children = db.query(User).filter(User.parent_id == current_user.id, User.role == "student").all()
-    child_ids = [c.id for c in children] if children else []
-    
-    rows = []
-    headers = ["Rank", "Full Name", "Email", "Avg Score", "Courses Done", "Activity", "Points"]
-    
-    if child_ids:
-        # Получаем данные для рейтинга (аналогично analytics.py)
-        subq = db.query(
-            StudentProgress.user_id,
-            func.avg(StudentProgress.test_score).label("avg_score"),
-            func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-            func.count(StudentProgress.id).label("activity"),
-        ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
-        
-        assign_subq = db.query(
-            AssignmentSubmission.student_id.label("user_id"),
-            func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-        ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
-        
-        # Получаем полный рейтинг для расчета позиций
-        all_users_q = db.query(
-            User.id, User.full_name, User.email, User.points,
-            subq.c.avg_score, subq.c.courses_done, subq.c.activity,
-            assign_subq.c.avg_assignment,
-        ).join(subq, User.id == subq.c.user_id).outerjoin(
-            assign_subq, User.id == assign_subq.c.user_id
-        ).order_by(
-            (
-                func.coalesce(subq.c.avg_score, 0) * 0.5
-                + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-                + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-                + func.coalesce(subq.c.activity, 0) * 0.15
-            ).desc()
-        )
-        
-        all_rows = all_users_q.all()
-        all_ranked = [
-            {"rank": i + 1, "user_id": r.id, "full_name": r.full_name, "email": r.email,
-             "avg_score": float(r.avg_score) if r.avg_score else 0,
-             "avg_assignment": float(r.avg_assignment) if r.avg_assignment else 0,
-             "courses_done": r.courses_done or 0, "activity": r.activity or 0,
-             "points": r.points or 0}
-            for i, r in enumerate(all_rows)
-        ]
-        
-        # Фильтруем только детей родителя
-        children_ranked = [r for r in all_ranked if r["user_id"] in child_ids]
-        
-        for r in children_ranked:
-            rows.append([
-                r["rank"], r["full_name"], r["email"],
-                r["avg_score"], r["courses_done"], r["activity"], r["points"]
-            ])
-    
-    return generate_csv_response(rows, "children-leaderboard", headers)
 
 
 @router.get("/children/leaderboard/excel")

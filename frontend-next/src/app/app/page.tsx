@@ -118,13 +118,15 @@ export default function DashboardPage() {
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
   const { user, isTeacher } = useAuthStore();
+  const userId = user?.id;
   const isAdmin = user?.role && ["admin", "director", "curator"].includes(user.role);
   const { data: enrollments = [] } = useQuery({
-    queryKey: ["my-enrollments"],
+    queryKey: ["my-enrollments", userId],
     queryFn: async () => {
       const { data } = await api.get<Array<{ course_id: number; course: Course }>>("/courses/my/enrollments");
       return data;
     },
+    enabled: userId != null,
   });
   const { data: progressDetail } = useQuery({
     queryKey: ["my-progress-detail"],

@@ -9,7 +9,10 @@ import sys
 sys.path.insert(0, '.')
 
 from app.core.database import SessionLocal
-from app.models import CourseTopic, Test, TestQuestion
+from app.models import Course, CourseTopic, Test, TestQuestion
+
+WEB_COURSE_TITLE = "Web-әзірлеу негіздері"
+HTML_TAGS_TOPIC_TITLE = "HTML тегтері"
 
 # Вопросы по HTML (Kazakh)
 HTML_QUESTIONS = [
@@ -55,13 +58,20 @@ WEB_FINAL_QUESTIONS = [
 def migrate():
     db = SessionLocal()
     try:
-        # Найти тему "HTML тегтері" (course 2, первый топик)
-        topic = db.query(CourseTopic).filter(
-            CourseTopic.course_id == 2,
-            CourseTopic.order_number == 1,
-        ).first()
+        course = db.query(Course).filter(Course.title == WEB_COURSE_TITLE).first()
+        if not course:
+            print(f'Course "{WEB_COURSE_TITLE}" not found.')
+            return
+        topic = (
+            db.query(CourseTopic)
+            .filter(
+                CourseTopic.course_id == course.id,
+                CourseTopic.title == HTML_TAGS_TOPIC_TITLE,
+            )
+            .first()
+        )
         if not topic:
-            print("Topic 'HTML тегтері' not found.")
+            print(f'Topic "{HTML_TAGS_TOPIC_TITLE}" not found for Web course.')
             return
 
         # Обновить video_url (если нужно)
@@ -103,7 +113,7 @@ def migrate():
 
         # Финальный тест Web курса — заменить Python на HTML/CSS/JS
         final_test = db.query(Test).filter(
-            Test.course_id == 2,
+            Test.course_id == course.id,
             Test.is_final == 1,
         ).first()
         if final_test:
