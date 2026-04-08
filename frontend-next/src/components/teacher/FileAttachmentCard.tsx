@@ -2,6 +2,7 @@
 
 import { Trash2, FileText, ImageIcon, Video, File } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
@@ -22,6 +23,7 @@ export function FileAttachmentCard({
   onRemove: () => void;
 }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const isDark = theme === "dark";
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -77,14 +79,14 @@ export function FileAttachmentCard({
           {fileName}
         </a>
         <span className="text-xs mt-0.5" style={{ color: textColors.secondary }}>
-          {isImage ? "Image" : isVideo ? "Video" : isDoc ? "Document" : "File"}
+          {isImage ? t("fileTypeImage") : isVideo ? t("fileTypeVideo") : isDoc ? t("fileTypeDocument") : t("fileTypeFile")}
         </span>
       </div>
       <button
         type="button"
         onClick={onRemove}
         className="shrink-0 p-2 self-center rounded-lg text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-        aria-label="Remove"
+        aria-label={t("remove")}
       >
         <Trash2 className="w-4 h-4" />
       </button>

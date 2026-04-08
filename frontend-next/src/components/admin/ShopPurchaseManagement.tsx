@@ -11,6 +11,8 @@ import { getGlassCardStyle, getTextColors, getModalStyle, getInputStyle } from "
 import { Package, Truck, CheckCircle, Clock, Search, Filter, UserPlus, X } from "lucide-react";
 import { CourierListView } from "./CourierListView";
 import { cn } from "@/lib/utils";
+import { formatDateLocalized } from "@/lib/dateUtils";
+
 
 type Purchase = {
   id: number;
@@ -188,7 +190,7 @@ export function ShopPurchaseManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-3xl font-bold flex items-center gap-3" style={{ color: textColors.primary }}>
           <Package className="w-8 h-8" style={{ color: "#FF4181" }} />
           {t("adminShopPurchases")}
@@ -196,11 +198,12 @@ export function ShopPurchaseManagement() {
       </div>
 
       {/* Вкладки */}
-      <div className="flex gap-2 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)" }}>
+      <div className="border-b overflow-x-auto" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)" }}>
+        <div className="flex gap-2 min-w-max pr-1">
         <button
           onClick={() => setActiveTab("purchases")}
           className={cn(
-            "px-6 py-3 font-medium transition-all relative",
+            "px-4 sm:px-6 py-3 font-medium transition-all relative whitespace-nowrap text-sm sm:text-base",
             activeTab === "purchases" && "text-white"
           )}
           style={
@@ -222,7 +225,7 @@ export function ShopPurchaseManagement() {
         <button
           onClick={() => setActiveTab("couriers")}
           className={cn(
-            "px-6 py-3 font-medium transition-all relative",
+            "px-4 sm:px-6 py-3 font-medium transition-all relative whitespace-nowrap text-sm sm:text-base",
             activeTab === "couriers" && "text-white"
           )}
           style={
@@ -241,6 +244,7 @@ export function ShopPurchaseManagement() {
             />
           )}
         </button>
+        </div>
       </div>
 
       {activeTab === "couriers" ? (
@@ -305,11 +309,11 @@ export function ShopPurchaseManagement() {
             style={getInputStyle(theme)}
           />
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg"
+            className="w-full sm:w-auto px-4 py-2 rounded-lg"
             style={getInputStyle(theme)}
           >
             <option value="">{t("adminShopAllStatuses")}</option>
@@ -322,7 +326,7 @@ export function ShopPurchaseManagement() {
           <select
             value={courierFilter || ""}
             onChange={(e) => setCourierFilter(e.target.value ? parseInt(e.target.value) : null)}
-            className="px-4 py-2 rounded-lg"
+            className="w-full sm:w-auto px-4 py-2 rounded-lg"
             style={getInputStyle(theme)}
           >
             <option value="">{t("adminShopAllCouriers")}</option>
@@ -337,7 +341,7 @@ export function ShopPurchaseManagement() {
             placeholder={t("adminShopUserIdPlaceholder")}
             value={userIdFilter || ""}
             onChange={(e) => setUserIdFilter(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-32 px-4 py-2 rounded-lg"
+            className="w-full sm:w-32 px-4 py-2 rounded-lg"
             style={getInputStyle(theme)}
           />
         </div>
@@ -410,8 +414,9 @@ export function ShopPurchaseManagement() {
                   </td>
                   <td className="px-4 py-3 text-sm" style={{ color: textColors.secondary }}>
                     {purchase.purchased_at
-                      ? new Date(purchase.purchased_at).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US")
+                      ? formatDateLocalized(purchase.purchased_at, lang)
                       : "-"}
+
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -432,23 +437,25 @@ export function ShopPurchaseManagement() {
                       <div className="flex items-center gap-1.5">
                         <CheckCircle className="w-3.5 h-3.5" style={{ color: "#10B981" }} />
                         <span className="text-sm" style={{ color: "#10B981" }}>
-                          {new Date(purchase.delivered_at).toLocaleDateString("ru-RU", {
+                          {formatDateLocalized(purchase.delivered_at, lang, {
                             day: "numeric",
                             month: "long",
                             year: "numeric",
                           })}
                         </span>
+
                       </div>
                     ) : purchase.estimated_delivery_date ? (
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
                         <span className="text-sm" style={{ color: textColors.secondary }}>
-                          {t("adminShopExpected")} {new Date(purchase.estimated_delivery_date).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US", {
+                          {t("adminShopExpected")} {formatDateLocalized(purchase.estimated_delivery_date, lang, {
                             day: "numeric",
                             month: "long",
                             year: "numeric",
                           })}
                         </span>
+
                       </div>
                     ) : (
                       <span className="text-xs" style={{ color: textColors.secondary }}>
@@ -478,8 +485,9 @@ export function ShopPurchaseManagement() {
                         </button>
                         {purchase.delivery_status === "delivered" && purchase.delivered_at && (
                           <div className="text-xs" style={{ color: textColors.secondary }}>
-                            {t("adminShopDeliveredOn")} {new Date(purchase.delivered_at).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US")}
+                            {t("adminShopDeliveredOn")} {formatDateLocalized(purchase.delivered_at, lang)}
                           </div>
+
                         )}
                       </div>
                     ) : (

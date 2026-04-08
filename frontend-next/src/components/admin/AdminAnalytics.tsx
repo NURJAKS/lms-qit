@@ -46,7 +46,9 @@ type LeaderboardItem = {
   user_id: number;
   full_name: string;
   email: string;
+  rating_score: number;
   avg_score: number;
+  avg_assignment: number;
   courses_done: number;
   activity: number;
   points?: number;
@@ -59,7 +61,7 @@ type AssignmentsSummary = {
 };
 
 export function AdminAnalytics() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const {
@@ -165,13 +167,13 @@ export function AdminAnalytics() {
 
   const handleExportExcel = async () => {
     try {
-      const { data } = await api.get<Blob>("/analytics/leaderboard/excel?limit=20", {
+      const { data } = await api.get<Blob>(`/analytics/leaderboard/excel?limit=20&lang=${lang}`, {
         responseType: "blob",
       });
       const url = URL.createObjectURL(data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "leaderboard-top20.xlsx";
+      a.download = lang === "kk" ? "reiting-top20.xlsx" : "leaderboard-top20.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -504,7 +506,13 @@ export function AdminAnalytics() {
                     {t("adminFullName")}
                   </th>
                   <th className={`text-left py-3 px-4 font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
-                    {t("adminScore")}
+                    {t("leaderboardRatingScore")}
+                  </th>
+                  <th className={`text-left py-3 px-4 font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
+                    {t("leaderboardAvgTestScore")}
+                  </th>
+                  <th className={`text-left py-3 px-4 font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
+                    {t("leaderboardAvgAssignment")}
                   </th>
                   <th className={`text-left py-3 px-4 font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
                     {t("courses")}
@@ -521,9 +529,11 @@ export function AdminAnalytics() {
                     <td className={`py-3 px-4 ${isDark ? "text-white" : "text-gray-900"}`}>{r.full_name}</td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[rgba(139,92,246,0.2)] text-[#8B5CF6] border border-[rgba(139,92,246,0.3)]">
-                        {r.avg_score.toFixed(1)}
+                        {r.rating_score.toFixed(1)}
                       </span>
                     </td>
+                    <td className={`py-3 px-4 ${isDark ? "text-white" : "text-gray-900"}`}>{r.avg_score.toFixed(1)}</td>
+                    <td className={`py-3 px-4 ${isDark ? "text-white" : "text-gray-900"}`}>{r.avg_assignment.toFixed(1)}</td>
                     <td className={`py-3 px-4 ${isDark ? "text-white" : "text-gray-900"}`}>{r.courses_done}</td>
                     <td className={`py-3 px-4 ${isDark ? "text-[#94A3B8]" : "text-gray-600"}`}>{r.activity}</td>
                   </tr>

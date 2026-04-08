@@ -25,6 +25,8 @@ export const COURSE_TITLE_KEYS: Record<string, string> = {
   "Тестілеу және QA": "courseQATitle",
   "1С:Предприятие 8": "course1CTitle",
   "1С:Кәсіпорын 8": "course1CTitle",
+  "Информатика және ақпараттық технологиялар негіздері": "courseInformaticsTitle",
+  "Машина жасау және трансформациялау": "courseMechanicalEngineeringTitle",
   // Russian variants
   "Python для начинающих": "coursePythonTitle",
   "Web разработка": "courseWebTitle",
@@ -33,15 +35,19 @@ export const COURSE_TITLE_KEYS: Record<string, string> = {
   "Машинное обучение": "courseMLTitle",
   "Веб-дизайнер": "courseWebDesignerTitle",
   "C++ разработчик": "courseCPPDeveloperTitle",
-  "C# разработчик": "courseCSharpDeveloperTitle",
-  "AutoCAD": "courseAutoCADTitle",
+    "C# разработчик": "courseCSharpDeveloperTitle",
+    "AutoCAD": "courseAutoCADTitle",
   "Blender 3D": "courseBlender3DTitle",
+  "Основы информатики и ИТ": "courseInformaticsTitle",
+  "Машиностроение и трансформация": "courseMechanicalEngineeringTitle",
   // English variants
   "Python Programming": "coursePythonTitle",
   "Web Development": "courseWebTitle",
   "Python Programming Fundamentals": "coursePythonTitle",
   "Web Development Fundamentals": "courseWebTitle",
   "Machine Learning Fundamentals": "courseMLTitle",
+  "Informatics and IT Fundamentals": "courseInformaticsTitle",
+  "Mechanical Engineering and Transformation": "courseMechanicalEngineeringTitle",
 };
 
 /** Maps API course title to custom banner image URL */
@@ -84,12 +90,16 @@ export const COURSE_DESC_KEYS: Record<string, string> = {
   "Тестілеу және QA": "courseQADesc",
   "1С:Предприятие 8": "course1CDesc",
   "1С:Кәсіпорын 8": "course1CDesc",
+  "Информатика және ақпараттық технологиялар негіздері": "courseInformaticsDesc",
+  "Машина жасау және трансформациялау": "courseMechanicalEngineeringDesc",
   // Russian-only course names (mapped to shared descriptions)
   "Веб-дизайнер": "courseWebDesignerDesc",
   "C++ разработчик": "courseCPPDeveloperDesc",
   "C# разработчик": "courseCSharpDeveloperDesc",
   "AutoCAD": "courseAutoCADDesc",
   "Blender 3D": "courseBlender3DDesc",
+  "Основы информатики и ИТ": "courseInformaticsDesc",
+  "Машиностроение и трансформация": "courseMechanicalEngineeringDesc",
 };
 
 /** Maps API topic title (Kazakh/Russian/English) to translation key for localized display */
@@ -137,6 +147,9 @@ export const TOPIC_TITLE_KEYS: Record<string, string> = {
   "DOM манипуляциясы": "topicDomManipulationTitle",
   "Манипуляции DOM": "topicDomManipulationTitle",
   "DOM Manipulation": "topicDomManipulationTitle",
+  "Компьютер құрылғысы, желі, ОЖ, кодтау...": "topicComputerHardwareTitle",
+  "Устройство компьютера, сеть, ОС, кодирование...": "topicComputerHardwareTitle",
+  "Computer Hardware, Network, OS, Coding...": "topicComputerHardwareTitle",
 };
 
 /** Maps module titles to translation keys (for Units on topic pages) */
@@ -225,13 +238,23 @@ export function getCourseBannerUrl(c: { title?: string; image_url?: string }): s
 
 export function getCategoryFromCourse(c: Course): { key: string; labelKey: string } {
   const t = (c.title || "").toLowerCase();
-  if (t.includes("python") || t.includes("машина") || t.includes("ml") || t.includes("ai") || t.includes("оқыту") || t.includes("c++") || t.includes("c#"))
+  
+  // Mobile check first (to catch "React Native" before it matches "Web")
+  if (t.includes("flutter") || t.includes("мобиль") || t.includes("mobile") || t.includes("ios") || t.includes("android") || t.includes("react native") || t.includes("app"))
+    return { key: "mobile", labelKey: "coursesFilterMobile" };
+
+  // AI & Python
+  if (t.includes("python") || t.includes("машина") || t.includes("machine") || t.includes("ml") || t.includes("ai") || t.includes("оқыту") || t.includes("c++") || t.includes("c#") || t.includes("deep learning"))
     return { key: "ai", labelKey: "coursesFilterAi" };
+
+  // Web Development
   if (t.includes("web") || t.includes("әзірлеу") || t.includes("html") || t.includes("react") || t.includes("дизайн") || t.includes("design"))
     return { key: "web", labelKey: "coursesFilterWeb" };
-  if (t.includes("flutter") || t.includes("мобиль")) return { key: "mobile", labelKey: "coursesFilterMobile" };
+
+  // Data & Others
   if (t.includes("data") || t.includes("ui") || t.includes("ux") || t.includes("1с") || t.includes("autocad") || t.includes("blender"))
     return { key: "data", labelKey: "coursesFilterData" };
+
   return { key: "data", labelKey: "coursesFilterData" };
 }
 

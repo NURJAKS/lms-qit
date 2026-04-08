@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server';
 const ROUTES = {
   admin: ['admin', 'director', 'curator'],
   teacher: ['teacher', 'admin', 'director', 'curator'],
-  parent: ['parent', 'admin', 'director'],
+  parent: ['parent', 'admin', 'director', 'curator'],
 };
 
 export function middleware(request: NextRequest) {

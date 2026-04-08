@@ -37,15 +37,9 @@ export type StudentAssignmentRow = {
 
 type MainTabId = "appointed" | "missed" | "completed";
 
-type DoneBucket = "no_due_date" | "done_early" | "this_week" | "last_week" | "earlier";
+type TimeBucket = "no_due_date" | "this_week" | "next_week" | "later";
 
-const DONE_BUCKET_ORDER: DoneBucket[] = [
-  "no_due_date",
-  "done_early",
-  "this_week",
-  "last_week",
-  "earlier",
-];
+const TIME_BUCKET_ORDER: TimeBucket[] = ["no_due_date", "this_week", "next_week", "later"];
 
 function startOfWeekMonday(d: Date): Date {
   const date = new Date(d);
@@ -56,35 +50,57 @@ function startOfWeekMonday(d: Date): Date {
   return date;
 }
 
-function classifyCompleted(a: StudentAssignmentRow, nowMs: number): DoneBucket {
-  if (!a.submitted_at) return "earlier";
-  const subMs = new Date(a.submitted_at).getTime();
-  if (!a.deadline) return "no_due_date";
-  const dl = new Date(a.deadline).getTime();
-  if (subMs < dl) return "done_early";
-
+function classifyByDeadline(deadline: string | null, nowMs: number): TimeBucket {
+  if (!deadline) return "no_due_date";
+  const dl = new Date(deadline).getTime();
   const now = new Date(nowMs);
   const thisWeekStart = startOfWeekMonday(now).getTime();
-  const thisWeekEnd = thisWeekStart + 7 * 24 * 60 * 60 * 1000;
-  const lastWeekStart = thisWeekStart - 7 * 24 * 60 * 60 * 1000;
+  const nextWeekStart = thisWeekStart + 7 * 24 * 60 * 60 * 1000;
+  const laterStart = nextWeekStart + 7 * 24 * 60 * 60 * 1000;
 
-  if (subMs >= thisWeekStart && subMs < thisWeekEnd) return "this_week";
-  if (subMs >= lastWeekStart && subMs < thisWeekStart) return "last_week";
-  return "earlier";
+  if (dl < nextWeekStart) return "this_week";
+  if (dl < laterStart) return "next_week";
+  return "later";
 }
 
-function bucketLabel(bucket: DoneBucket, t: (k: TranslationKey) => string): string {
+function classifyAppointed(a: StudentAssignmentRow, nowMs: number): TimeBucket {
+  return classifyByDeadline(a.deadline, nowMs);
+}
+
+function classifyMissed(a: StudentAssignmentRow, nowMs: number): TimeBucket {
+  if (!a.deadline) return "no_due_date";
+  const dl = new Date(a.deadline).getTime();
+  const now = new Date(nowMs);
+  const thisWeekStart = startOfWeekMonday(now).getTime();
+  const lastWeekStart = thisWeekStart - 7 * 24 * 60 * 60 * 1000;
+
+  if (dl >= thisWeekStart) return "this_week";
+  if (dl >= lastWeekStart) return "later";
+  return "later";
+}
+
+function classifyCompleted(a: StudentAssignmentRow, nowMs: number): TimeBucket {
+  return classifyByDeadline(a.deadline ?? null, nowMs);
+}
+
+function classifyForTab(a: StudentAssignmentRow, type: MainTabId, nowMs: number): TimeBucket {
+  if (type === "appointed") return classifyAppointed(a, nowMs);
+  if (type === "missed") return classifyMissed(a, nowMs);
+  return classifyCompleted(a, nowMs);
+}
+
+function bucketLabel(bucket: string, t: (k: TranslationKey) => string): string {
   switch (bucket) {
     case "no_due_date":
-      return t("studentAssignmentsDoneSectionNoDue");
-    case "done_early":
-      return t("studentAssignmentsDoneSectionEarly");
+      return t("studentAssignmentsSectionNoDue");
     case "this_week":
-      return t("studentAssignmentsDoneSectionThisWeek");
-    case "last_week":
-      return t("studentAssignmentsDoneSectionLastWeek");
+      return t("studentAssignmentsSectionThisWeek");
+    case "next_week":
+      return t("studentAssignmentsSectionNextWeek");
+    case "later":
+      return t("studentAssignmentsSectionLater");
     default:
-      return t("studentAssignmentsDoneSectionEarlier");
+      return bucket;
   }
 }
 
@@ -214,70 +230,60 @@ function AssignmentsEmptyStateNoOverdue({
   );
 }
 
-function DoneAssignmentsGrouped({
-  doneList,
+function AssignmentsGrouped({
+  list,
+  type,
   t,
   formatDate,
   compact,
 }: {
-  doneList: StudentAssignmentRow[];
+  list: StudentAssignmentRow[];
+  type: MainTabId;
   t: (k: TranslationKey) => string;
   formatDate: (iso: string | null) => string;
   compact?: boolean;
 }) {
+  const order = TIME_BUCKET_ORDER;
+  
   const grouped = useMemo(() => {
-    // eslint-disable-next-line react-hooks/purity -- classification uses current time
     const nowMs = Date.now();
-    const buckets: Record<DoneBucket, StudentAssignmentRow[]> = {
-      no_due_date: [],
-      done_early: [],
-      this_week: [],
-      last_week: [],
-      earlier: [],
-    };
-    for (const a of doneList) {
-      buckets[classifyCompleted(a, nowMs)].push(a);
+    const buckets: Record<string, StudentAssignmentRow[]> = {};
+    order.forEach(b => buckets[b] = []);
+    
+    for (const a of list) {
+      const b = classifyForTab(a, type, nowMs);
+      if (buckets[b]) buckets[b].push(a);
+      else buckets["later"]?.push(a);
     }
     return buckets;
-  }, [doneList]);
+  }, [list, type, order]);
 
-  const [openSections, setOpenSections] = useState<Record<DoneBucket, boolean>>(() => {
-    const init: Record<DoneBucket, boolean> = {
-      no_due_date: false,
-      done_early: false,
-      this_week: false,
-      last_week: false,
-      earlier: false,
-    };
-    const first = DONE_BUCKET_ORDER.find((b) => grouped[b]?.length > 0);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    order.forEach(b => init[b] = false);
+    const first = order.find((b) => grouped[b]?.length > 0);
     if (first) init[first] = true;
     return init;
   });
 
   useEffect(() => {
-    const first = DONE_BUCKET_ORDER.find((b) => grouped[b]?.length > 0);
+    const first = order.find((b) => grouped[b]?.length > 0);
     setOpenSections(() => {
-      const next: Record<DoneBucket, boolean> = {
-        no_due_date: false,
-        done_early: false,
-        this_week: false,
-        last_week: false,
-        earlier: false,
-      };
+      const next: Record<string, boolean> = {};
+      order.forEach(b => next[b] = false);
       if (first) next[first] = true;
       return next;
     });
-  }, [grouped]);
+  }, [grouped, order]);
 
-  const toggle = (b: DoneBucket) => {
+  const toggle = (b: string) => {
     setOpenSections((prev) => ({ ...prev, [b]: !prev[b] }));
   };
 
   return (
     <div className="space-y-2">
-      {DONE_BUCKET_ORDER.map((bucket) => {
+      {order.map((bucket) => {
         const items = grouped[bucket];
-        if (items.length === 0) return null;
         const open = openSections[bucket];
         return (
           <div
@@ -304,7 +310,7 @@ function DoneAssignmentsGrouped({
               <div className={cn("border-t border-gray-100 pt-2 dark:border-gray-600", compact ? "px-1.5 pb-2 space-y-1.5" : "px-3 pb-3 space-y-2")}>
                 {items.map((a) => (
                   <BlurFade key={a.id} delay={0.03}>
-                    <AssignmentRowLink a={a} variant="done" formatDate={formatDate} t={t} compact={compact} />
+                    <AssignmentRowLink a={a} variant={type === "appointed" ? "implement" : type === "missed" ? "missing" : "done"} formatDate={formatDate} t={t} compact={compact} />
                   </BlurFade>
                 ))}
               </div>
@@ -323,7 +329,7 @@ type StudentAssignmentsListViewProps = {
 };
 
 export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }: StudentAssignmentsListViewProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuthStore();
   const userId = user?.id;
   const { theme } = useTheme();
@@ -388,9 +394,9 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
     if (!iso) return t("noDueDate");
     const d = new Date(iso);
     if (compact) {
-      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      return d.toLocaleDateString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU", { month: "short", day: "numeric" });
     }
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
   const tabBorder = theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";
@@ -420,15 +426,7 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
           <AssignmentsEmptyStateAssigned t={t} textColors={textColors} />
         );
       }
-      return (
-        <div className={cn("space-y-2", compact ? "px-1" : "space-y-3")}>
-          {implementList.map((a) => (
-            <BlurFade key={a.id} delay={0.05}>
-              <AssignmentRowLink a={a} variant="implement" formatDate={formatDate} t={t} compact={compact} />
-            </BlurFade>
-          ))}
-        </div>
-      );
+      return <AssignmentsGrouped list={implementList} type="appointed" t={t} formatDate={formatDate} compact={compact} />;
     }
 
     if (activeTab === "missed") {
@@ -441,15 +439,7 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
           <AssignmentsEmptyStateNoOverdue t={t} textColors={textColors} />
         );
       }
-      return (
-        <div className={cn("space-y-2", compact ? "px-1" : "space-y-3")}>
-          {missingList.map((a) => (
-            <BlurFade key={a.id} delay={0.05}>
-              <AssignmentRowLink a={a} variant="missing" formatDate={formatDate} t={t} compact={compact} />
-            </BlurFade>
-          ))}
-        </div>
-      );
+      return <AssignmentsGrouped list={missingList} type="missed" t={t} formatDate={formatDate} compact={compact} />;
     }
 
     if (doneList.length === 0) {
@@ -461,7 +451,7 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
         <AssignmentsEmptyStateAssigned t={t} textColors={textColors} />
       );
     }
-    return <DoneAssignmentsGrouped doneList={doneList} t={t} formatDate={formatDate} compact={compact} />;
+    return <AssignmentsGrouped list={doneList} type="completed" t={t} formatDate={formatDate} compact={compact} />;
   };
 
   return (
@@ -479,20 +469,23 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
             </div>
           )}
           {fixedCourseId == null && (
-            <div className="flex shrink-0 items-center gap-2 self-start rounded-xl border border-gray-200 bg-white p-1.5 pr-3 dark:border-white/10 dark:bg-white/5">
-              <Filter className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              <select
-                value={courseFilter === "all" ? "all" : String(courseFilter)}
-                onChange={(e) => setCourseFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="min-w-[140px] bg-transparent text-sm font-medium text-gray-900 focus:outline-none dark:text-white"
-              >
-                <option value="all">{t("allCourses")}</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={String(c.id)}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
+            <div className="relative min-w-0 max-w-full">
+              <div className="mb-1 pl-1 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{t("courseFilter")}</div>
+              <div className="group relative flex shrink-0 items-center gap-2 self-start rounded-xl border border-gray-200 bg-white p-1.5 pr-3 shadow-sm transition-all hover:border-blue-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-blue-500">
+                <Filter className="ml-2 h-4 w-4 shrink-0 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                <select
+                  value={courseFilter === "all" ? "all" : String(courseFilter)}
+                  onChange={(e) => setCourseFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+                  className="min-w-[140px] bg-transparent text-sm font-bold text-gray-700 focus:outline-none dark:text-gray-200"
+                >
+                  <option value="all" className="dark:bg-gray-900">{t("allCourses")}</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={String(c.id)} className="dark:bg-gray-900">
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
         </div>

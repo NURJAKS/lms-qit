@@ -130,7 +130,7 @@ export function Sidebar() {
         {isTeacher() && (
           <Link href="/app/teacher" className={navLinkClass("/app/teacher")}>
             <Users className="w-[22px] h-[22px] shrink-0" />
-            {!collapsed && <span>{t("teacher")}</span>}
+            {!collapsed && <span>{t("teacherDashboardSidebar")}</span>}
           </Link>
         )}
         {(user?.role === "parent" || isAdmin()) && (

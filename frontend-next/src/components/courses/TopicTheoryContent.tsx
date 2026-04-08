@@ -33,11 +33,11 @@ export function TopicTheoryContent({ content }: { content: string }) {
           </div>
           <div>
             <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-              {t("theoryMaterial") || "Theory Material"}
+              {t("theoryMaterial")}
             </h4>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-tight">{t("activeLearning") || "Active Learning"}</span>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-tight">{t("activeLearning")}</span>
             </div>
           </div>
         </div>
@@ -65,7 +65,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
                 <div className="my-8 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg shadow-gray-200/20 dark:shadow-none">
                   <div className="bg-gray-50 dark:bg-gray-800/50 py-2 px-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
                     <TableIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{t("referenceData") || "Reference Data"}</span>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{t("referenceData")}</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse !my-0">
@@ -107,7 +107,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
                       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-2">
                           <Code2 className="w-4 h-4 text-purple-500" />
-                          <span className="text-xs font-mono font-bold text-gray-500 tracking-tighter uppercase">{t("codeSnippet") || "Code Snippet"}</span>
+                          <span className="text-xs font-mono font-bold text-gray-500 tracking-tighter uppercase">{t("codeSnippet")}</span>
                         </div>
                         <div className="flex gap-1.5">
                           <div className="w-2.5 h-2.5 rounded-full bg-red-400/20" />
@@ -135,7 +135,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
                   <Lightbulb className="absolute top-6 left-4 w-6 h-6 text-purple-500 opacity-50" />
                   <div className="font-medium text-purple-900 dark:text-purple-200 not-italic mb-1 uppercase text-[10px] tracking-widest flex items-center gap-2">
                     <Info className="w-3 h-3" />
-                    {t("proTip") || "Pro Tip / Important Note"}
+                    {t("proTip")}
                   </div>
                   {children}
                 </blockquote>
@@ -164,7 +164,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
         <div className="px-10 py-6 bg-gray-50/30 dark:bg-gray-800/20 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2 text-gray-400">
             <ListChecks className="w-4 h-4" />
-            <span className="text-[11px] font-medium tracking-wide uppercase">{t("completeReading") || "Read carefully to pass the test"}</span>
+            <span className="text-[11px] font-medium tracking-wide uppercase">{t("completeReading")}</span>
           </div>
           <div className="flex -space-x-2">
             <div className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 bg-purple-500 flex items-center justify-center text-[10px] text-white font-bold">P</div>

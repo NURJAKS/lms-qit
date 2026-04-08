@@ -25,17 +25,22 @@ export function formatDateTimeLocalized(
   if (!d) return "—";
 
   const locale = getLocaleForLang(lang);
-  const baseOptions: Intl.DateTimeFormatOptions =
-    lang === "en"
-      ? { day: "2-digit", month: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" }
-      : {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        };
+  
+  // According to the spec, dateStyle/timeStyle cannot be used with individual date/time unit properties
+  const hasStyle = options?.dateStyle || options?.timeStyle;
+
+  const baseOptions: Intl.DateTimeFormatOptions = hasStyle
+    ? {}
+    : lang === "en"
+    ? { day: "2-digit", month: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" }
+    : {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      };
 
   return d.toLocaleString(locale, { ...baseOptions, ...(options ?? {}) });
 }
@@ -58,21 +63,28 @@ export function formatDateLocalized(
   const d = normalizeDate(value);
   if (!d) return "—";
 
-  const locale = getLocaleForLang(lang);
-  const baseOptions: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  };
+  const hasStyle = options?.dateStyle;
+
+  const baseOptions: Intl.DateTimeFormatOptions = hasStyle
+    ? {}
+    : {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      };
 
   const finalOptions = { ...baseOptions, ...(options ?? {}) };
 
-  // Manual fallback for Kazakh long month names
-  if (lang === 'kk' && finalOptions.month === 'long') {
+  // Manual fallback for Kazakh month names
+  if (lang === 'kk' && (finalOptions.month === 'long' || finalOptions.month === 'short')) {
     const day = d.getDate();
     const month = KK_MONTHS[d.getMonth()];
     const year = d.getFullYear();
-    return `${day} ${month} ${year} ж.`;
+    
+    if (finalOptions.year === 'numeric') {
+      return `${day} ${month} ${year} ж.`;
+    }
+    return `${day} ${month}`;
   }
 
   if (lang === 'ru' && finalOptions.month === 'long') {
@@ -83,6 +95,7 @@ export function formatDateLocalized(
     });
   }
 
+  const locale = getLocaleForLang(lang);
   return d.toLocaleDateString(locale, finalOptions);
 }
 

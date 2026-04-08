@@ -85,6 +85,10 @@ class User(Base):
     taught_groups = relationship("TeacherGroup", back_populates="teacher", foreign_keys="TeacherGroup.teacher_id")
     assignments_created = relationship("TeacherAssignment", back_populates="teacher")
     group_memberships = relationship("GroupStudent", back_populates="student")
-    assignment_submissions = relationship("AssignmentSubmission", back_populates="student")
+    assignment_submissions = relationship(
+        "AssignmentSubmission",
+        back_populates="student",
+        foreign_keys="AssignmentSubmission.student_id",
+    )
     parent = relationship("User", remote_side=[id], backref="children", foreign_keys=[parent_id])
     course_applications = relationship("CourseApplication", back_populates="user", foreign_keys="CourseApplication.user_id", cascade="all, delete-orphan")

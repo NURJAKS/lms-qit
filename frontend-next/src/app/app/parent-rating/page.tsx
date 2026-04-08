@@ -26,7 +26,9 @@ type LeaderboardRow = {
   user_id: number;
   full_name: string;
   email: string;
+  rating_score: number;
   avg_score: number;
+  avg_assignment: number;
   courses_done: number;
   activity: number;
   points: number;
@@ -46,7 +48,7 @@ function RatingTable({
   childIds?: Set<number>;
 }) {
   return (
-    <table className="w-full">
+    <table className="w-full min-w-[720px]">
       <thead className="bg-gray-50/80 dark:bg-gray-700/80 backdrop-blur-sm sticky top-0 z-10">
         <tr>
           <th className="text-left py-4 px-4 font-semibold text-gray-700 dark:text-gray-200">
@@ -77,7 +79,9 @@ function RatingTable({
 
 const TABLE_COLUMN_KEYS: { key: keyof LeaderboardRow; labelKey: TranslationKey }[] = [
   { key: "full_name", labelKey: "leaderboardName" },
-  { key: "avg_score", labelKey: "leaderboardAvgScore" },
+  { key: "rating_score", labelKey: "leaderboardRatingScore" },
+  { key: "avg_score", labelKey: "leaderboardAvgTestScore" },
+  { key: "avg_assignment", labelKey: "leaderboardAvgAssignment" },
   { key: "courses_done", labelKey: "leaderboardCourses" },
   { key: "activity", labelKey: "leaderboardActivity" },
   { key: "points", labelKey: "profileCoins" },
@@ -88,7 +92,7 @@ type ActiveBlock = "top" | "middle" | "low";
 type CourseItem = { course_id: number; course_title: string };
 
 export default function ParentRatingPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const textColors = getTextColors(theme);
   const [activeBlock, setActiveBlock] = useState<ActiveBlock>("top");
@@ -145,7 +149,7 @@ export default function ParentRatingPage() {
 
   const handleExportExcel = async () => {
     try {
-      const { data } = await api.get<Blob>("/parent/children/leaderboard/excel", {
+      const { data } = await api.get<Blob>(`/parent/children/leaderboard/excel?lang=${encodeURIComponent(lang)}`, {
         responseType: "blob",
       });
       const url = URL.createObjectURL(data);
@@ -314,7 +318,7 @@ export default function ParentRatingPage() {
               shimmerColor="#ffffff"
               borderRadius="12px"
             >
-              <Download className="w-4 h-4 mr-2" /> Excel
+              <Download className="w-4 h-4 mr-2" /> {t("digitalRating")}
             </ShimmerButton>
           </BlurFade>
         </div>

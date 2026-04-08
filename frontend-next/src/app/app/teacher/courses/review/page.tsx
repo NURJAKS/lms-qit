@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import type { Lang } from "@/i18n/translations";
@@ -10,6 +10,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { FileText, ChevronDown, ChevronRight, MoreVertical } from "lucide-react";
+import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
+
 
 type InboxItem = {
   id: number;
@@ -32,17 +34,16 @@ type Group = {
 };
 
 function formatDeadlineRow(iso: string | null, lang: Lang): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(d);
+  return formatDateTimeLocalized(iso, lang, { dateStyle: "medium", timeStyle: "short" });
 }
+
 
 type TabKey = "pending" | "graded";
 
 export default function TeacherCoursesReviewPage() {
   const router = useRouter();
   const { t, lang } = useLanguage();
+  const queryClient = useQueryClient();
   const { theme } = useTheme();
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -91,6 +92,14 @@ export default function TeacherCoursesReviewPage() {
     try {
       setProcessingId(assignmentId);
       await api.post(`/teacher/assignments/${assignmentId}/mark-reviewed`);
+      queryClient.setQueryData<InboxItem[]>(
+        ["teacher-submissions-inbox", "pending", groupFilter],
+        (prev = []) => prev.filter((x) => x.id !== assignmentId)
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", "pending", groupFilter] }),
+        queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", "graded", groupFilter] }),
+      ]);
       await refetch();
     } catch (error) {
       console.error("Failed to mark as reviewed:", error);
@@ -103,6 +112,14 @@ export default function TeacherCoursesReviewPage() {
     try {
       setProcessingId(assignmentId);
       await api.post(`/teacher/assignments/${assignmentId}/unmark-reviewed`);
+      queryClient.setQueryData<InboxItem[]>(
+        ["teacher-submissions-inbox", "graded", groupFilter],
+        (prev = []) => prev.filter((x) => x.id !== assignmentId)
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", "pending", groupFilter] }),
+        queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", "graded", groupFilter] }),
+      ]);
       await refetch();
     } catch (error) {
       console.error("Failed to mark as unreviewed:", error);
@@ -118,11 +135,11 @@ export default function TeacherCoursesReviewPage() {
     const groups: { [key: string]: InboxItem[] } = {};
     items.forEach((item) => {
       if (!item.deadline) return;
-      const date = new Date(item.deadline);
-      const dateKey = date.toLocaleDateString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU", {
+      const dateKey = formatDateLocalized(item.deadline, lang, {
         day: "numeric",
         month: "long",
       });
+
       const key = `${t("teacherDueDateRowLabel")}: ${dateKey}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(item);
@@ -167,15 +184,29 @@ export default function TeacherCoursesReviewPage() {
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => router.push(`/app/teacher/view-answers/${item.id}`)}
+                onClick={() => router.push(`/app/teacher/courses/${item.group_id}/assignment/${item.id}`)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    router.push(`/app/teacher/view-answers/${item.id}`);
+                    router.push(`/app/teacher/courses/${item.group_id}/assignment/${item.id}`);
                   }
                 }}
                 className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
               >
+                {(() => {
+                  const rawSubmitted = Math.max(item.submitted_count || 0, 0);
+                  const rawAssigned = Math.max(item.total_students || 0, 0);
+                  const rawGraded = Math.max(item.graded_count || 0, 0);
+
+                  // Show actionable counters:
+                  // submitted = turned in but not yet graded
+                  // assigned = not yet turned in
+                  const submittedToReview = Math.max(rawSubmitted - rawGraded, 0);
+                  const assignedNotSubmitted = Math.max(rawAssigned - rawSubmitted, 0);
+                  const gradedDone = rawGraded;
+
+                  return (
+                    <>
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <FileText className="w-5 h-5 shrink-0 mt-0.5" style={{ color: textColors.secondary }} />
                   <div className="min-w-0">
@@ -196,19 +227,19 @@ export default function TeacherCoursesReviewPage() {
                 <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm sm:justify-end">
                   <div className="text-center min-w-[4rem]">
                     <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {item.submitted_count}
+                      {submittedToReview}
                     </div>
                     <div style={{ color: textColors.secondary }}>{t("submitted")}</div>
                   </div>
                   <div className="text-center min-w-[4rem]">
                     <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {item.total_students}
+                      {assignedNotSubmitted}
                     </div>
                     <div style={{ color: textColors.secondary }}>{t("assigned")}</div>
                   </div>
                   <div className="text-center min-w-[4rem]">
                     <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {item.graded_count}
+                      {gradedDone}
                     </div>
                     <div style={{ color: textColors.secondary }}>{t("graded")}</div>
                   </div>
@@ -267,6 +298,9 @@ export default function TeacherCoursesReviewPage() {
                     )}
                   </div>
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             </li>
           ))}

@@ -15,10 +15,19 @@ from app.models.certificate import Certificate
 from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
-from sqlalchemy import func, distinct
 from app.services.export_service import generate_xlsx_response
+from app.services.leaderboard_query import fetch_leaderboard_rows
+from datetime import timezone, datetime
 
 router = APIRouter(prefix="/parent", tags=["parent"])
+
+
+def _deadline_to_iso_utc(deadline: datetime | None) -> str | None:
+    if deadline is None:
+        return None
+    if deadline.tzinfo is None:
+        return deadline.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    return deadline.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _is_parent_or_admin(user: User) -> bool:
@@ -114,7 +123,7 @@ def child_assignments(
             "description": a.description,
             "course_id": a.course_id,
             "course_title": courses[a.course_id].title if a.course_id in courses else "",
-            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "deadline": _deadline_to_iso_utc(a.deadline),
             "submitted": sub is not None,
             "grade": float(sub.grade) if sub and sub.grade else None,
             "teacher_comment": sub.teacher_comment if sub else None,
@@ -206,45 +215,11 @@ def child_report(
     
     assignment_avg = round(sum(assignment_grades) / len(assignment_grades), 1) if assignment_grades else None
     
-    # Позиция в рейтинге (если есть прогресс)
-    
     rank = None
-    if progress_rows:
-        subq = db.query(
-            StudentProgress.user_id,
-            func.avg(StudentProgress.test_score).label("avg_score"),
-            func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-            func.count(StudentProgress.id).label("activity"),
-        ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
-        
-        assign_subq = db.query(
-            AssignmentSubmission.student_id.label("user_id"),
-            func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-        ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
-        
-        all_ranked = db.query(
-            User.id,
-            (
-                func.coalesce(subq.c.avg_score, 0) * 0.5
-                + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-                + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-                + func.coalesce(subq.c.activity, 0) * 0.15
-            ).label("score")
-        ).join(subq, User.id == subq.c.user_id).outerjoin(
-            assign_subq, User.id == assign_subq.c.user_id
-        ).order_by(
-            (
-                func.coalesce(subq.c.avg_score, 0) * 0.5
-                + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-                + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-                + func.coalesce(subq.c.activity, 0) * 0.15
-            ).desc()
-        ).all()
-        
-        for idx, r in enumerate(all_ranked):
-            if r.id == child.id:
-                rank = idx + 1
-                break
+    for idx, row in enumerate(fetch_leaderboard_rows(db, course_id=None)):
+        if row["user_id"] == child.id:
+            rank = idx + 1
+            break
     
     return {
         "student": {"id": child.id, "full_name": child.full_name, "email": child.email},
@@ -282,47 +257,23 @@ def children_leaderboard(
         return []
     
     child_ids = [c.id for c in children]
-    
-    # Получаем данные для рейтинга (аналогично analytics.py)
-    subq = db.query(
-        StudentProgress.user_id,
-        func.avg(StudentProgress.test_score).label("avg_score"),
-        func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-        func.count(StudentProgress.id).label("activity"),
-    ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
-    
-    assign_subq = db.query(
-        AssignmentSubmission.student_id.label("user_id"),
-        func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-    ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
-    
-    # Получаем полный рейтинг для расчета позиций
-    all_users_q = db.query(
-        User.id, User.full_name, User.email, User.points,
-        subq.c.avg_score, subq.c.courses_done, subq.c.activity,
-        assign_subq.c.avg_assignment,
-    ).join(subq, User.id == subq.c.user_id).outerjoin(
-        assign_subq, User.id == assign_subq.c.user_id
-    ).order_by(
-        (
-            func.coalesce(subq.c.avg_score, 0) * 0.5
-            + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-            + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-            + func.coalesce(subq.c.activity, 0) * 0.15
-        ).desc()
-    )
-    
-    all_rows = all_users_q.all()
+
     all_ranked = [
-        {"rank": i + 1, "user_id": r.id, "full_name": r.full_name, "email": r.email,
-         "avg_score": float(r.avg_score) if r.avg_score else 0,
-         "avg_assignment": float(r.avg_assignment) if r.avg_assignment else 0,
-         "courses_done": r.courses_done or 0, "activity": r.activity or 0,
-         "points": r.points or 0}
-        for i, r in enumerate(all_rows)
+        {
+            "rank": i + 1,
+            "user_id": r["user_id"],
+            "full_name": r["full_name"],
+            "email": r["email"],
+            "avg_score": r["avg_score"],
+            "avg_assignment": r["avg_assignment"],
+            "courses_done": r["courses_done"],
+            "activity": r["activity"],
+            "points": r["points"],
+            "rating_score": r["rating_score"],
+        }
+        for i, r in enumerate(fetch_leaderboard_rows(db, course_id=None))
     ]
-    
-    # Фильтруем только детей родителя
+
     children_ranked = [r for r in all_ranked if r["user_id"] in child_ids]
     
     return children_ranked
@@ -332,6 +283,7 @@ def children_leaderboard(
 def children_leaderboard_excel(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    lang: str | None = "ru",
 ):
     """Экспорт рейтинга детей родителя в Excel."""
     if not _is_parent_or_admin(current_user):
@@ -342,55 +294,82 @@ def children_leaderboard_excel(
     child_ids = [c.id for c in children] if children else []
     
     rows = []
-    headers = ["Rank", "Full Name", "Email", "Avg Score", "Courses Done", "Activity", "Points"]
-    
-    if child_ids:
-        # Получаем данные для рейтинга (аналогично analytics.py)
-        subq = db.query(
-            StudentProgress.user_id,
-            func.avg(StudentProgress.test_score).label("avg_score"),
-            func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-            func.count(StudentProgress.id).label("activity"),
-        ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
-        
-        assign_subq = db.query(
-            AssignmentSubmission.student_id.label("user_id"),
-            func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-        ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
-        
-        # Получаем полный рейтинг для расчета позиций
-        all_users_q = db.query(
-            User.id, User.full_name, User.email, User.points,
-            subq.c.avg_score, subq.c.courses_done, subq.c.activity,
-            assign_subq.c.avg_assignment,
-        ).join(subq, User.id == subq.c.user_id).outerjoin(
-            assign_subq, User.id == assign_subq.c.user_id
-        ).order_by(
-            (
-                func.coalesce(subq.c.avg_score, 0) * 0.5
-                + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-                + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-                + func.coalesce(subq.c.activity, 0) * 0.15
-            ).desc()
-        )
-        
-        all_rows = all_users_q.all()
-        all_ranked = [
-            {"rank": i + 1, "user_id": r.id, "full_name": r.full_name, "email": r.email,
-             "avg_score": float(r.avg_score) if r.avg_score else 0,
-             "avg_assignment": float(r.avg_assignment) if r.avg_assignment else 0,
-             "courses_done": r.courses_done or 0, "activity": r.activity or 0,
-             "points": r.points or 0}
-            for i, r in enumerate(all_rows)
+    locale = (lang or "ru").strip().lower()
+    if locale not in ("ru", "kk", "en"):
+        locale = "ru"
+
+    if locale == "kk":
+        headers = [
+            "Орын",
+            "Аты-жөні",
+            "Email",
+            "Рейтинг ұпайы",
+            "Орташа тест балы",
+            "Орташа тапсырма бағасы",
+            "Прогресі бар курстар",
+            "Аяқталған тақырыптар",
+            "Coins",
         ]
-        
-        # Фильтруем только детей родителя
+        sheet_name = "Студенттер рейтингі"
+    elif locale == "en":
+        headers = [
+            "Place",
+            "Full Name",
+            "Email",
+            "Rating Score",
+            "Average Test Score",
+            "Average Assignment Grade",
+            "Courses with Progress",
+            "Completed Topics",
+            "Coins",
+        ]
+        sheet_name = "Students Rating"
+    else:
+        headers = [
+            "Место",
+            "ФИО",
+            "Email",
+            "Рейтинг",
+            "Средний балл тестов",
+            "Средняя оценка заданий",
+            "Курсы с прогрессом",
+            "Завершенные темы",
+            "Coins",
+        ]
+        sheet_name = "Рейтинг студентов"
+
+    if child_ids:
+        all_ranked = [
+            {
+                "rank": i + 1,
+                "user_id": r["user_id"],
+                "full_name": r["full_name"],
+                "email": r["email"],
+                "avg_score": r["avg_score"],
+                "avg_assignment": r["avg_assignment"],
+                "courses_done": r["courses_done"],
+                "activity": r["activity"],
+                "points": r["points"],
+                "rating_score": r["rating_score"],
+            }
+            for i, r in enumerate(fetch_leaderboard_rows(db, course_id=None))
+        ]
+
         children_ranked = [r for r in all_ranked if r["user_id"] in child_ids]
-        
+
         for r in children_ranked:
-            rows.append([
-                r["rank"], r["full_name"], r["email"],
-                r["avg_score"], r["courses_done"], r["activity"], r["points"]
-            ])
+            rows.append(
+                [
+                    r["rank"],
+                    r["full_name"],
+                    r["email"],
+                    r["rating_score"],
+                    r["avg_score"],
+                    r["avg_assignment"],
+                    r["courses_done"],
+                    r["activity"],
+                    r["points"],
+                ]
+            )
     
-    return generate_xlsx_response(rows, "children-leaderboard", headers, sheet_name="Leaderboard")
+    return generate_xlsx_response(rows, "children-leaderboard", headers, sheet_name=sheet_name)

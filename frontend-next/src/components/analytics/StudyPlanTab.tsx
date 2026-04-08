@@ -7,6 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 
 interface Recommendation {
   type: "review" | "continue";
@@ -163,10 +164,10 @@ export function StudyPlanTab() {
                     </span>
                   </div>
                   <h4 className="font-semibold text-sm truncate" style={{ color: textColors.primary }}>
-                    {rec.topic_title}
+                    {getLocalizedTopicTitle(rec.topic_title, t)}
                   </h4>
                   <p className="text-xs truncate mt-0.5" style={{ color: textColors.secondary }}>
-                    {rec.course_title}
+                    {getLocalizedCourseTitle({ title: rec.course_title } as any, t)}
                   </p>
                   <p className="text-xs mt-1.5" style={{ color: textColors.secondary }}>
                     {getReason(rec)}

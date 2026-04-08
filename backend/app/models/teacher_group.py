@@ -16,6 +16,7 @@ class TeacherGroup(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", back_populates="taught_groups", foreign_keys=[teacher_id])
+    group_teachers = relationship("GroupTeacher", back_populates="group", cascade="all, delete-orphan")
     course = relationship("Course", back_populates="teacher_groups")
     students = relationship("GroupStudent", back_populates="group", cascade="all, delete-orphan")
     assignments = relationship("TeacherAssignment", back_populates="group", cascade="all, delete-orphan")

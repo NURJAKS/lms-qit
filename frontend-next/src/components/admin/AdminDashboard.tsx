@@ -167,7 +167,11 @@ export function AdminDashboard() {
     setTriggerResult(null);
     try {
       const { data: res } = await api.post<{ awarded: number; message: string }>("/admin/trigger-daily-rewards");
-      setTriggerResult(t("adminAwardsGivenCount").replace("{count}", String(res.awarded)));
+      setTriggerResult(
+        res.awarded > 0 
+          ? t("adminAwardsGivenCount").replace("{count}", String(res.awarded))
+          : t("adminAwardsAlreadyGiven")
+      );
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     } catch (e: unknown) {
       setTriggerResult((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
@@ -257,7 +261,7 @@ export function AdminDashboard() {
       color: "from-green-500 to-emerald-500",
       change: null,
       changePercent: null,
-      link: "/app/admin/courses",
+      link: "/app/teacher",
     },
     {
       id: "completions",

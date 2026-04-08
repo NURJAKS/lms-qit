@@ -1,23 +1,23 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { 
   ChevronLeft, Paperclip, CheckCircle, Clock, XCircle, Search, Save, 
   Download, FileText, Check, Users, ChevronRight, PanelLeftClose, 
-  PanelLeftOpen, Mail, MoreVertical, Printer, ExternalLink, Moon, Sun,
+  PanelLeftOpen, MoreVertical, ExternalLink,
   History, SortAsc
 } from "lucide-react";
 import { useState, useMemo, useEffect, Children, cloneElement, isValidElement } from "react";
 import { MagicCard } from "@/components/ui/magic-card";
 import { cn } from "@/lib/utils";
+import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 
 // Custom UI Components to replace missing shadcn/ui
-const Button = ({ className, variant = "primary", size = "md", children, ...props }: any) => {
+const Button = ({ className, variant = "primary", size = "md", children, asChild, ...props }: any) => {
   const baseStyles = "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
   const variants: any = {
     primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
@@ -31,12 +31,23 @@ const Button = ({ className, variant = "primary", size = "md", children, ...prop
     lg: "h-10 px-8",
     icon: "h-9 w-9",
   };
+
+  const finalClassName = cn(baseStyles, variants[variant], sizes[size], className);
+
+  if (asChild && isValidElement(children)) {
+    return cloneElement(children as any, {
+      ...props,
+      className: cn(finalClassName, (children as any).props?.className),
+    });
+  }
+
   return (
-    <button className={cn(baseStyles, variants[variant], sizes[size], className)} {...props}>
+    <button className={finalClassName} {...props}>
       {children}
     </button>
   );
 };
+
 
 const Checkbox = ({ checked, onCheckedChange, className, ...props }: any) => (
   <input
@@ -104,7 +115,7 @@ type AssignmentDetails = {
 };
 
 export default function AssignmentDetailPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -112,7 +123,13 @@ export default function AssignmentDetailPage() {
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
 
-  const activeTab: "instructions" | "submissions" = searchParams.get("tab") === "instructions" ? "instructions" : "submissions";
+  /** Like Google Classroom /details: open instructions by default; use ?tab=submissions for grading. */
+  const activeTab: "instructions" | "submissions" =
+    searchParams.get("tab") === "submissions" ? "submissions" : "instructions";
+  const studentIdParam = searchParams.get("studentId");
+  const fileIndexParam = searchParams.get("fileIndex");
+  const queryStudentId = studentIdParam != null ? Number(studentIdParam) : null;
+  const queryFileIndex = fileIndexParam != null ? Number(fileIndexParam) : null;
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "graded" | "not_submitted">("all");
@@ -126,6 +143,8 @@ export default function AssignmentDetailPage() {
   const [rubricGrades, setRubricGrades] = useState<Record<number, string>>({});
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [hasAppliedQuerySelection, setHasAppliedQuerySelection] = useState(false);
+  const [hasAppliedQueryFile, setHasAppliedQueryFile] = useState(false);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ["assignment-submissions", id],
@@ -193,6 +212,60 @@ export default function AssignmentDetailPage() {
     return submissions.find((s) => s.student_id === selectedStudentId);
   }, [submissions, selectedStudentId]);
 
+  useEffect(() => {
+    if (hasAppliedQuerySelection || submissions.length === 0) return;
+    if (queryStudentId != null && Number.isFinite(queryStudentId)) {
+      const match = submissions.find((s) => s.student_id === queryStudentId);
+      if (match) {
+        setSelectedStudentId(match.student_id);
+        setHasAppliedQuerySelection(true);
+        return;
+      }
+    }
+    setSelectedStudentId(submissions[0].student_id);
+    setHasAppliedQuerySelection(true);
+  }, [hasAppliedQuerySelection, submissions, queryStudentId]);
+
+  useEffect(() => {
+    if (!selectedSubmission) return;
+    setGrade(selectedSubmission.grade !== null ? String(selectedSubmission.grade) : "");
+    setComment(selectedSubmission.teacher_comment ?? "");
+    const grades: Record<number, string> = {};
+    if (rubric.length) {
+      rubric.forEach((c) => {
+        const rg = selectedSubmission.rubric_grades?.find((g) => g.criterion_id === c.id);
+        grades[c.id] = rg != null ? String(rg.points) : "";
+      });
+    }
+    setRubricGrades(grades);
+    const files = [
+      ...(selectedSubmission.file_url ? [selectedSubmission.file_url] : []),
+      ...(selectedSubmission.file_urls ?? []),
+    ];
+    if (
+      !hasAppliedQueryFile &&
+      queryFileIndex != null &&
+      Number.isFinite(queryFileIndex) &&
+      (queryStudentId == null || selectedSubmission.student_id === queryStudentId)
+    ) {
+      const requestedIndex = Math.trunc(queryFileIndex);
+      if (requestedIndex >= 0 && requestedIndex < files.length) {
+        setActiveFileIndex(requestedIndex);
+      } else {
+        setActiveFileIndex(0);
+      }
+      setHasAppliedQueryFile(true);
+      return;
+    }
+    setActiveFileIndex(0);
+  }, [
+    selectedSubmission,
+    rubric,
+    hasAppliedQueryFile,
+    queryFileIndex,
+    queryStudentId,
+  ]);
+
   // Navigation logic
   const currentIndex = useMemo(() => {
     if (selectedStudentId === null) return -1;
@@ -244,6 +317,7 @@ export default function AssignmentDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assignment-submissions", id] });
       queryClient.invalidateQueries({ queryKey: ["teacher-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox"] });
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 2500);
     },
@@ -352,10 +426,9 @@ export default function AssignmentDetailPage() {
   ] : [];
 
   const currentFile = allFiles[activeFileIndex];
-
   if (activeTab === "instructions") {
     return (
-      <div className="h-[calc(100vh-6rem)] flex flex-col -m-4 sm:-m-6 lg:-m-8 pb-4 sm:pb-6 lg:pb-8">
+      <div className="flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 sm:px-6 flex items-center justify-between shrink-0">
           <div>
             <button
@@ -374,7 +447,7 @@ export default function AssignmentDetailPage() {
             <div className="mt-1 text-sm text-gray-500 flex gap-4 flex-wrap">
               {assignment.deadline && (
                 <span>
-                  {t("teacherDeadline")}: {new Date(assignment.deadline).toLocaleString()}
+                  {t("teacherDeadline")}: {formatDateTimeLocalized(assignment.deadline, lang)}
                 </span>
               )}
               <span>
@@ -426,7 +499,7 @@ export default function AssignmentDetailPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col -m-4 sm:-m-6 lg:-m-8 pb-4 sm:pb-6 lg:pb-8 bg-gray-50 dark:bg-gray-950">
+    <div className="flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
       {/* Top Bar - Google Classroom Style */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex items-center justify-between shrink-0 z-20 shadow-sm">
         <div className="flex items-center gap-4">
@@ -454,14 +527,7 @@ export default function AssignmentDetailPage() {
         <div className="flex items-center gap-2">
           {selectedSubmission && (
             <>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="rounded-full"
-                onClick={() => window.open(`mailto:${selectedSubmission.student_email || ''}`)}
-              >
-                <Mail className="w-4 h-4" />
-              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1 text-xs font-semibold">
@@ -494,22 +560,7 @@ export default function AssignmentDetailPage() {
             {showSavedToast ? t("teacherWorkChecked") : t("teacherGradingReturn")}
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => window.print()} className="gap-2">
-                <Printer className="w-4 h-4" /> {t("print")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toggleTheme()} className="gap-2">
-                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                {theme === "dark" ? t("themeLight") : t("themeDark")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
         </div>
       </div>
 
@@ -735,7 +786,7 @@ export default function AssignmentDetailPage() {
                           {currentFile.split('/').pop()}
                         </span>
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => window.open(currentFile, '_blank')}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => window.open(currentFile, "_blank", "noopener,noreferrer")}>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" asChild>

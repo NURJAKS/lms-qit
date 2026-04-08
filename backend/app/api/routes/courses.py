@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 
@@ -16,10 +17,61 @@ from app.models.enrollment import CourseEnrollment
 from app.models.notification import Notification
 from app.models.group_student import GroupStudent
 from app.models.teacher_group import TeacherGroup
+from app.models.group_teacher import GroupTeacher
 from app.models.payment import Payment
+from app.models.teacher_assignment import TeacherAssignment
+from app.models.study_schedule import StudySchedule
+from app.models.course_feed_post import CourseFeedPost
+from app.models.assignment_submission import AssignmentSubmission
+from app.api.course_access import (
+    can_view_course_structure_video_urls,
+    course_has_groups,
+    has_manager_assignment_for_course,
+    has_course_group_membership,
+    is_student_course_ready_for_content,
+)
 from app.schemas.course import CourseResponse, CourseModuleResponse, CourseTopicResponse
 
 router = APIRouter(prefix="/courses", tags=["courses"])
+
+
+class CourseFeedPostCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str | None = None
+    kind: str = "text"
+    link_url: str | None = Field(None, max_length=500)
+    group_id: int | None = None
+    active_until: datetime | None = None
+
+
+def _teacher_can_post_feed(db: Session, user: User, course_id: int, group_id: int | None) -> bool:
+    if user.role in ("admin", "director", "curator"):
+        return True
+    if user.role != "teacher":
+        return False
+    if group_id is not None:
+        g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+        if not g or g.course_id != course_id:
+            return False
+        if g.teacher_id == user.id:
+            return True
+        return (
+            db.query(GroupTeacher)
+            .filter(GroupTeacher.group_id == group_id, GroupTeacher.teacher_id == user.id)
+            .first()
+            is not None
+        )
+    groups = db.query(TeacherGroup).filter(TeacherGroup.course_id == course_id).all()
+    for g in groups:
+        if g.teacher_id == user.id:
+            return True
+        if (
+            db.query(GroupTeacher)
+            .filter(GroupTeacher.group_id == g.id, GroupTeacher.teacher_id == user.id)
+            .first()
+        ):
+            return True
+    return False
 
 
 @router.get("", response_model=list[CourseResponse])
@@ -97,12 +149,14 @@ def get_course_topics(
 def get_course_structure(
     course_id: int,
     db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Модули и темы курса (для отображения структуры)."""
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Курс не найден")
     modules = db.query(CourseModule).filter(CourseModule.course_id == course_id).order_by(CourseModule.order_number).all()
+    include_video_urls = can_view_course_structure_video_urls(db, current_user, course)
     result = []
     for m in modules:
         topics = db.query(CourseTopic).filter(CourseTopic.module_id == m.id).order_by(CourseTopic.order_number).all()
@@ -112,7 +166,13 @@ def get_course_structure(
             "order_number": m.order_number,
             "description": m.description,
             "topics": [
-                {"id": t.id, "title": t.title, "order_number": t.order_number, "video_url": t.video_url, "video_duration": t.video_duration}
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "order_number": t.order_number,
+                    "video_url": t.video_url if include_video_urls else None,
+                    "video_duration": t.video_duration if include_video_urls else None,
+                }
                 for t in topics
             ],
         })
@@ -247,7 +307,7 @@ def enroll_course(
         user_id=current_user.id,
         type="course_purchased",
         title="Курс куплен",
-        message=f"Курс «{course.title}» сәтті сатып алынды! Оқуды бастай аласыз.",
+        message=f"Оплата за курс «{course.title}» принята. Менеджер/куратор добавит вас в учебную группу в ближайшее время.",
         link=f"/app/courses/{course_id}",
     )
     db.add(notif)
@@ -291,13 +351,182 @@ def enroll_course(
                     type="add_student_task",
                     title="Добавьте студента в группу",
                     message=f"Студент {current_user.full_name or current_user.email} оплатил курс «{course.title}». Добавьте его в группу «{group.group_name}».",
-                    link="/app/teacher?tab=students"
+                    link="/app/teacher?tab=requests"
                 )
                 db.add(teacher_notif)
     
     db.commit()
     db.refresh(enrollment)
-    return {"message": "Курс сәтті сатып алынды!", "enrollment_id": enrollment.id}
+    return {"message": "Оплата принята. Доступ к материалам откроется после добавления в учебную группу.", "enrollment_id": enrollment.id}
+
+
+@router.get("/{course_id}/feed")
+def get_student_course_feed(
+    course_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Лента курса для студента: дедлайны, расписание, посты."""
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    enr = (
+        db.query(CourseEnrollment)
+        .filter(
+            CourseEnrollment.user_id == current_user.id,
+            CourseEnrollment.course_id == course_id,
+        )
+        .first()
+    )
+    if not enr:
+        raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+
+    gids = [
+        gs.group_id
+        for gs in db.query(GroupStudent).join(TeacherGroup, TeacherGroup.id == GroupStudent.group_id).filter(
+            GroupStudent.student_id == current_user.id,
+            TeacherGroup.course_id == course_id,
+        ).all()
+    ]
+
+    now = datetime.now(timezone.utc)
+    items: list[dict] = []
+
+    if gids:
+        assigns = (
+            db.query(TeacherAssignment)
+            .filter(
+                TeacherAssignment.course_id == course_id,
+                TeacherAssignment.group_id.in_(gids),
+                TeacherAssignment.deadline.isnot(None),
+            )
+            .order_by(TeacherAssignment.deadline.asc())
+            .limit(40)
+            .all()
+        )
+        for a in assigns:
+            dl = a.deadline
+            if dl is None:
+                continue
+            if dl.tzinfo is None:
+                dl = dl.replace(tzinfo=timezone.utc)
+            sub = (
+                db.query(AssignmentSubmission)
+                .filter(
+                    AssignmentSubmission.assignment_id == a.id,
+                    AssignmentSubmission.student_id == current_user.id,
+                )
+                .first()
+            )
+            done = sub is not None and sub.grade is not None
+            if done:
+                continue
+            items.append(
+                {
+                    "kind": "deadline",
+                    "id": f"asg-{a.id}",
+                    "title": a.title,
+                    "body": None,
+                    "link": f"/app/courses/{course_id}?tab=classwork&assignmentId={a.id}",
+                    "date": dl.isoformat(),
+                    "meta": {"assignment_id": a.id},
+                }
+            )
+
+    today = date.today()
+    sched = (
+        db.query(StudySchedule)
+        .filter(
+            StudySchedule.user_id == current_user.id,
+            StudySchedule.course_id == course_id,
+            StudySchedule.scheduled_date >= today,
+        )
+        .order_by(StudySchedule.scheduled_date.asc())
+        .limit(15)
+        .all()
+    )
+    for r in sched:
+        items.append(
+            {
+                "kind": "schedule",
+                "id": f"sch-{r.id}",
+                "title": (r.notes or "")[:200] or "Событие в расписании",
+                "body": r.notes,
+                "link": f"/app/courses/{course_id}",
+                "date": str(r.scheduled_date),
+                "meta": {"schedule_id": r.id},
+            }
+        )
+
+    post_q = db.query(CourseFeedPost).filter(CourseFeedPost.course_id == course_id)
+    if gids:
+        post_q = post_q.filter(
+            or_(CourseFeedPost.group_id.is_(None), CourseFeedPost.group_id.in_(gids))
+        )
+    else:
+        post_q = post_q.filter(CourseFeedPost.group_id.is_(None))
+    posts = post_q.order_by(CourseFeedPost.created_at.desc()).limit(50).all()
+    for p in posts:
+        if p.active_until:
+            au = p.active_until
+            if au.tzinfo is None:
+                au = au.replace(tzinfo=timezone.utc)
+            if au < now:
+                continue
+        items.append(
+            {
+                "kind": "post",
+                "post_kind": p.kind,
+                "id": f"post-{p.id}",
+                "title": p.title,
+                "body": p.body,
+                "link": p.link_url or f"/app/courses/{course_id}",
+                "date": p.created_at.isoformat() if p.created_at else None,
+                "meta": {"post_id": p.id, "group_id": p.group_id},
+            }
+        )
+
+    def sort_key(it: dict):
+        d = it.get("date") or ""
+        return d
+
+    items.sort(key=sort_key)
+    return {"items": items}
+
+
+@router.post("/{course_id}/feed/posts")
+def create_course_feed_post(
+    course_id: int,
+    body: CourseFeedPostCreate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    if not _teacher_can_post_feed(db, current_user, course_id, body.group_id):
+        raise HTTPException(status_code=403, detail="Нет прав публиковать в ленте этого курса")
+    kind = (body.kind or "text").strip().lower()
+    if kind not in ("text", "survey", "event", "recommendation"):
+        kind = "text"
+    if body.group_id is not None:
+        g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
+        if not g or g.course_id != course_id:
+            raise HTTPException(status_code=400, detail="Группа не относится к этому курсу")
+    row = CourseFeedPost(
+        author_id=current_user.id,
+        course_id=course_id,
+        group_id=body.group_id,
+        kind=kind,
+        title=body.title.strip(),
+        body=(body.body or "").strip() or None,
+        link_url=(body.link_url or "").strip() or None,
+        active_until=body.active_until,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
 @router.get("/my/enrollments")
@@ -320,6 +549,10 @@ def my_enrollments(
             "course": e.course,  # Курс уже загружен через joinedload
             "enrolled_at": e.enrolled_at,
             "payment_confirmed": e.payment_confirmed,
+            "course_has_groups": course_has_groups(db, e.course_id),
+            "manager_assigned": has_manager_assignment_for_course(db, current_user.id, e.course_id),
+            "in_course_group": has_course_group_membership(db, current_user.id, e.course_id),
+            "ready_for_content": is_student_course_ready_for_content(db, current_user.id, e.course_id),
         }
         for e in enrollments
     ]

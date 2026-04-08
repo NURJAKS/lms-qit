@@ -28,7 +28,7 @@ export function ApprovedApplicationPaymentModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const modalStyle = getModalStyle(theme);
   const textColors = getTextColors(theme);
@@ -100,7 +100,7 @@ export function ApprovedApplicationPaymentModal({
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 mb-6 border border-blue-100 dark:border-blue-800">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">{t("goToPayment")}</span>
-                <span className="text-xl font-bold text-blue-700 dark:text-blue-300">{payment.amount.toLocaleString()} ₸</span>
+                <span className="text-xl font-bold text-blue-700 dark:text-blue-300">{payment.amount.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "ru" ? "ru-RU" : "en-US")} ₸</span>
               </div>
               <p className="text-xs text-blue-500/80 truncate">{payment.course_title ? getLocalizedCourseTitle({ title: payment.course_title } as any, t) : ""}</p>
             </div>
@@ -116,7 +116,7 @@ export function ApprovedApplicationPaymentModal({
                 </div>
                 <div>
                   <p className="font-semibold text-gray-800 dark:text-white">{t("paymentBankCard")}</p>
-                  <p className="text-xs text-gray-500">Visa, MasterCard</p>
+                  <p className="text-xs text-gray-500">{t("paymentCardsSupported")}</p>
                 </div>
               </button>
 
@@ -269,7 +269,7 @@ export function ApprovedApplicationPaymentModal({
                     <Loader2 className="w-4 h-4 animate-spin" /> {t("paymentPay")}...
                   </div>
                 ) : (
-                  t("paymentPayAmount").replace("{amount}", payment.amount.toLocaleString())
+                  t("paymentPayAmount").replace("{amount}", payment.amount.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "ru" ? "ru-RU" : "en-US"))
                 )}
               </button>
             </div>

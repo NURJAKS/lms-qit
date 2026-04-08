@@ -82,7 +82,7 @@ def confirm_payment(
         user_id=current_user.id,
         type="course_purchased",
         title="Курс куплен",
-        message=f"Курс «{course.title}» сәтті сатып алынды! Оқуды бастай аласыз.",
+        message=f"Оплата за курс «{course.title}» принята. Менеджер/куратор добавит вас в учебную группу в ближайшее время.",
         link=f"/app/courses/{payment.course_id}",
     )
     db.add(notif)
@@ -124,14 +124,14 @@ def confirm_payment(
                     type="add_student_task",
                     title="Добавьте студента в группу",
                     message=f"Студент {current_user.full_name or current_user.email} оплатил курс «{course.title}». Добавьте его в группу «{group.group_name}».",
-                    link="/app/teacher?tab=students"
+                    link="/app/teacher?tab=requests"
                 )
                 db.add(teacher_notif)
     
     db.commit()
     db.refresh(enrollment)
     return {
-        "message": "Курс сәтті сатып алынды!",
+        "message": "Оплата принята. Доступ к материалам откроется после добавления в учебную группу.",
         "enrollment_id": enrollment.id,
         "payment_id": payment.id,
         "transaction_id": f"TXN-{payment.id:08d}",

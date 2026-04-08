@@ -9,6 +9,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
 import { cn } from "@/lib/utils";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
+import { formatDateLocalized } from "@/lib/dateUtils";
+
 
 const WD_KEYS = ["wdSun", "wdMon", "wdTue", "wdWed", "wdThu", "wdFri", "wdSat"] as const;
 const MONTH_KEYS = ["monthJan", "monthFeb", "monthMar", "monthApr", "monthMay", "monthJun", "monthJul", "monthAug", "monthSep", "monthOct", "monthNov", "monthDec"] as const;
@@ -47,8 +49,8 @@ export function CalendarWidget() {
   const [newNotes, setNewNotes] = useState("");
   const [addError, setAddError] = useState("");
 
-  const locale = lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US";
   const isDark = theme === "dark";
+
   const eventColors = isDark ? EVENT_COLORS_DARK : EVENT_COLORS_LIGHT;
 
   const { data: events = [] } = useQuery({
@@ -236,7 +238,8 @@ export function CalendarWidget() {
       end.setDate(start.getDate() + 6);
       return `${start.getDate()} ${t(MONTH_KEYS[start.getMonth()]).slice(0, 3)} - ${end.getDate()} ${t(MONTH_KEYS[end.getMonth()]).slice(0, 3)} ${end.getFullYear()}`;
     } else {
-      return currentDate.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric", weekday: "long" });
+      return formatDateLocalized(currentDate, lang, { day: "numeric", month: "long", year: "numeric", weekday: "long" });
+
     }
   };
 

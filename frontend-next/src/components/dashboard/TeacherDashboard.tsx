@@ -73,16 +73,15 @@ export function TeacherDashboard() {
     },
   ];
 
-  const quickActions = [
-    {
-      href: "/app/teacher?tab=groups",
-      icon: Users,
-      label: t("teacherGoToGroups"),
-      description: t("teacherGoToGroupsHint"),
-      gradient: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
-      color: "#3B82F6",
-    },
-  ];
+  const groupsQuickAction = {
+    href: "/app/teacher?tab=groups",
+    icon: Users,
+    label: t("teacherGoToGroups"),
+    description: t("teacherGoToGroupsHint"),
+    gradient: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
+    color: "#3B82F6",
+  };
+  const GroupsIcon = groupsQuickAction.icon;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] xl:grid-cols-[1fr_380px] gap-6 lg:gap-8 items-start">
@@ -92,7 +91,7 @@ export function TeacherDashboard() {
         <WelcomeWidget />
 
         {/* Stats Cards with Sparklines - улучшенный дизайн */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {statCards.map((card, index) => {
             const Icon = card.icon;
             const isPositive = card.change >= 0;
@@ -189,70 +188,56 @@ export function TeacherDashboard() {
             );
           })}
         </div>
-
-        {/* Quick Actions - Icon Tiles с улучшенным дизайном */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {quickActions.map((action, index) => {
-            const Icon = action.icon;
-            return (
-              <Link
-                key={index}
-                href={action.href}
-                className="group relative rounded-unified-lg p-6 overflow-hidden hover:scale-[1.02] transition-all duration-300 card-glow-hover"
-                style={{
-                  ...glassStyle,
-                  background: isDark 
-                    ? `linear-gradient(135deg, rgba(26, 34, 56, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)`
-                    : `linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%)`,
-                }}
-              >
-                {/* Gradient background с glow эффектом */}
-                <div
-                  className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-300"
-                  style={{ background: action.gradient }}
-                />
-
-                {/* Border glow при hover */}
-                <div
-                  className="absolute inset-0 rounded-unified-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{
-                    border: `1px solid ${action.color}40`,
-                    boxShadow: `0 0 0 1px ${action.color}20`,
-                  }}
-                />
-
-                <div className="relative flex items-center gap-4">
-                  <div
-                    className="w-16 h-16 rounded-xl flex items-center justify-center shrink-0 text-white shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-300"
-                    style={{ 
-                      background: action.gradient,
-                      boxShadow: `0 8px 24px ${action.color}40`,
-                    }}
-                  >
-                    <Icon className="w-8 h-8" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-lg mb-1.5 group-hover:text-[#3B82F6] transition-colors" style={{ color: textColors.primary }}>
-                      {action.label}
-                    </p>
-                    <p className="text-sm line-clamp-2 leading-relaxed" style={{ color: textColors.secondary }}>
-                      {action.description}
-                    </p>
-                  </div>
-                  <ArrowUpRight className="w-6 h-6 shrink-0 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1 group-hover:-translate-y-1" style={{ color: action.color }} />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
         
         {/* Upcoming Deadlines - moved from sidebar to bottom with grid layout */}
         <UpcomingDeadlinesWidget layout="grid" />
       </div>
 
-      {/* Right Sidebar */}
+      {/* Right Sidebar: groups quick action + activity */}
       <aside className="lg:order-none order-last">
         <div className="lg:sticky lg:top-24 space-y-6">
+          <Link
+            href={groupsQuickAction.href}
+            className="group relative block rounded-unified-lg p-5 overflow-hidden hover:scale-[1.02] transition-all duration-300 card-glow-hover"
+            style={{
+              ...glassStyle,
+              background: isDark
+                ? `linear-gradient(135deg, rgba(26, 34, 56, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)`
+                : `linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%)`,
+            }}
+          >
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-300"
+              style={{ background: groupsQuickAction.gradient }}
+            />
+            <div
+              className="absolute inset-0 rounded-unified-lg opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{
+                border: `1px solid ${groupsQuickAction.color}40`,
+                boxShadow: `0 0 0 1px ${groupsQuickAction.color}20`,
+              }}
+            />
+            <div className="relative flex items-center gap-3">
+              <div
+                className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0 text-white shadow-xl group-hover:scale-110 transition-all duration-300"
+                style={{
+                  background: groupsQuickAction.gradient,
+                  boxShadow: `0 8px 24px ${groupsQuickAction.color}40`,
+                }}
+              >
+                <GroupsIcon className="w-7 h-7" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-base mb-0.5 group-hover:text-[#3B82F6] transition-colors" style={{ color: textColors.primary }}>
+                  {groupsQuickAction.label}
+                </p>
+                <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: textColors.secondary }}>
+                  {groupsQuickAction.description}
+                </p>
+              </div>
+              <ArrowUpRight className="w-5 h-5 shrink-0 opacity-60 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" style={{ color: groupsQuickAction.color }} />
+            </div>
+          </Link>
           <ActivityFeedWidget />
         </div>
       </aside>

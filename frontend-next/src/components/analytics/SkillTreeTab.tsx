@@ -6,6 +6,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 
 interface Skill {
   course_id: number;
@@ -119,7 +120,7 @@ export function SkillTreeTab() {
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-yellow-400" />
                 <span className="text-sm font-bold text-white">{data.total_xp.toLocaleString()}</span>
-                <span className="text-xs text-white/50">XP</span>
+                <span className="text-xs text-white/50">{t("skillTreeXP")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-purple-300" />
@@ -187,11 +188,11 @@ export function SkillTreeTab() {
                       className="text-xs font-bold px-2 py-0.5 rounded-md shrink-0"
                       style={{ color: skill.color, background: `${skill.color}15` }}
                     >
-                      LV {skill.level}
+                      {t("skillTreeLevelShort")} {skill.level}
                     </span>
                   </div>
                   <p className="text-xs truncate mt-0.5" style={{ color: textColors.secondary }}>
-                    {skill.course_title}
+                    {getLocalizedCourseTitle({ title: skill.course_title } as any, t)}
                   </p>
 
                   {/* Progress bar */}
@@ -219,7 +220,7 @@ export function SkillTreeTab() {
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-[10px] font-medium" style={{ color: textColors.secondary }}>
                       <Zap className="w-3 h-3 inline-block mr-0.5 text-yellow-500" />
-                      {skill.xp} XP
+                      {skill.xp} {t("skillTreeXP")}
                     </span>
                     {skill.avg_score > 0 && (
                       <span className="text-[10px] font-medium" style={{ color: textColors.secondary }}>

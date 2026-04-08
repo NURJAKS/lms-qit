@@ -12,6 +12,7 @@ import type { TranslationKey } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 import {
   Users, BookOpen, Plus, Download, ChevronDown, ChevronRight, ListTodo,
@@ -82,6 +83,7 @@ const GROUP_ACCENT_COLORS = [
 ];
 
 export default function TeacherPage() {
+  const { t, lang } = useLanguage();
   const router = useRouter();
   const { user, isTeacher, canManageUsers } = useAuthStore();
   const searchParams = useSearchParams();
@@ -89,7 +91,7 @@ export default function TeacherPage() {
   const [activeTab, setActiveTab] = useState<"groups" | "assignments" | "students" | "requests">(
     tabParam === "assignments" ? "assignments" : tabParam === "students" ? "students" : tabParam === "requests" ? "requests" : "groups"
   );
-  
+
   useEffect(() => {
     if (user && !isTeacher()) {
       router.replace("/app");
@@ -99,6 +101,7 @@ export default function TeacherPage() {
   useEffect(() => {
     if (tabParam === "assignments") setActiveTab("assignments");
     else if (tabParam === "students") setActiveTab("students");
+    else if (tabParam === "requests") setActiveTab("requests");
     else if (tabParam === "groups") setActiveTab("groups");
   }, [tabParam]);
 
@@ -106,7 +109,6 @@ export default function TeacherPage() {
     return null;
   }
 
-  const { t } = useLanguage();
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const glassStyle = getGlassCardStyle(theme);
@@ -121,6 +123,7 @@ export default function TeacherPage() {
   const [addStudentGroupId, setAddStudentGroupId] = useState<number | null>(null);
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const [createModalType, setCreateModalType] = useState<"assignment" | "assignmentWithTest" | "question" | "material" | "topic" | "reuse" | null>(null);
+  const [processingTaskId, setProcessingTaskId] = useState<number | null>(null);
   const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
   const [editingDeadlineId, setEditingDeadlineId] = useState<number | null>(null);
   const [editingDeadline, setEditingDeadline] = useState("");
@@ -338,6 +341,28 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-add-student-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
     },
+    onError: (e: any) => {
+      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+    },
+  });
+
+  const addAndCompleteTaskMutation = useMutation({
+    mutationFn: async (task: AddStudentTask) => {
+      setProcessingTaskId(task.id);
+      await api.post(`/teacher/groups/${task.group_id}/students`, { student_id: task.student_id });
+      await api.post(`/teacher/add-student-tasks/${task.id}/complete`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-add-student-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
+    },
+    onError: (e: any) => {
+      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+    },
+    onSettled: () => {
+      setProcessingTaskId(null);
+    },
   });
 
   const createAssignmentMutation = useMutation({
@@ -454,7 +479,7 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
       setCreateModalType(null);
       setNewQuestion({ group_id: "" as number | "", course_id: "" as number | "", question_text: "", question_type: "single_choice", options: ["", ""], correct_option: "" });
-      alert(t("teacherWorkCreated" as any) || "Question created successfully!");
+      alert(t("teacherWorkCreated"));
     },
     onError: (err: any) => {
       alert(err.response?.data?.detail || t("errorCreatingQuestion"));
@@ -471,7 +496,7 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
       setCreateModalType(null);
       setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [] });
-      alert(t("teacherWorkCreated" as any) || "Material created successfully!");
+      alert(t("teacherMaterialCreated"));
     },
     onError: (err: any) => {
       alert(err.response?.data?.detail || t("errorCreatingMaterial"));
@@ -838,7 +863,7 @@ export default function TeacherPage() {
     }));
   };
 
-  const handleExportExcel = async (groupId: number) => {
+  const handleExportExcel = async (groupId: number, groupName: string) => {
     try {
       const { data } = await api.get(`/teacher/groups/${groupId}/progress/excel`, {
         responseType: "blob",
@@ -846,7 +871,11 @@ export default function TeacherPage() {
       const url = URL.createObjectURL(data as Blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `group_${groupId}_progress.xlsx`;
+      const safeBase = (groupName || `group_${groupId}`)
+        .replace(/[\\/:*?"<>|]+/g, "_")
+        .trim()
+        .slice(0, 80);
+      a.download = `${safeBase || `group_${groupId}`}_progress.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -930,9 +959,8 @@ export default function TeacherPage() {
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 shrink-0 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-medium transition-all duration-300 ${
-                    isActive ? "text-white shadow-lg" : "hover:bg-black/5 dark:hover:bg-white/5"
-                  }`}
+                  className={`flex-1 shrink-0 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-medium transition-all duration-300 ${isActive ? "text-white shadow-lg" : "hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
                   style={
                     isActive
                       ? { background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 4px 12px rgba(59, 130, 246, 0.4)" }
@@ -943,11 +971,10 @@ export default function TeacherPage() {
                   <span className="whitespace-nowrap">{tab.label}</span>
                   {tab.count > 0 && (
                     <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                        isActive
-                          ? "bg-white/20 text-white"
-                          : isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-gray-500"
-                      }`}
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${isActive
+                        ? "bg-white/20 text-white"
+                        : isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-gray-500"
+                        }`}
                     >
                       {tab.count}
                     </span>
@@ -966,54 +993,54 @@ export default function TeacherPage() {
           {canManageUsers() && (
             <BlurFade delay={0.15}>
               <div className="rounded-2xl p-6 relative overflow-hidden" style={glassStyle}>
-              <div
-                className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-                style={{ background: "linear-gradient(90deg, #3B82F6, #8B5CF6, #EC4899)" }}
-              />
-              <div className="flex items-center gap-2 mb-5">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <h2 className="font-semibold font-geologica" style={{ color: textColors.primary }}>
-                  {t("teacherCreateGroup")}
-                </h2>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <select
-                  value={newGroupCourseId}
-                  onChange={(e) => setNewGroupCourseId(Number(e.target.value) || "")}
-                  className={`w-full sm:w-auto ${selectClasses}`}
-                  style={inputStyle}
-                >
-                  <option value="">{t("course")}</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>{getLocalizedCourseTitle(c as any, t)}</option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder={t("teacherGroupName")}
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  className={`flex-1 ${inputClasses}`}
-                  style={inputStyle}
+                <div
+                  className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
+                  style={{ background: "linear-gradient(90deg, #3B82F6, #8B5CF6, #EC4899)" }}
                 />
-                <button
-                  type="button"
-                  onClick={handleCreateGroup}
-                  disabled={createGroupMutation.isPending || !newGroupName || !newGroupCourseId}
-                  className="w-full sm:w-auto py-2.5 px-6 rounded-xl text-white font-medium text-sm disabled:opacity-40 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
-                    boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
-                  }}
-                >
-                  <Plus className="w-4 h-4 inline mr-1.5" /> {t("save")}
-                </button>
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <h2 className="font-semibold font-geologica" style={{ color: textColors.primary }}>
+                    {t("teacherCreateGroup")}
+                  </h2>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select
+                    value={newGroupCourseId}
+                    onChange={(e) => setNewGroupCourseId(Number(e.target.value) || "")}
+                    className={`w-full sm:w-auto ${selectClasses}`}
+                    style={inputStyle}
+                  >
+                    <option value="">{t("course")}</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>{getLocalizedCourseTitle(c as any, t)}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder={t("teacherGroupName")}
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    className={`flex-1 ${inputClasses}`}
+                    style={inputStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateGroup}
+                    disabled={createGroupMutation.isPending || !newGroupName || !newGroupCourseId}
+                    className="w-full sm:w-auto py-2.5 px-6 rounded-xl text-white font-medium text-sm disabled:opacity-40 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+                    style={{
+                      background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
+                      boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
+                    }}
+                  >
+                    <Plus className="w-4 h-4 inline mr-1.5" /> {t("save")}
+                  </button>
+                </div>
               </div>
-            </div>
-          </BlurFade>
-        )}
+            </BlurFade>
+          )}
 
           {/* Groups List */}
           <BlurFade delay={0.2}>
@@ -1098,7 +1125,7 @@ export default function TeacherPage() {
                               </div>
                             </div>
                           </button>
-                          
+
                           <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                             {canManageUsers() && (
                               <div className="flex items-center gap-1">
@@ -1135,16 +1162,16 @@ export default function TeacherPage() {
                                 className="flex items-center gap-1.5 py-2 px-3.5 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
                                 style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)", boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)" }}
                               >
-                                <UserPlus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">{t("teacherAddStudent")}</span>
-                                <span className="xs:hidden">{t("save")}</span>
+                                <UserPlus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">{t("add")}</span>
+                                <span className="xs:hidden">{t("add")}</span>
                               </button>
                               <ShimmerButton
-                                onClick={() => handleExportExcel(g.id)}
+                                onClick={() => handleExportExcel(g.id, g.group_name)}
                                 className="flex items-center gap-1.5 py-2 px-3 rounded-lg text-white text-[10px] sm:text-xs font-medium border-0 bg-gradient-to-r from-blue-600 to-purple-600"
                                 shimmerColor="#ffffff"
                                 borderRadius="8px"
                               >
-                                <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Excel</span>
+                                <Download className="w-3.5 h-3.5" /> <span className="hidden lg:inline">{t("excelLabel")}</span>
                               </ShimmerButton>
                             </div>
                           </div>
@@ -1222,7 +1249,7 @@ export default function TeacherPage() {
                 <ListTodo className="w-4 h-4" />
               </div>
               <h2 className="font-semibold font-geologica" style={{ color: textColors.primary }}>
-                {t("teacherStudentsList")}
+                {t("teacherRequests")}
               </h2>
               {addStudentTasks.length > 0 && (
                 <span
@@ -1236,6 +1263,9 @@ export default function TeacherPage() {
                 </span>
               )}
             </div>
+            <p className="text-sm mb-5" style={{ color: textColors.secondary }}>
+              {t("teacherRequestsFastPathHint")}
+            </p>
 
             {addStudentTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -1329,6 +1359,17 @@ export default function TeacherPage() {
                             </button>
                             <button
                               type="button"
+                              onClick={() => addAndCompleteTaskMutation.mutate(task)}
+                              disabled={addAndCompleteTaskMutation.isPending}
+                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium text-white transition-all hover:shadow-md hover:scale-[1.02] disabled:opacity-50"
+                              style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}
+                              title={t("teacherAddToGroupAndComplete")}
+                            >
+                              {processingTaskId === task.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              {t("teacherAddToGroupAndComplete")}
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => completeTaskMutation.mutate(task.id)}
                               disabled={completeTaskMutation.isPending}
                               className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
@@ -1365,7 +1406,7 @@ export default function TeacherPage() {
                   {t("profileStudents")}
                 </h2>
                 <span className="text-xs font-medium px-2.5 py-0.5 rounded-full" style={{ background: isDark ? "rgba(99, 102, 241, 0.15)" : "rgba(99, 102, 241, 0.1)", color: isDark ? "#818CF8" : "#4F46E5" }}>
-                  {allStudents.length} {t("allStudents")?.toLowerCase() || "students"}
+                  {allStudents.length} {t("allStudents")?.toLowerCase()}
                 </span>
               </div>
             </div>
@@ -1373,7 +1414,7 @@ export default function TeacherPage() {
             {allStudents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center opacity-40">
                 <Users className="w-12 h-12 mb-2" />
-                <p>{t("noStudentsInGroups") || "No students in your groups"}</p>
+                <p>{t("noStudentsInGroups")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1382,9 +1423,14 @@ export default function TeacherPage() {
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-indigo-500 font-bold shrink-0">
                       {(student.full_name || student.email).charAt(0).toUpperCase()}
                     </div>
-                    <div className="min-w-0">
-                      <Link href={`/app/profile/${student.id}`} className="font-bold truncate hover:underline" style={{ color: textColors.primary }}>
-                        {student.full_name || "Student"}
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/app/profile/${student.id}`}
+                        className="block max-w-full font-bold truncate hover:underline"
+                        style={{ color: textColors.primary }}
+                        title={student.full_name || t("student")}
+                      >
+                        {student.full_name || t("student")}
                       </Link>
                       <div className="text-xs text-gray-500 truncate">{student.email}</div>
                     </div>
@@ -2008,190 +2054,194 @@ export default function TeacherPage() {
                 ) : (
                   <ul className="space-y-3">
                     {displayedAssignments.map((a, idx) => {
-                    const accentColor = getGroupColor(idx);
-                    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
-                    const isOverdue = deadlineDate && deadlineDate < new Date();
-                    const isSoon = deadlineDate && !isOverdue && (deadlineDate.getTime() - Date.now()) < 3 * 24 * 60 * 60 * 1000;
+                      const accentColor = getGroupColor(idx);
+                      const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+                      const isOverdue = deadlineDate && deadlineDate < new Date();
+                      const isSoon = deadlineDate && !isOverdue && (deadlineDate.getTime() - Date.now()) < 3 * 24 * 60 * 60 * 1000;
 
-                    return (
-                      <li
-                        key={`${a.type}-${a.id}`}
-                        className="p-4 rounded-xl transition-all duration-200 hover:shadow-md group"
-                        style={{
-                          background: isDark ? "rgba(30, 41, 59, 0.6)" : "rgba(249, 250, 251, 0.8)",
-                          border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
-                          borderLeft: `4px solid ${accentColor}`,
-                        }}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              {a.type === "question" ? (
-                                <MessageCircle className="w-4 h-4 text-blue-500" />
-                              ) : a.type === "material" ? (
-                                <BookOpen className="w-4 h-4 text-emerald-500" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-purple-500" />
-                              )}
-                              <p className="font-semibold text-sm" style={{ color: textColors.primary }}>{a.title}</p>
+                      return (
+                        <li
+                          key={`${a.type}-${a.id}`}
+                          className="p-4 rounded-xl transition-all duration-200 hover:shadow-md group"
+                          style={{
+                            background: isDark ? "rgba(30, 41, 59, 0.6)" : "rgba(249, 250, 251, 0.8)",
+                            border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
+                            borderLeft: `4px solid ${accentColor}`,
+                          }}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                {a.type === "question" ? (
+                                  <MessageCircle className="w-4 h-4 text-blue-500" />
+                                ) : a.type === "material" ? (
+                                  <BookOpen className="w-4 h-4 text-emerald-500" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-purple-500" />
+                                )}
+                                <p className="font-semibold text-sm" style={{ color: textColors.primary }}>{a.title}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className="text-xs font-medium px-2 py-0.5 rounded-md"
+                                  style={{ background: `${accentColor}15`, color: accentColor }}
+                                >
+                                  {a.group_name}
+                                </span>
+                                <span className="text-xs" style={{ color: textColors.secondary }}>
+                                  {getLocalizedCourseTitle({ title: a.course_title } as any, t)}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span
-                                className="text-xs font-medium px-2 py-0.5 rounded-md"
-                                style={{ background: `${accentColor}15`, color: accentColor }}
-                              >
-                                {a.group_name}
-                              </span>
-                              <span className="text-xs" style={{ color: textColors.secondary }}>
-                                {getLocalizedCourseTitle({ title: a.course_title } as any, t)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap xs:flex-nowrap sm:flex-nowrap items-center gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (a.type === "question") handleOpenEditQuestion(a.id);
-                                else if (a.type === "material") handleOpenEditMaterial(a.id);
-                                else handleOpenEditAssignment(a.id);
-                              }}
-                              className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:shadow-md whitespace-nowrap"
-                              style={{
-                                background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
-                                color: textColors.primary,
-                              }}
-                            >
-                              <Pencil className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">{t("teacherEditAssignment")}</span>
-                            </button>
-                            {a.type !== "material" && (
-                              <Link
-                                href={a.type === "question" ? `/app/teacher/view-questions/${a.id}` : `/app/teacher/view-answers/${a.id}`}
-                                className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 py-1.5 px-3.5 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] whitespace-nowrap"
-                                style={{
-                                  background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
-                                  boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
-                                }}
-                              >
-                                <Eye className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">{a.type === "question" ? t("teacherViewAnswers" as any) || "Answers" : t("teacherViewSubmissions")}</span>
-                              </Link>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"}` }}>
-                          {editingDeadlineId === a.id ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <input
-                                type="datetime-local"
-                                value={editingDeadline}
-                                onChange={(e) => setEditingDeadline(e.target.value)}
-                                min={new Date().toISOString().slice(0, 16)}
-                                className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
-                                style={inputStyle}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => updateDeadlineMutation.mutate({ assignmentId: a.id, deadline: editingDeadline ? new Date(editingDeadline).toISOString() : null })}
-                                disabled={updateDeadlineMutation.isPending}
-                                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-50 transition-all"
-                                style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}
-                              >
-                                {t("save")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setEditingDeadlineId(null); setEditingDeadline(""); }}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
-                                style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)", color: textColors.secondary }}
-                              >
-                                {t("cancel")}
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <Calendar className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
-                              <span
-                                className="text-xs font-medium px-2 py-0.5 rounded-md"
-                                style={{
-                                  background: !deadlineDate
-                                    ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)")
-                                    : isOverdue
-                                      ? (isDark ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.1)")
-                                      : isSoon
-                                        ? (isDark ? "rgba(245, 158, 11, 0.15)" : "rgba(245, 158, 11, 0.1)")
-                                        : (isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)"),
-                                  color: !deadlineDate
-                                    ? textColors.secondary
-                                    : isOverdue
-                                      ? (isDark ? "#F87171" : "#DC2626")
-                                      : isSoon
-                                        ? (isDark ? "#FBBF24" : "#D97706")
-                                        : (isDark ? "#34D399" : "#059669"),
-                                }}
-                              >
-                                {a.deadline
-                                  ? new Date(a.deadline).toLocaleString("ru-RU", {
-                                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-                                    })
-                                  : t("teacherNoDeadline")}
-                              </span>
+                            <div className="flex flex-wrap xs:flex-nowrap sm:flex-nowrap items-center gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setEditingDeadlineId(a.id);
-                                  setEditingDeadline(a.deadline ? new Date(a.deadline).toISOString().slice(0, 16) : "");
+                                  if (a.type === "question") handleOpenEditQuestion(a.id);
+                                  else if (a.type === "material") handleOpenEditMaterial(a.id);
+                                  else handleOpenEditAssignment(a.id);
                                 }}
-                                className="text-xs font-medium transition-colors"
-                                style={{ color: isDark ? "#60A5FA" : "#3B82F6" }}
+                                className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:shadow-md whitespace-nowrap"
+                                style={{
+                                  background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
+                                  color: textColors.primary,
+                                }}
                               >
-                                {a.deadline ? t("edit") : t("addDeadline")}
+                                <Pencil className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{t("teacherEditAssignment")}</span>
                               </button>
-                              {a.is_closed ? (
-                                <>
-                                  <span className="text-xs font-medium px-2 py-0.5 rounded-md ml-auto" style={{ background: isDark ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.1)", color: isDark ? "#F87171" : "#DC2626" }}>
-                                    {t("teacherAssignmentClosed")}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => reopenAssignmentMutation.mutate(a.id)}
-                                    disabled={reopenAssignmentMutation.isPending}
-                                    className="text-xs font-medium transition-colors"
-                                    style={{ color: isDark ? "#34D399" : "#059669" }}
-                                  >
-                                    {t("teacherReopenAssignment")}
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setClosingAssignment(a);
-                                    setClosingAssignmentId(a.id);
-                                  }}
-                                  className="ml-auto flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                              {a.type !== "material" && (
+                                <Link
+                                  href={
+                                    a.type === "question"
+                                      ? `/app/teacher/view-questions/${a.id}`
+                                      : `/app/teacher/courses/${a.group_id}/assignment/${a.id}`
+                                  }
+                                  className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 py-1.5 px-3.5 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] whitespace-nowrap"
                                   style={{
-                                    background: isDark
-                                      ? "linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(217, 119, 6, 0.35) 100%)"
-                                      : "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)",
-                                    color: isDark ? "#FBBF24" : "#fff",
-                                    boxShadow: isDark ? "0 2px 8px rgba(245, 158, 11, 0.25)" : "0 2px 8px rgba(245, 158, 11, 0.35)",
-                                    border: isDark ? "1px solid rgba(245, 158, 11, 0.4)" : "none",
+                                    background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
+                                    boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
                                   }}
                                 >
-                                  <Lock className="w-3.5 h-3.5" />
-                                  {t("teacherCloseAssignment")}
-                                </button>
+                                  <Eye className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{a.type === "question" ? t("teacherViewAnswers") : t("teacherViewSubmissions")}</span>
+                                </Link>
                               )}
-                            </>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"}` }}>
+                            {editingDeadlineId === a.id ? (
+                              <div className="flex items-center gap-2 flex-1">
+                                <input
+                                  type="datetime-local"
+                                  value={editingDeadline}
+                                  onChange={(e) => setEditingDeadline(e.target.value)}
+                                  min={new Date().toISOString().slice(0, 16)}
+                                  className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+                                  style={inputStyle}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateDeadlineMutation.mutate({ assignmentId: a.id, deadline: editingDeadline ? new Date(editingDeadline).toISOString() : null })}
+                                  disabled={updateDeadlineMutation.isPending}
+                                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-50 transition-all"
+                                  style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}
+                                >
+                                  {t("save")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingDeadlineId(null); setEditingDeadline(""); }}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                                  style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)", color: textColors.secondary }}
+                                >
+                                  {t("cancel")}
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <Calendar className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
+                                <span
+                                  className="text-xs font-medium px-2 py-0.5 rounded-md"
+                                  style={{
+                                    background: !deadlineDate
+                                      ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)")
+                                      : isOverdue
+                                        ? (isDark ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.1)")
+                                        : isSoon
+                                          ? (isDark ? "rgba(245, 158, 11, 0.15)" : "rgba(245, 158, 11, 0.1)")
+                                          : (isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)"),
+                                    color: !deadlineDate
+                                      ? textColors.secondary
+                                      : isOverdue
+                                        ? (isDark ? "#F87171" : "#DC2626")
+                                        : isSoon
+                                          ? (isDark ? "#FBBF24" : "#D97706")
+                                          : (isDark ? "#34D399" : "#059669"),
+                                  }}
+                                >
+                                  {a.deadline
+                                    ? formatDateTimeLocalized(a.deadline, lang, {
+                                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+                                    })
+                                    : t("teacherNoDeadline")}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingDeadlineId(a.id);
+                                    setEditingDeadline(a.deadline ? new Date(a.deadline).toISOString().slice(0, 16) : "");
+                                  }}
+                                  className="text-xs font-medium transition-colors"
+                                  style={{ color: isDark ? "#60A5FA" : "#3B82F6" }}
+                                >
+                                  {a.deadline ? t("edit") : t("addDeadline")}
+                                </button>
+                                {a.is_closed ? (
+                                  <>
+                                    <span className="text-xs font-medium px-2 py-0.5 rounded-md ml-auto" style={{ background: isDark ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.1)", color: isDark ? "#F87171" : "#DC2626" }}>
+                                      {t("teacherAssignmentClosed")}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => reopenAssignmentMutation.mutate(a.id)}
+                                      disabled={reopenAssignmentMutation.isPending}
+                                      className="text-xs font-medium transition-colors"
+                                      style={{ color: isDark ? "#34D399" : "#059669" }}
+                                    >
+                                      {t("teacherReopenAssignment")}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setClosingAssignment(a);
+                                      setClosingAssignmentId(a.id);
+                                    }}
+                                    className="ml-auto flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                                    style={{
+                                      background: isDark
+                                        ? "linear-gradient(135deg, rgba(245, 158, 11, 0.35) 0%, rgba(217, 119, 6, 0.35) 100%)"
+                                        : "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)",
+                                      color: isDark ? "#FBBF24" : "#fff",
+                                      boxShadow: isDark ? "0 2px 8px rgba(245, 158, 11, 0.25)" : "0 2px 8px rgba(245, 158, 11, 0.35)",
+                                      border: isDark ? "1px solid rgba(245, 158, 11, 0.4)" : "none",
+                                    }}
+                                  >
+                                    <Lock className="w-3.5 h-3.5" />
+                                    {t("teacherCloseAssignment")}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 );
               })()}
             </div>
@@ -2555,7 +2605,7 @@ export default function TeacherPage() {
                 <div className="flex gap-2">
                   <input
                     type="url"
-                    placeholder="https://..."
+                    placeholder={t("placeholderUrl")}
                     value={newLinkInput}
                     onChange={(e) => setNewLinkInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -2596,7 +2646,7 @@ export default function TeacherPage() {
                   </div>
                 )}
               </div>
-              </div>
+            </div>
             <div className="flex gap-2 mt-5">
               <button
                 type="button"
@@ -2865,7 +2915,7 @@ export default function TeacherPage() {
                 <X className="w-5 h-5" style={{ color: textColors.secondary }} />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-semibold mb-1.5 block uppercase tracking-wider opacity-60" style={{ color: textColors.secondary }}>

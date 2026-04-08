@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -34,6 +34,14 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
   const { t } = useLanguage();
   const isDark = theme === "dark";
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Подготовка данных для графика
   const chartData = useMemo(() => {
@@ -165,21 +173,21 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
       
       <div className="relative">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
             <div 
               className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
             >
               <BookOpen className="w-5 h-5 text-white" />
             </div>
-            <h2 className={`font-geologica font-bold text-xl ${isDark ? "text-white" : "text-gray-900"}`}>
+            <h2 className={`font-geologica font-bold text-lg sm:text-xl ${isDark ? "text-white" : "text-gray-900"} truncate`}>
               {t("adminCourseStats")}
             </h2>
           </div>
 
           {/* Time range selectors */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto pr-1">
             {[
               { key: "all" as TimeRange, label: t("coursesFilterAll") },
               { key: "top10" as TimeRange, label: "Top 10" },
@@ -189,7 +197,7 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
                 key={key}
                 type="button"
                 onClick={() => setTimeRange(key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   timeRange === key
                     ? "text-white"
                     : isDark
@@ -239,11 +247,12 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
               />
               <XAxis
                 dataKey="shortName"
-                tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                tick={{ fontSize: isMobile ? 10 : 11, fill: isDark ? "#94A3B8" : "#64748B" }}
                 stroke={isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"}
-                angle={45}
-                textAnchor="start"
-                height={90}
+                angle={isMobile ? 0 : 30}
+                textAnchor={isMobile ? "middle" : "start"}
+                interval={chartData.length > (isMobile ? 4 : 8) ? "preserveStartEnd" : 0}
+                height={isMobile ? 56 : 84}
               />
               <YAxis
                 tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}

@@ -9,6 +9,8 @@ import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
+import { formatDateLocalized } from "@/lib/dateUtils";
+
 
 type ScheduleItem = {
   id: number;
@@ -56,7 +58,8 @@ export function EventDetailsModal({
   topics = [],
   isUpdating = false,
 }: EventDetailsModalProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+
   const [isEditing, setIsEditing] = useState(false);
   const [editCourseId, setEditCourseId] = useState<number | "">(type === "schedule" ? (event as ScheduleItem).course_id || "" : "");
   const [editTopicId, setEditTopicId] = useState<number | "">(type === "schedule" ? (event as ScheduleItem).topic_id || "" : "");
@@ -99,14 +102,14 @@ export function EventDetailsModal({
   const assignment = !isSchedule ? (event as Assignment) : null;
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("ru-RU", {
+    return formatDateLocalized(dateStr, lang, {
       year: "numeric",
       month: "long",
       day: "numeric",
       weekday: "long",
     });
   };
+
 
   const handleSave = () => {
     if (!isSchedule || !onUpdate) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
@@ -12,8 +12,22 @@ import { VideoPlayer } from "@/components/courses/VideoPlayer";
 import { TestComponent } from "@/components/tests/TestComponent";
 import { TopicNotes } from "@/components/courses/TopicNotes";
 import { TopicTheoryContent } from "@/components/courses/TopicTheoryContent";
+import { TopicSynopsisSection } from "@/components/courses/TopicSynopsisSection";
+import { TopicAssignmentsInlineSection } from "@/components/courses/TopicAssignmentsInlineSection";
 import { ChevronLeft, Lock, Sparkles, Coins, CheckCircle2 } from "lucide-react";
 import { getLocalizedTopicTitle } from "@/lib/courseUtils";
+
+interface Structure {
+  course_id: number;
+  modules: Array<{
+    id: number;
+    title: string;
+    order_number: number;
+    topics: Array<{ id: number; title: string; order_number: number }>;
+  }>;
+}
+
+const WEB_COURSE_SHARED_VIDEO_URL = "https://youtu.be/3rN_CB_PkbY?si=pbFtMkD5SNxs0Q4l";
 
 function hasVideo(topic: { title: string; video_url?: string | null }): boolean {
   return !!topic.video_url;
@@ -26,9 +40,35 @@ function buildVideoSrc(
   return videoUrl.startsWith("http") ? videoUrl : videoUrl.startsWith("/") ? videoUrl : `/uploads/${videoUrl}`;
 }
 
+function isWebCourseTitle(title: string | undefined | null): boolean {
+  const value = (title ?? "").trim().toLowerCase();
+  if (!value) return false;
+  return (
+    value.includes("web") ||
+    value.includes("веб") ||
+    value.includes("html") ||
+    value.includes("css") ||
+    value.includes("javascript") ||
+    value.includes("js")
+  );
+}
+
+function topicFlowBlockMessage(reason: string, t: (key: string) => string): string {
+  const keys: Record<string, string> = {
+    no_groups: "topicFlowNoGroups",
+    video: "topicWatchEnoughToUnlock",
+    synopsis: "topicFlowSynopsisRequired",
+    no_assignment: "topicFlowWaitTeacherAssignment",
+    wait_grade: "topicFlowWaitTeacherGrade",
+  };
+  const k = keys[reason];
+  return k ? t(k) : t("topicFlowTestBlocked");
+}
+
 export default function TopicViewPage() {
   const params = useParams();
   const { t } = useLanguage();
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
   const courseId = params.courseId as string;
@@ -67,6 +107,27 @@ export default function TopicViewPage() {
     enabled: validTopicId,
   });
 
+  const { data: course } = useQuery({
+    queryKey: ["course", cId],
+    queryFn: async () => {
+      const { data } = await api.get<{ id: number; title: string }>(`/courses/${cId}`);
+      return data;
+    },
+    enabled: Number.isFinite(cId) && cId > 0,
+  });
+
+  const { data: structure } = useQuery({
+    queryKey: ["course-structure", cId],
+    queryFn: async () => {
+      const { data } = await api.get<Structure>(`/courses/${cId}/structure`);
+      return data;
+    },
+    enabled: !!cId,
+  });
+
+  const isWebCourse = isWebCourseTitle(course?.title);
+  const effectiveVideoUrl = isWebCourse ? WEB_COURSE_SHARED_VIDEO_URL : topic?.video_url;
+
   const {
     data: access,
     isPending: accessPending,
@@ -89,7 +150,7 @@ export default function TopicViewPage() {
     enabled: !!cId && userId != null,
   });
 
-  const isVideoTopic = Boolean(topic && hasVideo(topic));
+  const isVideoTopic = Boolean(topic && hasVideo({ ...topic, video_url: effectiveVideoUrl ?? null }));
 
   useEffect(() => {
     const progress = progressList.find((p) => p.topic_id === tId);
@@ -119,21 +180,48 @@ export default function TopicViewPage() {
   const dbDuration = topic?.video_duration ?? 300;
   const duration = actualVideoDuration ?? dbDuration;
   const watchedPercent = duration ? Math.min(100, (localWatchedSeconds / duration) * 100) : 0;
-  const canTakeTest = isVideoTopic ? watchedPercent >= 90 || !!progress?.is_completed : true;
-  const canViewTheory = canTakeTest;
+  const theoryUnlockedLocal = isVideoTopic ? watchedPercent >= 90 || !!progress?.is_completed : true;
+
+  const { data: flow } = useQuery({
+    queryKey: ["topic-flow", tId],
+    queryFn: async () => {
+      const { data } = await api.get<{
+        has_course_groups: boolean;
+        video_ok: boolean;
+        theory_unlocked: boolean;
+        synopsis_done: boolean;
+        homework_exists: boolean;
+        homework_graded: boolean;
+        can_take_test: boolean;
+        block_reason: string;
+        topic_assignment_ids: number[];
+      }>(`/topics/${tId}/flow-status`);
+      return data;
+    },
+    enabled: validTopicId && !!access?.allowed,
+  });
+
+  const theoryUnlocked = flow?.theory_unlocked ?? theoryUnlockedLocal;
+  const canViewTheory = theoryUnlocked;
 
   const { data: topicTest } = useQuery({
     queryKey: ["topic-test", tId],
     queryFn: async () => {
-      const { data } = await api.get<{ test_id: number }>(`/topics/${tId}/test`);
-      return data;
+      try {
+        const { data } = await api.get<{ test_id: number }>(`/topics/${tId}/test`);
+        return data;
+      } catch (e) {
+        if (isAxiosError(e) && e.response?.status === 404) return null;
+        throw e;
+      }
     },
-    enabled: validTopicId && !!topic && canTakeTest,
+    enabled: validTopicId && !!topic && !!access?.allowed,
   });
 
   useEffect(() => {
     if (topicTest?.test_id) setTestId(topicTest.test_id);
-  }, [topicTest?.test_id]);
+    else setTestId(null);
+  }, [topicTest?.test_id, topicTest]);
 
   useEffect(() => {
     setHasShownTheoryCoinsToast(false);
@@ -145,6 +233,7 @@ export default function TopicViewPage() {
 
   const lastSavedSeconds = useRef<number>(0);
   const lastProgressTopicIdRef = useRef<number>(tId);
+  const lastDurationSyncRef = useRef<string>("");
 
   useEffect(() => {
     if (lastProgressTopicIdRef.current !== tId) {
@@ -166,10 +255,15 @@ export default function TopicViewPage() {
 
     if (shouldSave) {
       lastSavedSeconds.current = seconds;
-      api.post("/progress/video", { topic_id: tId, video_watched_seconds: seconds })
+      api.post("/progress/video", {
+        topic_id: tId,
+        video_watched_seconds: seconds,
+        video_duration: duration > 0 ? Math.round(duration) : undefined,
+      })
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
           queryClient.invalidateQueries({ queryKey: ["topic", tId] });
+          queryClient.invalidateQueries({ queryKey: ["topic-flow", tId] });
           queryClient.invalidateQueries({ queryKey: ["daily-video-limit", userId] });
           queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
@@ -194,12 +288,34 @@ export default function TopicViewPage() {
     }
   };
 
+  useEffect(() => {
+    if (!validTopicId || !isVideoTopic || actualVideoDuration == null || actualVideoDuration <= 0 || localWatchedSeconds <= 0) {
+      return;
+    }
+    const syncKey = `${tId}:${Math.round(actualVideoDuration)}`;
+    if (lastDurationSyncRef.current === syncKey) return;
+    lastDurationSyncRef.current = syncKey;
+    api.post("/progress/video", {
+      topic_id: tId,
+      video_watched_seconds: Math.floor(localWatchedSeconds),
+      video_duration: Math.round(actualVideoDuration),
+    })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["topic", tId] });
+        queryClient.invalidateQueries({ queryKey: ["topic-flow", tId] });
+      })
+      .catch(() => {
+        lastDurationSyncRef.current = "";
+      });
+  }, [actualVideoDuration, cId, isVideoTopic, localWatchedSeconds, queryClient, tId, userId, validTopicId]);
+
   const onTestPassed = () => {
     queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
     queryClient.invalidateQueries({ queryKey: ["topic", tId] });
     queryClient.invalidateQueries({ queryKey: ["topic-access", tId] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
     queryClient.invalidateQueries({ queryKey: ["course-structure", cId] });
+    queryClient.invalidateQueries({ queryKey: ["topic-flow", tId] });
     setCoinsToastMessage(
       t("topicCoinsComplete")
         .replace("{coins}", "25")
@@ -207,6 +323,26 @@ export default function TopicViewPage() {
     setShowCoinsToast(true);
     setTimeout(() => setShowCoinsToast(false), 4000);
     setShowTest(false);
+
+    // Redirect to next topic or course page
+    if (structure?.modules) {
+      const flattened: number[] = [];
+      const sortedModules = [...structure.modules].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+      for (const mod of sortedModules) {
+        const sortedTopics = [...(mod.topics || [])].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+        for (const topic of sortedTopics) {
+          flattened.push(topic.id);
+        }
+      }
+
+      const currentIndex = flattened.indexOf(tId);
+      if (currentIndex !== -1 && currentIndex < flattened.length - 1) {
+        const nextTopicId = flattened[currentIndex + 1];
+        router.push(`/app/courses/${cId}/topic/${nextTopicId}`);
+      } else {
+        router.push(`/app/courses/${cId}`);
+      }
+    }
   };
 
   if (!validTopicId) {
@@ -394,7 +530,7 @@ export default function TopicViewPage() {
                 )}
                 <VideoPlayer
                   key={`video-${tId}`}
-                  src={buildVideoSrc(topic.video_url)}
+                  src={buildVideoSrc(effectiveVideoUrl)}
                   duration={duration}
                   initialWatched={videoWatched}
                   onProgress={onVideoProgress}
@@ -427,6 +563,12 @@ export default function TopicViewPage() {
                   <TopicTheoryContent content={topic.description} />
                 </div>
               )}
+              {canViewTheory && (flow == null || flow.has_course_groups) && (
+                <TopicSynopsisSection topicId={tId} userId={userId} />
+              )}
+              {(flow == null || flow.has_course_groups) && (
+                <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
+              )}
             </>
           ) : (
             <>
@@ -438,9 +580,29 @@ export default function TopicViewPage() {
                 )}
               </div>
               {isPremium && <TopicNotes topicId={tId} />}
+              {(flow == null || flow.has_course_groups) && <TopicSynopsisSection topicId={tId} userId={userId} />}
+              {(flow == null || flow.has_course_groups) && (
+                <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
+              )}
             </>
           )}
-          {canTakeTest && (
+          {flow && !progress?.is_completed && !flow.can_take_test && flow.block_reason && flow.block_reason !== "ok" && (
+            <div className="mt-4 mb-2 flex flex-col gap-2 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
+              <p className="text-sm text-amber-900 dark:text-amber-100">{topicFlowBlockMessage(flow.block_reason, t)}</p>
+              {(flow.block_reason === "no_assignment" || flow.block_reason === "wait_grade") && (
+                <Link
+                  href={`/app/courses/${cId}?tab=classwork`}
+                  className="text-sm font-medium text-[#1a237e] dark:text-[#00b0ff] hover:underline w-fit"
+                >
+                  {t("topicFlowGoToClassworkOptional")}
+                </Link>
+              )}
+            </div>
+          )}
+          {!flow && isVideoTopic && !theoryUnlockedLocal && (
+            <p className="text-amber-600 dark:text-amber-400 mt-2">{t("topicWatchEnoughToUnlock")}</p>
+          )}
+          {flow?.can_take_test && (
             <div className="mt-6 space-y-3">
               <h3 className="text-base font-semibold text-gray-800 dark:text-white">{t("topicControlTestTitle")}</h3>
               {currentTestId ? (
@@ -453,12 +615,9 @@ export default function TopicViewPage() {
                   {t("topicTestButton")}
                 </button>
               ) : (
-                <p className="text-gray-500">{t("topicTestLoading")}</p>
+                <p className="text-gray-500">{t("topicTestNone")}</p>
               )}
             </div>
-          )}
-          {!canTakeTest && isVideoTopic && (
-            <p className="text-amber-600">{t("topicWatchEnoughToUnlock")}</p>
           )}
         </>
       ) : (

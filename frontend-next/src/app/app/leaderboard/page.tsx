@@ -25,7 +25,9 @@ type LeaderboardRow = {
   user_id: number;
   full_name: string;
   email: string;
+  rating_score: number;
   avg_score: number;
+  avg_assignment: number;
   courses_done: number;
   activity: number;
   points: number;
@@ -43,7 +45,7 @@ function RatingTable({
   onCoursesClick?: (row: LeaderboardRow) => void;
 }) {
   return (
-    <table className="w-full min-w-[480px]">
+    <table className="w-full min-w-[720px]">
       <thead className="bg-gray-50/80 dark:bg-gray-700/80 backdrop-blur-sm sticky top-0 z-10">
         <tr>
           <th className="text-left py-4 px-4 font-semibold text-gray-700 dark:text-gray-200">
@@ -101,10 +103,18 @@ function RatingCards({
               <p className="font-semibold text-amber-500 dark:text-amber-400">{r.points ?? 0}</p>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             <div>
-              <p className="text-gray-500 dark:text-gray-400">{t("leaderboardAvgScore")}</p>
+              <p className="text-gray-500 dark:text-gray-400">{t("leaderboardRatingScore")}</p>
+              <p className="font-semibold text-[var(--qit-primary)] dark:text-[#00b0ff]">{r.rating_score.toFixed(1)}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">{t("leaderboardAvgTestScore")}</p>
               <p className="font-medium text-gray-800 dark:text-gray-200">{r.avg_score.toFixed(1)}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">{t("leaderboardAvgAssignment")}</p>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{r.avg_assignment.toFixed(1)}</p>
             </div>
             <div>
               <p className="text-gray-500 dark:text-gray-400">{t("leaderboardActivity")}</p>
@@ -133,7 +143,9 @@ function RatingCards({
 
 const TABLE_COLUMN_KEYS: { key: keyof LeaderboardRow; labelKey: TranslationKey }[] = [
   { key: "full_name", labelKey: "leaderboardName" },
-  { key: "avg_score", labelKey: "leaderboardAvgScore" },
+  { key: "rating_score", labelKey: "leaderboardRatingScore" },
+  { key: "avg_score", labelKey: "leaderboardAvgTestScore" },
+  { key: "avg_assignment", labelKey: "leaderboardAvgAssignment" },
   { key: "courses_done", labelKey: "leaderboardCourses" },
   { key: "activity", labelKey: "leaderboardActivity" },
   { key: "points", labelKey: "profileCoins" },
@@ -144,7 +156,7 @@ type ActiveBlock = "top" | "middle" | "low";
 type CourseItem = { course_id: number; course_title: string };
 
 export default function LeaderboardPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [activeBlock, setActiveBlock] = useState<ActiveBlock>("top");
@@ -182,13 +194,13 @@ export default function LeaderboardPage() {
 
   const handleExportExcel = async () => {
     try {
-      const { data } = await api.get<Blob>("/analytics/leaderboard/excel", {
+      const { data } = await api.get<Blob>(`/analytics/leaderboard/excel?lang=${lang}`, {
         responseType: "blob",
       });
       const url = URL.createObjectURL(data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "leaderboard.xlsx";
+      a.download = lang === "kk" ? "reiting.xlsx" : "leaderboard.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {

@@ -164,6 +164,15 @@ def get_error_msg(key: str, lang: str | None = "ru", **kwargs) -> str:
         return msg.format(**kwargs)
     return msg
 
+
+def _get_localized_field(payload: dict, base_key: str, lang: str | None = "ru") -> str:
+    locale = lang if lang in ("ru", "kk", "en") else "ru"
+    if locale == "kk":
+        return payload.get(f"{base_key}_kk") or payload.get(base_key, "")
+    if locale == "en":
+        return payload.get(f"{base_key}_en") or payload.get(base_key, "")
+    return payload.get(base_key, "")
+
 AI_LEVELS = ("beginner", "intermediate", "expert")
 AI_TIME_RANGES = {
     "beginner": (3.0, 4.0),
@@ -182,6 +191,280 @@ QUESTIONS_LIMIT_BY_LEVEL = {
     "expert": 12,
 }
 MIN_QUESTIONS_TO_START = 1
+
+LOCAL_CLASSIC_TRACK_QUESTIONS: dict[str, list[dict]] = {
+    "informatics": [
+        {
+            "id": -1001,
+            "question_text": "Что такое алгоритм?",
+            "option_a": "База данных",
+            "option_b": "Последовательность шагов для решения задачи",
+            "option_c": "Язык разметки",
+            "option_d": "Тип вируса",
+            "correct_answer": "b",
+            "question_text_kk": "Алгоритм деген не?",
+            "option_a_kk": "Деректер қоры",
+            "option_b_kk": "Мәселені шешу үшін қадамдар тізбегі",
+            "option_c_kk": "Белгілеу тілі",
+            "option_d_kk": "Вирус түрі",
+        },
+        {
+            "id": -1002,
+            "question_text": "Какое устройство отвечает за временное хранение данных во время работы программ?",
+            "option_a": "SSD",
+            "option_b": "HDD",
+            "option_c": "Оперативная память (RAM)",
+            "option_d": "Видеокарта",
+            "correct_answer": "c",
+            "question_text_kk": "Бағдарламалар жұмысы кезінде деректерді уақытша сақтайтын құрылғы қандай?",
+            "option_a_kk": "SSD",
+            "option_b_kk": "HDD",
+            "option_c_kk": "Жедел жад (RAM)",
+            "option_d_kk": "Бейне карта",
+        },
+        {
+            "id": -1003,
+            "question_text": "Что означает CPU?",
+            "option_a": "Central Processing Unit",
+            "option_b": "Control Program Utility",
+            "option_c": "Computer Power Unit",
+            "option_d": "Central Program Update",
+            "correct_answer": "a",
+            "question_text_kk": "CPU деген не білдіреді?",
+            "option_a_kk": "Central Processing Unit",
+            "option_b_kk": "Control Program Utility",
+            "option_c_kk": "Computer Power Unit",
+            "option_d_kk": "Central Program Update",
+        },
+        {
+            "id": -1004,
+            "question_text": "Какой формат используется для структурированного обмена данными в вебе?",
+            "option_a": "PDF",
+            "option_b": "JPEG",
+            "option_c": "JSON",
+            "option_d": "MP3",
+            "correct_answer": "c",
+            "question_text_kk": "Вебте құрылымдық деректер алмасу үшін қандай формат қолданылады?",
+            "option_a_kk": "PDF",
+            "option_b_kk": "JPEG",
+            "option_c_kk": "JSON",
+            "option_d_kk": "MP3",
+        },
+        {
+            "id": -1005,
+            "question_text": "Какой протокол обычно используют для защищенной передачи данных в браузере?",
+            "option_a": "FTP",
+            "option_b": "HTTP",
+            "option_c": "SMTP",
+            "option_d": "HTTPS",
+            "correct_answer": "d",
+            "question_text_kk": "Браузерде деректерді қауіпсіз жіберу үшін әдетте қандай хаттама қолданылады?",
+            "option_a_kk": "FTP",
+            "option_b_kk": "HTTP",
+            "option_c_kk": "SMTP",
+            "option_d_kk": "HTTPS",
+        },
+        {
+            "id": -1006,
+            "question_text": "Что такое переменная в программировании?",
+            "option_a": "Фиксированная константа",
+            "option_b": "Именованная область памяти для хранения значения",
+            "option_c": "Графический элемент",
+            "option_d": "Сетевой кабель",
+            "correct_answer": "b",
+            "question_text_kk": "Бағдарламалауда айнымалы деген не?",
+            "option_a_kk": "Тұрақты мән",
+            "option_b_kk": "Мән сақталатын атауы бар жад аймағы",
+            "option_c_kk": "Графикалық элемент",
+            "option_d_kk": "Желілік кабель",
+        },
+        {
+            "id": -1007,
+            "question_text": "Какая структура данных хранит пары ключ-значение?",
+            "option_a": "Массив",
+            "option_b": "Стек",
+            "option_c": "Словарь (map/dict)",
+            "option_d": "Очередь",
+            "correct_answer": "c",
+            "question_text_kk": "Қандай деректер құрылымы кілт-мән жұптарын сақтайды?",
+            "option_a_kk": "Массив",
+            "option_b_kk": "Стек",
+            "option_c_kk": "Сөздік (map/dict)",
+            "option_d_kk": "Кезек",
+        },
+        {
+            "id": -1008,
+            "question_text": "Что делает оператор сравнения '=='?",
+            "option_a": "Присваивает значение",
+            "option_b": "Сравнивает значения на равенство",
+            "option_c": "Удаляет переменную",
+            "option_d": "Увеличивает число",
+            "correct_answer": "b",
+            "question_text_kk": "'==' салыстыру операторы не істейді?",
+            "option_a_kk": "Мән меншіктейді",
+            "option_b_kk": "Мәндерді теңдік бойынша салыстырады",
+            "option_c_kk": "Айнымалыны жояды",
+            "option_d_kk": "Санды арттырады",
+        },
+    ],
+    "cybersecurity": [
+        {
+            "id": -2001,
+            "question_text": "Что такое фишинг?",
+            "option_a": "Метод резервного копирования",
+            "option_b": "Попытка выманить данные через поддельные сообщения/сайты",
+            "option_c": "Тип шифрования",
+            "option_d": "Антивирусное сканирование",
+            "correct_answer": "b",
+            "question_text_kk": "Фишинг деген не?",
+            "option_a_kk": "Сақтық көшірме әдісі",
+            "option_b_kk": "Жалған хабарлама/сайт арқылы дерек алдау",
+            "option_c_kk": "Шифрлау түрі",
+            "option_d_kk": "Антивирустық сканерлеу",
+        },
+        {
+            "id": -2002,
+            "question_text": "Какой пароль считается более надежным?",
+            "option_a": "12345678",
+            "option_b": "qwerty",
+            "option_c": "N7!kP2@zL9",
+            "option_d": "password",
+            "correct_answer": "c",
+            "question_text_kk": "Қандай құпия сөз сенімдірек саналады?",
+            "option_a_kk": "12345678",
+            "option_b_kk": "qwerty",
+            "option_c_kk": "N7!kP2@zL9",
+            "option_d_kk": "password",
+        },
+        {
+            "id": -2003,
+            "question_text": "Зачем нужна двухфакторная аутентификация (2FA)?",
+            "option_a": "Чтобы ускорить вход",
+            "option_b": "Чтобы добавить второй шаг подтверждения и снизить риск взлома",
+            "option_c": "Чтобы отключить пароль",
+            "option_d": "Чтобы удалить аккаунт",
+            "correct_answer": "b",
+            "question_text_kk": "Екі факторлы аутентификация (2FA) не үшін керек?",
+            "option_a_kk": "Кіруді жылдамдату үшін",
+            "option_b_kk": "Растаудың екінші қадамын қосып, бұзу қаупін азайту үшін",
+            "option_c_kk": "Құпия сөзді өшіру үшін",
+            "option_d_kk": "Аккаунтты жою үшін",
+        },
+        {
+            "id": -2004,
+            "question_text": "Что делает антивирус?",
+            "option_a": "Ускоряет интернет",
+            "option_b": "Хранит пароли",
+            "option_c": "Обнаруживает и блокирует вредоносное ПО",
+            "option_d": "Шифрует видео",
+            "correct_answer": "c",
+            "question_text_kk": "Антивирус не істейді?",
+            "option_a_kk": "Интернетті жылдамдатады",
+            "option_b_kk": "Құпия сөздерді сақтайды",
+            "option_c_kk": "Зиянды бағдарламаларды анықтайды және бұғаттайды",
+            "option_d_kk": "Бейнені шифрлайды",
+        },
+        {
+            "id": -2005,
+            "question_text": "Что такое VPN в базовом понимании?",
+            "option_a": "Видеоплеер",
+            "option_b": "Защищенный туннель для сетевого трафика",
+            "option_c": "Файловый архив",
+            "option_d": "Тип процессора",
+            "correct_answer": "b",
+            "question_text_kk": "VPN деген не (негізгі түсінік)?",
+            "option_a_kk": "Бейне ойнатқыш",
+            "option_b_kk": "Желілік трафик үшін қорғалған туннель",
+            "option_c_kk": "Файл мұрағаты",
+            "option_d_kk": "Процессор түрі",
+        },
+        {
+            "id": -2006,
+            "question_text": "Как безопаснее всего получать программы?",
+            "option_a": "Случайные форумы",
+            "option_b": "Неофициальные репаки",
+            "option_c": "Только из официальных источников",
+            "option_d": "Из вложений письма",
+            "correct_answer": "c",
+            "question_text_kk": "Бағдарламаларды қалай алу қауіпсіз?",
+            "option_a_kk": "Кездейсоқ форумдар",
+            "option_b_kk": "Ресми емес репактар",
+            "option_c_kk": "Тек ресми дереккөздерден",
+            "option_d_kk": "Хат тіркемелерінен",
+        },
+        {
+            "id": -2007,
+            "question_text": "Что такое социальная инженерия?",
+            "option_a": "Настройка роутера",
+            "option_b": "Манипуляция людьми для получения доступа/данных",
+            "option_c": "Создание резервной копии",
+            "option_d": "Шифрование диска",
+            "correct_answer": "b",
+            "question_text_kk": "Әлеуметтік инженерия деген не?",
+            "option_a_kk": "Роутер баптауы",
+            "option_b_kk": "Қол жеткізу/дерек алу үшін адамдарды манипуляциялау",
+            "option_c_kk": "Сақтық көшірме жасау",
+            "option_d_kk": "Дискті шифрлау",
+        },
+        {
+            "id": -2008,
+            "question_text": "Почему важно обновлять ОС и приложения?",
+            "option_a": "Только для нового дизайна",
+            "option_b": "Обновления закрывают уязвимости безопасности",
+            "option_c": "Чтобы удалить файлы",
+            "option_d": "Чтобы отключить интернет",
+            "correct_answer": "b",
+            "question_text_kk": "ЖО мен бағдарламаларды жаңарту не үшін маңызды?",
+            "option_a_kk": "Тек жаңа дизайн үшін",
+            "option_b_kk": "Жаңартулар қауіпсіздік осалдықтарын жояды",
+            "option_c_kk": "Файлдарды жою үшін",
+            "option_d_kk": "Интернетті өшіру үшін",
+        },
+    ],
+}
+
+
+def _localize_local_classic_question(q: dict, lang: str | None) -> dict:
+    """Возвращает копию вопроса с полями question_text/option_* для выбранной локали (kk или ru)."""
+    loc = (lang or "ru").strip().lower()
+    if loc == "kk":
+        return {
+            "id": q["id"],
+            "correct_answer": q["correct_answer"],
+            "question_text": q.get("question_text_kk") or q["question_text"],
+            "option_a": q.get("option_a_kk") or q["option_a"],
+            "option_b": q.get("option_b_kk") or q["option_b"],
+            "option_c": q.get("option_c_kk") or q["option_c"],
+            "option_d": q.get("option_d_kk") or q["option_d"],
+        }
+    return {
+        "id": q["id"],
+        "correct_answer": q["correct_answer"],
+        "question_text": q["question_text"],
+        "option_a": q["option_a"],
+        "option_b": q["option_b"],
+        "option_c": q["option_c"],
+        "option_d": q["option_d"],
+    }
+
+
+def _get_local_track_questions(track: str, limit: int, ai_level: str = "intermediate") -> list[dict]:
+    bank = LOCAL_CLASSIC_TRACK_QUESTIONS.get(track, [])
+    if not bank:
+        return []
+    items = bank[:]
+    if ai_level == "expert":
+        items = list(reversed(items))
+    elif ai_level == "intermediate":
+        random.Random(42).shuffle(items)
+    return items[:max(1, min(limit, len(items)))]
+
+
+def _answer_text_from_question_like(q: TestQuestion | dict) -> str:
+    if isinstance(q, dict):
+        key = (q.get("correct_answer") or "a").strip().lower()
+        return {"a": q.get("option_a"), "b": q.get("option_b"), "c": q.get("option_c"), "d": q.get("option_d")}.get(key, q.get("option_a") or "")
+    return _get_answer_text(q)
 
 # Классикалық режимдер үшін сұрақ қай курстан алынатыны (URLдағы course_id — тек навигация)
 CLASSIC_TRACK_PYTHON = "python"
@@ -452,6 +735,35 @@ def _calc_bonus_points(correct_sequence: list[bool]) -> int:
     return total
 
 
+def _calc_ai_win_coins(
+    user_correct: int,
+    total_questions: int,
+    user_total_score: int,
+    ai_total_score: int,
+    user_time: float,
+    ai_time: float,
+) -> int:
+    """
+    Dynamic reward up to 200 coins for a win.
+    Takes into account accuracy, score advantage, and speed advantage.
+    """
+    if total_questions <= 0:
+        return 0
+
+    accuracy_ratio = max(0.0, min(1.0, user_correct / total_questions))
+    score_adv_ratio = 0.0
+    if total_questions > 0:
+        score_adv_ratio = max(0.0, min(1.0, (user_total_score - ai_total_score) / total_questions))
+
+    speed_adv_ratio = 0.0
+    if ai_time > 0 and user_time > 0:
+        speed_adv_ratio = max(0.0, min(1.0, (ai_time - user_time) / ai_time))
+
+    # Weighted reward: accuracy has the largest impact.
+    coins = int(round(200 * (0.6 * accuracy_ratio + 0.25 * score_adv_ratio + 0.15 * speed_adv_ratio)))
+    return max(1, min(200, coins))
+
+
 class ChallengeStartResponse(BaseModel):
     challenge_id: int
     questions: list[dict]
@@ -642,16 +954,31 @@ def get_memory_cards(
     norm_track = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
     if norm_track not in CLASSIC_TRACKS:
         norm_track = CLASSIC_TRACK_PYTHON
+    local_questions = _get_local_track_questions(norm_track, 4)
+    if norm_track in (CLASSIC_TRACK_INFORMATICS, CLASSIC_TRACK_CYBERSECURITY) and len(local_questions) >= 4:
+        cards: list[dict] = []
+        for i, q in enumerate(local_questions[:4]):
+            ql = _localize_local_classic_question(q, lang)
+            qid, aid = f"q{i}", f"a{i}"
+            cards.append({"id": qid, "text": ql["question_text"], "pair_id": aid})
+            cards.append({"id": aid, "text": _answer_text_from_question_like(ql), "pair_id": qid})
+        random.shuffle(cards)
+        return MemoryCardsResponse(cards=cards)
+
     content_course_ids = _classic_content_course_ids(db, classic_track, course_id, lang)
     is_admin = current_user.role in ("admin", "director", "curator")
     if is_admin:
         base_topic_ids = _get_all_topic_ids_for_courses(db, content_course_ids)
     else:
         base_topic_ids = _get_completed_topic_ids_for_courses(db, current_user.id, content_course_ids)
-    
+
     questions = _get_questions_from_topics_multi(db, content_course_ids, base_topic_ids, 4)
+    # Memory: allow pairs from any topic test in the course (not only completed topics) so the game is playable.
+    all_topic_ids = _get_all_topic_ids_for_courses(db, content_course_ids)
+    if len(questions) < 4 and all_topic_ids:
+        questions = _get_questions_from_topics_multi(db, content_course_ids, all_topic_ids, 4)
     if len(questions) < 4:
-        if not base_topic_ids:
+        if not all_topic_ids:
             if norm_track == CLASSIC_TRACK_WEB:
                 raise HTTPException(status_code=400, detail=get_error_msg("memory_web", lang))
             if norm_track == CLASSIC_TRACK_INFORMATICS:
@@ -665,7 +992,6 @@ def get_memory_cards(
         raise HTTPException(status_code=400, detail=get_error_msg("memory_more_topics", lang))
     questions = questions[:4]
     cards: list[dict] = []
-    # TODO: lang can be used here in future to return localized question/answer texts
     for i, q in enumerate(questions):
         qid, aid = f"q{i}", f"a{i}"
         cards.append({"id": qid, "text": q.question_text, "pair_id": aid})
@@ -691,6 +1017,65 @@ def start_challenge(
     norm_track = (classic_track or CLASSIC_TRACK_PYTHON).strip().lower()
     if norm_track not in CLASSIC_TRACKS:
         norm_track = CLASSIC_TRACK_PYTHON
+    local_questions = _get_local_track_questions(norm_track, QUESTIONS_LIMIT_BY_LEVEL.get(ai_level, 7), ai_level)
+    if norm_track in (CLASSIC_TRACK_INFORMATICS, CLASSIC_TRACK_CYBERSECURITY) and len(local_questions) >= MIN_QUESTIONS_TO_START:
+        questions = local_questions
+        effective_limit = len(questions)
+        lo, hi = AI_TIME_RANGES[ai_level]
+        ai_times = [round(random.uniform(lo, hi), 2) for _ in questions]
+        ai_bonus = random.randint(0, 3)
+        round_limit = ROUND_TIME_LIMIT_BY_LEVEL.get(ai_level, ROUND_TIME_LIMIT)
+        local_answer_map = {str(q["id"]): (q.get("correct_answer") or "a").strip().lower() for q in questions}
+        challenge = AIChallenge(
+            user_id=current_user.id,
+            course_id=course_id,
+            ai_total_time=sum(ai_times),
+            ai_correct_count=len(questions),
+            user_total_time=0,
+            user_correct_count=0,
+            ai_level=ai_level,
+            round_time_limit_seconds=round_limit,
+            ai_bonus_points=ai_bonus,
+            game_type=game_mode,
+            ai_times_json=json.dumps({"times": ai_times, "local_answer_map": local_answer_map}),
+        )
+        db.add(challenge)
+        db.commit()
+        db.refresh(challenge)
+        loc_questions = [_localize_local_classic_question(q, lang) for q in questions]
+        if game_mode == "flashcard":
+            q_list = [
+                {
+                    "id": ql["id"],
+                    "question_text": ql["question_text"],
+                    "answer_text": _answer_text_from_question_like(ql),
+                    "option_a": ql["option_a"],
+                    "option_b": ql["option_b"],
+                    "option_c": ql["option_c"],
+                    "option_d": ql["option_d"],
+                }
+                for ql in loc_questions
+            ]
+        else:
+            q_list = [
+                {
+                    "id": ql["id"],
+                    "question_text": ql["question_text"],
+                    "option_a": ql["option_a"],
+                    "option_b": ql["option_b"],
+                    "option_c": ql["option_c"],
+                    "option_d": ql["option_d"],
+                }
+                for ql in loc_questions
+            ]
+        return ChallengeStartResponse(
+            challenge_id=challenge.id,
+            questions=q_list,
+            ai_times_per_question=ai_times,
+            round_time_limit_seconds=round_limit,
+            ai_bonus_points=ai_bonus,
+        )
+
     content_course_ids = _classic_content_course_ids(db, classic_track, course_id, lang)
     is_admin = current_user.role in ("admin", "director", "curator")
     if is_admin:
@@ -815,8 +1200,17 @@ def submit_challenge(
 
     if is_flashcard:
         ai_times = []
+        local_answer_map: dict[str, str] = {}
         try:
-            ai_times = json.loads(challenge.ai_times_json or "[]")
+            parsed_ai_payload = json.loads(challenge.ai_times_json or "[]")
+            if isinstance(parsed_ai_payload, dict):
+                ai_times = parsed_ai_payload.get("times", []) or []
+                local_answer_map = {
+                    str(k): str(v).strip().lower()
+                    for k, v in (parsed_ai_payload.get("local_answer_map", {}) or {}).items()
+                }
+            elif isinstance(parsed_ai_payload, list):
+                ai_times = parsed_ai_payload
         except (json.JSONDecodeError, TypeError):
             ai_times = []
         if len(ai_times) < len(body.answers):
@@ -832,8 +1226,11 @@ def submit_challenge(
         q_by_id = {q.id: q for q in flash_questions}
         for i, a in enumerate(body.answers):
             q = q_by_id.get(a["question_id"])
-            # Real DB correct_answer only; no mocks
-            correct = q and q.correct_answer.strip().lower() == (a.get("answer") or "").strip().lower()
+            answer_key = (a.get("answer") or "").strip().lower()
+            if q:
+                correct = q.correct_answer.strip().lower() == answer_key
+            else:
+                correct = local_answer_map.get(str(a["question_id"])) == answer_key
             user_t = float(a.get("time_seconds") or 999.0)
             ai_t = float(ai_times[i]) if i < len(ai_times) else 999.0
             user_wins = correct and user_t < ai_t
@@ -848,6 +1245,16 @@ def submit_challenge(
         user_bonus = _calc_bonus_points(correct_sequence)
         overtime = False
     else:
+        local_answer_map: dict[str, str] = {}
+        try:
+            parsed_ai_payload = json.loads(challenge.ai_times_json or "[]")
+            if isinstance(parsed_ai_payload, dict):
+                local_answer_map = {
+                    str(k): str(v).strip().lower()
+                    for k, v in (parsed_ai_payload.get("local_answer_map", {}) or {}).items()
+                }
+        except (json.JSONDecodeError, TypeError):
+            local_answer_map = {}
         q_ids = [a["question_id"] for a in body.answers]
         questions = db.query(TestQuestion).filter(TestQuestion.id.in_(q_ids)).all()
         q_by_id = {q.id: q for q in questions}
@@ -857,8 +1264,11 @@ def submit_challenge(
         wrong_question_ids: list[int] = []
         for a in body.answers:
             q = q_by_id.get(a["question_id"])
-            # Real DB correct_answer only; no mocks
-            correct = q and q.correct_answer.strip().lower() == (a.get("answer") or "").strip().lower()
+            answer_key = (a.get("answer") or "").strip().lower()
+            if q:
+                correct = q.correct_answer.strip().lower() == answer_key
+            else:
+                correct = local_answer_map.get(str(a["question_id"])) == answer_key
             if correct:
                 user_correct += 1
             else:
@@ -904,7 +1314,7 @@ def submit_challenge(
         recommendations = get_challenge_recommendations(topic_titles, course_title, lang=lang or "ru")
         challenge.recommendations = recommendations
 
-    # Coins за победу в AI vs Student: 4+ правильных → 250, 3 правильных → 200
+    # Coins за победу в AI vs Student: dynamic reward up to 200
     from app.services.coins import add_coins, has_received_coins_for_reason
 
     if not (challenge.coins_awarded or 0):
@@ -913,12 +1323,16 @@ def submit_challenge(
             or (user_total_score == ai_total_score and user_time < float(challenge.ai_total_time or 0))
         )
         if user_wins:
-            if user_correct >= 4:
-                add_coins(db, current_user.id, 250, f"ai_challenge_{challenge.id}")
-            elif user_correct >= 3:
-                add_coins(db, current_user.id, 200, f"ai_challenge_{challenge.id}")
-            if user_correct >= 3:
-                challenge.coins_awarded = 1
+            coins_amount = _calc_ai_win_coins(
+                user_correct=user_correct,
+                total_questions=n_q,
+                user_total_score=user_total_score,
+                ai_total_score=ai_total_score,
+                user_time=user_time,
+                ai_time=float(challenge.ai_total_time or 0),
+            )
+            add_coins(db, current_user.id, coins_amount, f"ai_challenge_{challenge.id}")
+            challenge.coins_awarded = 1
 
     if n_q > 0 and user_correct == n_q:
         perfect_reason = f"ai_challenge_perfect_{challenge.id}"
@@ -1157,7 +1571,7 @@ def submit_new_mode_challenge(
             correct_line = str(q.get("bug_line", ""))
             is_correct = user_answer == correct_line
             correct_answer = correct_line
-            explanation = q.get("explanation", "")
+            explanation = _get_localized_field(q, "explanation", lang)
         elif game_type == "guess_output":
             correct_key = q.get("correct", "a").strip().lower()
             is_correct = user_answer.strip().lower() == correct_key
@@ -1178,6 +1592,11 @@ def submit_new_mode_challenge(
         }
         if explanation:
             detail["explanation"] = explanation
+            detail["explanation_by_lang"] = {
+                "ru": q.get("explanation", ""),
+                "kk": q.get("explanation_kk") or q.get("explanation", ""),
+                "en": q.get("explanation_en") or q.get("explanation", ""),
+            }
         details.append(detail)
 
     n_q = len(body.answers) if body.answers else 0
@@ -1200,15 +1619,19 @@ def submit_new_mode_challenge(
 
     from app.services.coins import add_coins, has_received_coins_for_reason
 
-    # Coins за победу
+    # Coins за победу: dynamic reward up to 200
     if not (challenge.coins_awarded or 0):
         if user_wins:
-            if user_correct >= 4:
-                add_coins(db, current_user.id, 250, f"ai_challenge_{challenge.id}")
-            elif user_correct >= 3:
-                add_coins(db, current_user.id, 200, f"ai_challenge_{challenge.id}")
-            if user_correct >= 3:
-                challenge.coins_awarded = 1
+            coins_amount = _calc_ai_win_coins(
+                user_correct=user_correct,
+                total_questions=n_q,
+                user_total_score=user_total_score,
+                ai_total_score=ai_total_score,
+                user_time=user_time,
+                ai_time=float(challenge.ai_total_time or 0),
+            )
+            add_coins(db, current_user.id, coins_amount, f"ai_challenge_{challenge.id}")
+            challenge.coins_awarded = 1
 
     if n_q > 0 and user_correct == n_q:
         perfect_reason = f"ai_challenge_perfect_{challenge.id}"

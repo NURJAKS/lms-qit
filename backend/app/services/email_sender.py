@@ -71,6 +71,8 @@ def send_course_purchase_email(
   course_title: str,
   temp_login: str,
   temp_password: str,
+  parent_temp_login: str | None = None,
+  parent_temp_password: str | None = None,
   lang: str = "ru",
 ) -> None:
   """
@@ -86,6 +88,15 @@ def send_course_purchase_email(
   password_label = get_email_translation("password", lang)
   go_to_cabinet = get_email_translation("go_to_cabinet", lang)
   platform_tagline = get_email_translation("platform_tagline", lang)
+  parent_credentials_html = ""
+  if parent_temp_login and parent_temp_password:
+    parent_credentials_html = f"""
+      <div style="background: #1E293B; border-radius: 12px; padding: 20px; margin: 24px 0; border: 1px solid #334155;">
+        <p style="margin: 0 0 12px 0; font-weight: bold; color: white;">Данные родителя</p>
+        <p style="margin: 4px 0; color: #94A3B8;">{login_label} <strong style="color: #60A5FA;">{parent_temp_login}</strong></p>
+        <p style="margin: 4px 0; color: #94A3B8;">{password_label} <strong style="color: #60A5FA;">{parent_temp_password}</strong></p>
+      </div>
+    """
   
   html = f"""
   <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0F172A; border-radius: 16px; overflow: hidden;">
@@ -102,6 +113,7 @@ def send_course_purchase_email(
         <p style="margin: 4px 0; color: #94A3B8;">{login_label} <strong style="color: #60A5FA;">{temp_login}</strong></p>
         <p style="margin: 4px 0; color: #94A3B8;">{password_label} <strong style="color: #60A5FA;">{temp_password}</strong></p>
       </div>
+      {parent_credentials_html}
       <div style="text-align: center; margin-top: 24px;">
         <a href="http://localhost:3000/login" style="background: linear-gradient(135deg, #FF4181, #1a237e); color: white; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-weight: bold; display: inline-block;">{go_to_cabinet}</a>
       </div>

@@ -6,6 +6,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 
 interface ForecastCourse {
   course_id: number;
@@ -107,7 +108,7 @@ export function ForecastTab() {
 
               <div className="p-4 sm:p-5">
                 <h4 className="font-bold text-sm sm:text-base mb-3 truncate" style={{ color: textColors.primary }}>
-                  {course.course_title}
+                  {getLocalizedCourseTitle({ title: course.course_title } as any, t)}
                 </h4>
 
                 {/* Progress */}

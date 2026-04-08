@@ -8,11 +8,6 @@ import {
   Users, 
   Send, 
   Loader2, 
-  Bold, 
-  Italic, 
-  Underline, 
-  List, 
-  Type,
   MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -201,32 +196,13 @@ export function PrivateCommentsSection({
             }}
           />
           
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-1.5 dark:border-gray-900">
-            <div className="flex items-center gap-0.5">
-              {[
-                { icon: Bold, label: "Bold" },
-                { icon: Italic, label: "Italic" },
-                { icon: Underline, label: "Underline" },
-                { icon: List, label: "Bullet list" },
-                { icon: Type, label: "Clear formatting" }
-              ].map((btn, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className="rounded-lg p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
-                  aria-label={btn.label}
-                >
-                  <btn.icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
-
+          <div className="flex items-center justify-end border-t border-gray-100 px-3 py-1.5 dark:border-gray-900">
             <button
               type="button"
               onClick={handleSend}
               disabled={postMutation.isPending || !draft.trim() || !canPost}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full transition-all active:scale-95",
+                "ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-95",
                 draft.trim() && canPost
                   ? "bg-blue-600 text-white shadow-md shadow-blue-500/20 hover:bg-blue-700" 
                   : "bg-gray-100 text-gray-300 dark:bg-gray-800 dark:text-gray-600"

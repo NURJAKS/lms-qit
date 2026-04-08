@@ -1,12 +1,15 @@
 import json
+from collections import defaultdict
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, or_
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_teacher_user
 from app.core.database import get_db
@@ -16,7 +19,7 @@ from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
 from app.services.coins import add_coins
-from app.services.export_service import generate_xlsx_response
+from app.services.export_service import generate_multi_sheet_xlsx_response
 from app.models.progress import StudentProgress
 from app.models.notification import Notification
 from app.models.enrollment import CourseEnrollment
@@ -29,6 +32,11 @@ from app.models.teacher_material import TeacherMaterial
 from app.models.teacher_question import TeacherQuestion, TeacherQuestionAnswer
 from app.models.test import Test
 from app.models.test_question import TestQuestion
+from app.models.group_teacher import GroupTeacher
+from app.models.topic_synopsis import TopicSynopsisSubmission
+from app.models.course_feed_post import CourseFeedPost
+from app.api.assignment_access import is_assignment_submission_closed
+
 
 router = APIRouter(prefix="/teacher", tags=["teacher"])
 
@@ -36,29 +44,30 @@ ALLOWED_ASSIGNMENT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB for video
 
 
-def _can_manage_group(user: User, group: TeacherGroup) -> bool:
+def _can_manage_group(user: User, group: TeacherGroup, db: Session = None) -> bool:
     """Teacher can manage own group; admin/director/curator can manage any."""
     if user.role in ("admin", "director", "curator"):
         return True
-    return group.teacher_id == user.id
+    
+    # Check if primary or in group_teachers
+    if group.teacher_id == user.id:
+        return True
+    
+    if not db:
+        # Relationship might be loaded
+        return any(gt.teacher_id == user.id for gt in group.group_teachers)
+    
+    from app.models.group_teacher import GroupTeacher
+    exists = db.query(GroupTeacher).filter(
+        GroupTeacher.group_id == group.id,
+        GroupTeacher.teacher_id == user.id
+    ).first()
+    return exists is not None
 
 
 def _is_assignment_closed(a: TeacherAssignment) -> bool:
     """Closed if teacher set closed_at, or deadline passed and reject_submissions_after_deadline is true."""
-    from datetime import datetime, timezone
-    closed_at = getattr(a, "closed_at", None)
-    if closed_at is not None:
-        return True
-    deadline = getattr(a, "deadline", None)
-    if deadline is None:
-        return False
-    reject = getattr(a, "reject_submissions_after_deadline", True)
-    if reject is False:
-        return False
-    now = datetime.now(timezone.utc)
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    return deadline < now
+    return is_assignment_submission_closed(a)
 
 
 def _is_teacher_question_closed(q: TeacherQuestion) -> bool:
@@ -73,6 +82,29 @@ def _is_teacher_question_closed(q: TeacherQuestion) -> bool:
     if dl.tzinfo is None:
         dl = dl.replace(tzinfo=timezone.utc)
     return dl < now
+
+
+def _deadline_to_iso_utc(deadline: datetime | None) -> str | None:
+    if deadline is None:
+        return None
+    if deadline.tzinfo is None:
+        return deadline.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    return deadline.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _submission_has_student_work(r: AssignmentSubmission) -> bool:
+    """True if the student actually turned in text or files (not a teacher-only placeholder row)."""
+    if r.submission_text and str(r.submission_text).strip():
+        return True
+    if r.file_url and str(r.file_url).strip():
+        return True
+    if r.file_urls and str(r.file_urls).strip():
+        try:
+            arr = json.loads(r.file_urls)
+            return bool(arr) if isinstance(arr, list) else True
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return True
+    return False
 
 
 def _question_options_list(raw: str | None) -> list:
@@ -155,6 +187,7 @@ class AssignmentCreate(BaseModel):
     video_urls: list[str] | None = None
     rubric: list[RubricCriterionCreate] | None = None
     test_questions: list[TestQuestionCreate] | None = None  # for assignment with test
+    reject_submissions_after_deadline: bool | None = None
 
 
 class AssignmentUpdate(BaseModel):
@@ -168,6 +201,7 @@ class AssignmentUpdate(BaseModel):
     attachment_links: list[str] | None = None
     video_urls: list[str] | None = None
     rubric: list[RubricCriterionCreate] | None = None
+    reject_submissions_after_deadline: bool | None = None
 
 
 def _parse_rubric_levels_json(raw: str | None) -> list[dict]:
@@ -258,10 +292,18 @@ class TopicUpdate(BaseModel):
     description: str | None = None
 
 
+class AddTeacher(BaseModel):
+    teacher_id: int
+
+
 class SubmissionGrade(BaseModel):
     grade: float | None = None
     teacher_comment: str | None = None
     grades: list[dict] | None = None  # [{"criterion_id": 1, "points": 15}]
+
+
+class BootstrapAbsentSubmissionBody(BaseModel):
+    student_id: int
 
 
 @router.post("/assignments/upload")
@@ -467,7 +509,14 @@ def get_submissions_inbox(
     is_admin = current_user.role in ("admin", "director", "curator")
     q_groups = db.query(TeacherGroup)
     if not is_admin:
-        q_groups = q_groups.filter(TeacherGroup.teacher_id == current_user.id)
+        q_groups = (
+            q_groups.outerjoin(GroupTeacher)
+            .filter(
+                (TeacherGroup.teacher_id == current_user.id)
+                | (GroupTeacher.teacher_id == current_user.id)
+            )
+            .distinct()
+        )
     
     if group_id:
         q_groups = q_groups.filter(TeacherGroup.id == group_id)
@@ -487,7 +536,7 @@ def get_submissions_inbox(
         db.query(
             AssignmentSubmission.assignment_id,
             func.count(AssignmentSubmission.id).label("submitted_count"),
-            func.count(AssignmentSubmission.grade).label("graded_count"),
+            func.sum(case((AssignmentSubmission.grade.isnot(None), 1), else_=0)).label("graded_count"),
             func.sum(case((AssignmentSubmission.grade == None, 1), else_=0)).label("pending_count")
         )
         .group_by(AssignmentSubmission.assignment_id)
@@ -549,7 +598,7 @@ def get_submissions_inbox(
             "group_name": group.group_name if group else "",
             "course_id": a.course_id,
             "course_title": a.course.title if a.course else "",
-            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "deadline": _deadline_to_iso_utc(a.deadline),
             "created_at": a.created_at.isoformat() if a.created_at else None,
             "submitted_count": int(submitted_count),
             "total_students": total_students,
@@ -564,10 +613,17 @@ def list_groups(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_teacher_user)],
 ):
+    from app.models.group_teacher import GroupTeacher
     is_admin = current_user.role in ("admin", "director", "curator")
-    q = db.query(TeacherGroup)
-    if not is_admin:
-        q = q.filter(TeacherGroup.teacher_id == current_user.id)
+    
+    if is_admin:
+        q = db.query(TeacherGroup)
+    else:
+        # Groups where user is either primary or secondary
+        q = db.query(TeacherGroup).outerjoin(GroupTeacher).filter(
+            (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
+        ).distinct()
+
     rows = q.order_by(TeacherGroup.id).all()
     return [
         {
@@ -642,9 +698,12 @@ def delete_group(
     if not g:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     
-    # Allow teachers to delete their own groups
-    if not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="У вас нет прав для удаления этой группы.")
+    # Allow only primary teacher or admin to delete
+    is_owner = g.teacher_id == current_user.id
+    is_admin = current_user.role in ("admin", "director", "curator")
+    
+    if not is_owner and not is_admin:
+        raise HTTPException(status_code=403, detail="У вас нет прав для удаления этой группы. Это может сделать только основной преподаватель.")
         
     db.delete(g)
     db.commit()
@@ -701,13 +760,367 @@ def list_group_students(
     return [{"id": u.id, "full_name": u.full_name or "", "email": u.email or ""} for u in students]
 
 
+@router.get("/groups/{group_id}/topic-synopses/{topic_id}")
+def list_topic_synopses_for_group(
+    group_id: int,
+    topic_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Конспекты студентов группы по теме."""
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g, db):
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
+    if not topic or topic.course_id != g.course_id:
+        raise HTTPException(status_code=404, detail="Тема не найдена")
+    student_ids = [
+        gs.student_id
+        for gs in db.query(GroupStudent).filter(GroupStudent.group_id == group_id).all()
+    ]
+    if not student_ids:
+        return []
+    rows = (
+        db.query(TopicSynopsisSubmission, User)
+        .join(User, User.id == TopicSynopsisSubmission.user_id)
+        .filter(
+            TopicSynopsisSubmission.topic_id == topic_id,
+            TopicSynopsisSubmission.user_id.in_(student_ids),
+        )
+        .order_by(TopicSynopsisSubmission.submitted_at.desc())
+        .all()
+    )
+    grouped: dict[int, dict] = defaultdict(
+        lambda: {
+            "student_id": 0,
+            "full_name": "",
+            "email": "",
+            "note_text": None,
+            "submitted_at": None,
+            "files": [],
+        }
+    )
+    for s, u in rows:
+        item = grouped[u.id]
+        item["student_id"] = u.id
+        item["full_name"] = u.full_name or ""
+        item["email"] = u.email or ""
+        if item["submitted_at"] is None:
+            item["submitted_at"] = s.submitted_at.isoformat() if s.submitted_at else None
+        if not item["note_text"]:
+            note = (s.note_text or "").strip()
+            item["note_text"] = note or None
+        item["files"].append(
+            {
+                "id": s.id,
+                "file_url": s.file_url,
+                "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
+            }
+        )
+    return list(grouped.values())
+
+
+@router.get("/groups/{group_id}/topics-missing-assignments")
+def list_topics_missing_assignments(
+    group_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Темы курса группы, по которым ещё нет ни одного задания (для предупреждений)."""
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g, db):
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    all_topics = (
+        db.query(CourseTopic)
+        .filter(CourseTopic.course_id == g.course_id)
+        .order_by(CourseTopic.order_number)
+        .all()
+    )
+    topic_ids_ordered = [t.id for t in all_topics]
+    topics_with_a = {
+        a.topic_id
+        for a in db.query(TeacherAssignment).filter(
+            TeacherAssignment.group_id == group_id,
+            TeacherAssignment.topic_id.isnot(None),
+        ).all()
+    }
+    by_id = {t.id: t for t in all_topics}
+    missing: list[dict] = []
+    for tid in topic_ids_ordered:
+        if tid not in topics_with_a and tid in by_id:
+            tp = by_id[tid]
+            missing.append({"id": tp.id, "title": tp.title})
+    return missing
+
+
+@router.get("/groups/{group_id}/feed")
+def get_teacher_group_feed(
+    group_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Лента для учителя: темы без заданий, посты, работы на проверке."""
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g, db):
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    course_id = g.course_id
+    now = datetime.now(timezone.utc)
+    items: list[dict] = []
+
+    all_topics = (
+        db.query(CourseTopic)
+        .filter(CourseTopic.course_id == course_id)
+        .order_by(CourseTopic.order_number)
+        .all()
+    )
+    topics_with_a = {
+        a.topic_id
+        for a in db.query(TeacherAssignment).filter(
+            TeacherAssignment.group_id == group_id,
+            TeacherAssignment.topic_id.isnot(None),
+        ).all()
+    }
+    for tp in all_topics:
+        if tp.id not in topics_with_a:
+            items.append(
+                {
+                    "kind": "missing_topic_assignment",
+                    "id": f"mis-{tp.id}",
+                    "title": tp.title,
+                    "body": None,
+                    "link": f"/app/teacher/courses/{group_id}?tab=classwork",
+                    "date": now.isoformat(),
+                    "meta": {"topic_id": tp.id},
+                }
+            )
+
+    posts = (
+        db.query(CourseFeedPost)
+        .filter(
+            CourseFeedPost.course_id == course_id,
+            or_(CourseFeedPost.group_id.is_(None), CourseFeedPost.group_id == group_id),
+        )
+        .order_by(CourseFeedPost.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    for p in posts:
+        if p.active_until:
+            au = p.active_until
+            if au.tzinfo is None:
+                au = au.replace(tzinfo=timezone.utc)
+            if au < now:
+                continue
+        items.append(
+            {
+                "kind": "post",
+                "post_kind": p.kind,
+                "id": f"post-{p.id}",
+                "title": p.title,
+                "body": p.body,
+                "link": p.link_url,
+                "date": p.created_at.isoformat() if p.created_at else None,
+                "meta": {"post_id": p.id},
+            }
+        )
+
+    pending_rows = (
+        db.query(AssignmentSubmission, TeacherAssignment, User)
+        .join(TeacherAssignment, TeacherAssignment.id == AssignmentSubmission.assignment_id)
+        .join(User, User.id == AssignmentSubmission.student_id)
+        .filter(
+            TeacherAssignment.group_id == group_id,
+            AssignmentSubmission.grade.is_(None),
+            AssignmentSubmission.submitted_at.isnot(None),
+        )
+        .order_by(AssignmentSubmission.submitted_at.desc())
+        .limit(20)
+        .all()
+    )
+    for sub, a, u in pending_rows:
+        items.append(
+            {
+                "kind": "pending_grade",
+                "id": f"pend-{sub.id}",
+                "title": a.title,
+                "body": u.full_name or u.email,
+                "link": f"/app/teacher/view-answers/{a.id}?tab=submissions",
+                "date": sub.submitted_at.isoformat() if sub.submitted_at else None,
+                "meta": {"assignment_id": a.id, "submission_id": sub.id},
+            }
+        )
+
+    def sort_key(it: dict):
+        return it.get("date") or ""
+
+    items.sort(key=sort_key, reverse=True)
+    return {"items": items}
+
+
+@router.get("/groups/{group_id}/teachers")
+def list_group_teachers(
+    group_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g, db):
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    
+    # Primary teacher
+    primary = {
+        "id": g.teacher.id,
+        "full_name": g.teacher.full_name or "",
+        "email": g.teacher.email or "",
+        "role": "primary"
+    }
+    
+    # Secondary teachers
+    secondaries = [
+        {
+            "id": gt.teacher.id,
+            "full_name": gt.teacher.full_name or "",
+            "email": gt.teacher.email or "",
+            "role": "secondary"
+        }
+        for gt in g.group_teachers if gt.role == "secondary"
+    ]
+    
+    return [primary] + secondaries
+
+
+@router.post("/groups/{group_id}/teachers")
+def add_teacher_to_group(
+    group_id: int,
+    body: AddTeacher,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    
+    # Only primary teacher or admin can add/remove secondary teachers
+    if current_user.role not in ("admin", "director") and g.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец группы может добавлять других преподавателей.")
+        
+    if body.teacher_id == g.teacher_id:
+        raise HTTPException(status_code=400, detail="Этот преподаватель уже является основным.")
+        
+    exists = db.query(GroupTeacher).filter(
+        GroupTeacher.group_id == group_id,
+        GroupTeacher.teacher_id == body.teacher_id
+    ).first()
+    
+    if exists:
+        return {"ok": True, "message": "Преподаватель уже добавлен."}
+        
+    new_gt = GroupTeacher(group_id=group_id, teacher_id=body.teacher_id, role="secondary")
+    db.add(new_gt)
+    
+    # Notification
+    notif = Notification(
+        user_id=body.teacher_id,
+        type="added_as_teacher",
+        title="Вас добавили как преподавателя",
+        message=f"Вас добавили как второго преподавателя в группу «{g.group_name}». Теперь вам доступно управление заданиями и оценками в этой группе.",
+        link=f"/app/teacher/courses/{g.id}",
+    )
+    db.add(notif)
+    
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/groups/{group_id}/teachers/{teacher_id}")
+def remove_teacher_from_group(
+    group_id: int,
+    teacher_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+        
+    # Only primary teacher or admin can remove
+    if current_user.role not in ("admin", "director") and g.teacher_id != current_user.id:
+        # User can remove themselves? Yes.
+        if current_user.id != teacher_id:
+            raise HTTPException(status_code=403, detail="Нет прав для удаления.")
+            
+    gt = db.query(GroupTeacher).filter(
+        GroupTeacher.group_id == group_id,
+        GroupTeacher.teacher_id == teacher_id,
+        GroupTeacher.role == "secondary"
+    ).first()
+    
+    if not gt:
+        raise HTTPException(status_code=404, detail="Преподаватель не найден в списке со-преподавателей этой группы.")
+        
+    db.delete(gt)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/search-teachers")
+def search_teachers(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+    query: str | None = Query(None),
+    group_id: int | None = Query(None),
+):
+    """
+    Поиск преподавателей по имени или email для приглашения в группу.
+    Если query пуст, возвращает список доступных преподавателей.
+    Исключает тех, кто уже в группе.
+    """
+    from sqlalchemy import or_, and_, not_
+    from app.models.teacher_group import TeacherGroup
+    from app.models.group_teacher import GroupTeacher
+    
+    # Результирующий запрос
+    q_base = db.query(User).filter(User.role == "teacher")
+    
+    # 1. Исключаем текущего пользователя (он и так владелец или уже в группе)
+    q_base = q_base.filter(User.id != current_user.id)
+    
+    # 2. Если передан group_id, исключаем тех, кто уже там (владелец и со-преподаватели)
+    if group_id:
+        group = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+        if group:
+            # Исключаем основного владельца
+            q_base = q_base.filter(User.id != group.teacher_id)
+            
+            # Исключаем тех, кто уже в group_teachers
+            subq = db.query(GroupTeacher.teacher_id).filter(GroupTeacher.group_id == group_id).subquery()
+            q_base = q_base.filter(not_(User.id.in_(subq)))
+    
+    # 3. Фильтр по поисковому запросу
+    if query and len(query.strip()) >= 2:
+        q_base = q_base.filter(
+            or_(
+                User.full_name.ilike(f"%{query}%"),
+                User.email.ilike(f"%{query}%")
+            )
+        )
+    
+    # Лимит для списка по умолчанию или результатов поиска
+    teachers = q_base.order_by(User.full_name.asc()).limit(20).all()
+    
+    return [
+        {"id": u.id, "full_name": u.full_name or "", "email": u.email or ""}
+        for u in teachers
+    ]
+
+
 @router.get("/groups/{group_id}/gradebook")
 def get_group_gradebook(
     group_id: int,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_teacher_user)],
 ):
-    """Матрица оценок: учащиеся × задания группы (для вкладки «Оценки»)."""
+    """Матрица оценок: учащиеся × все задания группы (по одному столбцу на задание, по всем темам курса)."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g):
         raise HTTPException(status_code=404, detail="Группа не найдена")
@@ -729,17 +1142,26 @@ def get_group_gradebook(
     ]
     students_out.sort(key=lambda x: ((x["full_name"] or x["email"]).lower()))
 
+    # Столбец = одно назначенное задание; порядок как у тем на курсе (без темы — в начале), затем по дате создания.
+    topic_order = case(
+        (TeacherAssignment.topic_id.is_(None), -1),
+        else_=func.coalesce(CourseTopic.order_number, 9999),
+    )
     assignments = (
         db.query(TeacherAssignment)
+        .options(joinedload(TeacherAssignment.topic))
+        .outerjoin(CourseTopic, TeacherAssignment.topic_id == CourseTopic.id)
         .filter(TeacherAssignment.group_id == group_id)
-        .order_by(TeacherAssignment.created_at.desc())
+        .order_by(topic_order.asc(), TeacherAssignment.created_at.asc())
         .all()
     )
     assignment_cols = [
         {
             "id": a.id,
             "title": a.title,
-            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "topic_id": a.topic_id,
+            "topic_title": (a.topic.title if getattr(a, "topic", None) else None),
+            "deadline": _deadline_to_iso_utc(a.deadline),
             "max_points": a.max_points or 100,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
@@ -750,6 +1172,16 @@ def get_group_gradebook(
     subs: list[AssignmentSubmission] = []
     if aid_list:
         subs = db.query(AssignmentSubmission).filter(AssignmentSubmission.assignment_id.in_(aid_list)).all()
+
+    now = datetime.now(timezone.utc)
+
+    def _assignment_deadline_passed(a: TeacherAssignment) -> bool:
+        if not a.deadline:
+            return False
+        dl = a.deadline
+        if dl.tzinfo is None:
+            dl = dl.replace(tzinfo=timezone.utc)
+        return now > dl
 
     cells: dict[str, dict] = {}
     for sub in subs:
@@ -766,12 +1198,13 @@ def get_group_gradebook(
         for a in assignments:
             key = f"{sid}_{a.id}"
             if key not in cells:
+                overdue_no_turn_in = _assignment_deadline_passed(a)
                 cells[key] = {
                     "submission_id": None,
                     "grade": None,
                     "submitted": False,
                     "graded": False,
-                    "missing": True,
+                    "missing": overdue_no_turn_in,
                 }
 
     column_averages: dict[str, float | None] = {}
@@ -979,7 +1412,7 @@ def list_assignments(
             "topic_id": r.topic_id,
             "title": r.title,
             "description": r.description,
-            "deadline": r.deadline.isoformat() if r.deadline else None,
+            "deadline": _deadline_to_iso_utc(r.deadline),
             "closed_at": closed_at.isoformat() if closed_at else None,
             "is_closed": _is_assignment_closed(r),
             "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -1069,6 +1502,7 @@ def create_assignment(
                 order_number=i + 1,
             )
             db.add(tq)
+    rej_after = True if body.reject_submissions_after_deadline is None else body.reject_submissions_after_deadline
     a = TeacherAssignment(
         teacher_id=current_user.id,
         group_id=body.group_id,
@@ -1082,6 +1516,7 @@ def create_assignment(
         attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
         video_urls=json.dumps(body.video_urls) if body.video_urls else None,
         test_id=test_id_val,
+        reject_submissions_after_deadline=rej_after,
     )
     db.add(a)
     db.flush()
@@ -1136,7 +1571,7 @@ def get_assignment(
         "topic_id": a.topic_id,
         "title": a.title,
         "description": a.description or "",
-        "deadline": a.deadline.isoformat() if a.deadline else None,
+        "deadline": _deadline_to_iso_utc(a.deadline),
         "closed_at": a.closed_at.isoformat() if a.closed_at else None,
         "is_closed": _is_assignment_closed(a),
         "max_points": a.max_points,
@@ -1144,7 +1579,61 @@ def get_assignment(
         "attachment_links": json.loads(a.attachment_links) if a.attachment_links else [],
         "video_urls": json.loads(a.video_urls) if a.video_urls else [],
         "rubric": rubric,
+        "reject_submissions_after_deadline": bool(getattr(a, "reject_submissions_after_deadline", True)),
     }
+
+
+@router.get("/rubrics/reusable")
+def list_reusable_assignment_rubrics(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+    course_id: int | None = Query(None),
+    exclude_assignment_id: int | None = Query(None),
+):
+    """Задания текущего преподавателя с непустой рубрикой — для «Повторно использовать критерий»."""
+    from app.models.course import Course
+
+    q = (
+        db.query(TeacherAssignment)
+        .join(TeacherGroup, TeacherGroup.id == TeacherAssignment.group_id)
+        .filter(TeacherAssignment.teacher_id == current_user.id)
+    )
+    if course_id is not None:
+        q = q.filter(TeacherAssignment.course_id == course_id)
+    if exclude_assignment_id is not None:
+        q = q.filter(TeacherAssignment.id != exclude_assignment_id)
+
+    assignments = q.order_by(TeacherAssignment.id.desc()).limit(120).all()
+    if not assignments:
+        return []
+
+    course_ids = list({a.course_id for a in assignments})
+    courses = {c.id: c for c in db.query(Course).filter(Course.id.in_(course_ids)).all()} if course_ids else {}
+
+    out: list[dict] = []
+    for a in assignments:
+        g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+        if not g or not _can_manage_group(current_user, g):
+            continue
+        rubric_rows = db.query(TeacherAssignmentRubric).filter(TeacherAssignmentRubric.assignment_id == a.id).all()
+        if not rubric_rows:
+            continue
+        rubric = [_rubric_row_to_api(c) for c in rubric_rows]
+        total_pts = sum(float(c.max_points) for c in rubric_rows)
+        co = courses.get(a.course_id)
+        out.append(
+            {
+                "assignment_id": a.id,
+                "title": a.title,
+                "course_id": a.course_id,
+                "course_title": co.title if co else "",
+                "group_name": g.group_name,
+                "criteria_count": len(rubric_rows),
+                "total_points": total_pts,
+                "rubric": rubric,
+            }
+        )
+    return out
 
 
 @router.patch("/assignments/{assignment_id}/close")
@@ -1219,7 +1708,7 @@ def update_assignment_deadline(
     db.refresh(a)
     return {
         "id": a.id,
-        "deadline": a.deadline.isoformat() if a.deadline else None,
+        "deadline": _deadline_to_iso_utc(a.deadline),
     }
 
 
@@ -1266,6 +1755,8 @@ def update_assignment(
         a.attachment_links = json.dumps(body.attachment_links) if body.attachment_links else None
     if body.video_urls is not None:
         a.video_urls = json.dumps(body.video_urls) if body.video_urls else None
+    if body.reject_submissions_after_deadline is not None:
+        a.reject_submissions_after_deadline = body.reject_submissions_after_deadline
 
     if body.rubric is not None:
         db.query(TeacherAssignmentRubric).filter(
@@ -1286,6 +1777,24 @@ def update_assignment(
     db.commit()
     db.refresh(a)
     return {"id": a.id, "title": a.title}
+
+
+@router.delete("/assignments/{assignment_id}")
+def delete_assignment(
+    assignment_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Удалить задание группы (вместе с сдачами)."""
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/assignments/{assignment_id}/submissions")
@@ -1323,6 +1832,13 @@ def list_submissions(
             continue
         r = submissions_by_student.get(sid)
         if r:
+            has_work = _submission_has_student_work(r)
+            if r.grade is not None:
+                st = "graded"
+            elif has_work:
+                st = "pending"
+            else:
+                st = "not_submitted"
             submissions.append({
                 "id": r.id,
                 "student_id": sid,
@@ -1334,8 +1850,9 @@ def list_submissions(
                 "teacher_comment": r.teacher_comment,
                 "student_private_comment": getattr(r, "student_private_comment", None),
                 "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+                "returned_at": r.returned_at.isoformat() if getattr(r, "returned_at", None) else None,
                 "rubric_grades": submission_grades.get(r.id, []),
-                "status": "graded" if r.grade is not None else "pending"
+                "status": st
             })
         else:
             submissions.append({
@@ -1348,6 +1865,7 @@ def list_submissions(
                 "grade": None,
                 "teacher_comment": None,
                 "submitted_at": None,
+                "returned_at": None,
                 "rubric_grades": [],
                 "status": "not_submitted"
             })
@@ -1356,11 +1874,63 @@ def list_submissions(
         "title": a.title,
         "description": a.description,
         "max_points": a.max_points,
-        "deadline": a.deadline.isoformat() if a.deadline else None,
+        "deadline": _deadline_to_iso_utc(a.deadline),
         "group_name": g.group_name
     }
 
     return {"submissions": submissions, "rubric": rubric, "assignment": assignment_details}
+
+
+@router.post("/assignments/{assignment_id}/submissions/bootstrap-absent")
+def bootstrap_absent_submission(
+    assignment_id: int,
+    body: BootstrapAbsentSubmissionBody,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Создать запись сдачи без работы студента, чтобы можно было выставить оценку (например 0) после дедлайна."""
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    student_ids = {gs.student_id for gs in g.students}
+    if body.student_id not in student_ids:
+        raise HTTPException(status_code=400, detail="Студент не в этой группе")
+
+    existing = (
+        db.query(AssignmentSubmission)
+        .filter(
+            AssignmentSubmission.assignment_id == assignment_id,
+            AssignmentSubmission.student_id == body.student_id,
+        )
+        .first()
+    )
+    if existing:
+        return {"id": existing.id}
+
+    if a.deadline is None:
+        raise HTTPException(status_code=400, detail="У задания нет срока сдачи")
+    now = datetime.now(timezone.utc)
+    dl = a.deadline
+    if dl.tzinfo is None:
+        dl = dl.replace(tzinfo=timezone.utc)
+    if dl >= now:
+        raise HTTPException(status_code=400, detail="Срок сдачи ещё не истёк")
+
+    placeholder = AssignmentSubmission(
+        assignment_id=assignment_id,
+        student_id=body.student_id,
+        submission_text=None,
+        file_url=None,
+        file_urls=None,
+        submitted_at=None,
+    )
+    db.add(placeholder)
+    db.commit()
+    db.refresh(placeholder)
+    return {"id": placeholder.id}
 
 
 
@@ -1371,27 +1941,59 @@ def export_group_progress_excel(
     group_id: int,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_teacher_user)],
-    course_id: int | None = Query(None),
 ):
-    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    g = (
+        db.query(TeacherGroup)
+        .options(joinedload(TeacherGroup.course))
+        .filter(TeacherGroup.id == group_id)
+        .first()
+    )
     if not g or not _can_manage_group(current_user, g):
         raise HTTPException(status_code=404, detail="Группа не найдена")
     student_ids = [gs.student_id for gs in g.students]
-    
-    rows = []
-    headers = ["User ID", "Full Name", "Email", "Topic ID", "Completed", "Score"]
-    
+    course_title = g.course.title if g.course else ""
+
+    roster_headers = ["User ID", "Full Name", "Email", "Course"]
+    progress_headers = ["User ID", "Full Name", "Email", "Course", "Topic ID", "Completed", "Score"]
+
+    roster_rows: list[list] = []
+    progress_rows: list[list] = []
+
     if student_ids:
-        users = {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()}
-        q = db.query(StudentProgress).filter(StudentProgress.user_id.in_(student_ids))
-        if course_id:
-            q = q.filter(StudentProgress.course_id == course_id)
-        prog_rows = q.all()
-        for r in prog_rows:
+        users_list = db.query(User).filter(User.id.in_(student_ids)).all()
+        users = {u.id: u for u in users_list}
+        for u in sorted(users_list, key=lambda x: (x.full_name or "").lower()):
+            roster_rows.append([u.id, u.full_name or "", u.email or "", course_title])
+
+        q = (
+            db.query(StudentProgress)
+            .filter(
+                StudentProgress.user_id.in_(student_ids),
+                StudentProgress.course_id == g.course_id,
+            )
+            .order_by(StudentProgress.user_id, StudentProgress.topic_id)
+        )
+        for r in q.all():
             u = users.get(r.user_id)
-            rows.append([r.user_id, u.full_name if u else "", u.email if u else "", r.topic_id, r.is_completed, r.test_score])
-    
-    return generate_xlsx_response(rows, "group_progress", headers, sheet_name="Progress")
+            progress_rows.append(
+                [
+                    r.user_id,
+                    u.full_name if u else "",
+                    u.email if u else "",
+                    course_title,
+                    r.topic_id,
+                    r.is_completed,
+                    r.test_score,
+                ]
+            )
+
+    return generate_multi_sheet_xlsx_response(
+        [
+            ("Students", roster_headers, roster_rows),
+            ("Progress", progress_headers, progress_rows),
+        ],
+        f"group_{group_id}_progress",
+    )
 
 
 @router.put("/submissions/{submission_id}")
@@ -1429,6 +2031,7 @@ def grade_submission(
         final_grade = total if final_grade is None else final_grade
     sub.grade = final_grade
     sub.teacher_comment = body.teacher_comment
+    sub.teacher_comment_author_id = current_user.id
     sub.graded_at = datetime.now(timezone.utc)
     # Tiered points system based on grade
     if final_grade is not None and not (sub.coins_awarded or 0):
@@ -1441,16 +2044,95 @@ def grade_submission(
         else:
             add_coins(db, sub.student_id, 50, f"assignment_{sub.id}")
         sub.coins_awarded = 1
+    db.commit()
+    return {
+        "ok": True,
+        "submission_id": sub.id,
+        "assignment_id": a.id,
+        "student_id": sub.student_id,
+        "grade": float(sub.grade) if sub.grade is not None else None,
+        "teacher_comment": sub.teacher_comment,
+        "graded_at": sub.graded_at.isoformat() if sub.graded_at else None,
+        "returned_at": sub.returned_at.isoformat() if sub.returned_at else None,
+        "is_returned": bool(sub.returned_at),
+    }
+
+
+@router.post("/submissions/{submission_id}/return")
+def return_submission_to_student(
+    submission_id: int,
+    body: SubmissionGrade,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Опубликовать оценку и комментарий студенту (действие «Вернуть»)."""
+    from datetime import datetime, timezone
+
+    sub = db.query(AssignmentSubmission).filter(AssignmentSubmission.id == submission_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Работа не найдена")
+    a = db.query(TeacherAssignment).filter(TeacherAssignment.id == sub.assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    final_grade = body.grade
+    if body.grades:
+        for sg in db.query(AssignmentSubmissionGrade).filter(AssignmentSubmissionGrade.submission_id == submission_id).all():
+            db.delete(sg)
+        total = 0
+        for gd in body.grades:
+            cid = gd.get("criterion_id")
+            pts = gd.get("points", 0)
+            crit = db.query(TeacherAssignmentRubric).filter(
+                TeacherAssignmentRubric.id == cid,
+                TeacherAssignmentRubric.assignment_id == a.id,
+            ).first()
+            if crit:
+                db.add(AssignmentSubmissionGrade(submission_id=submission_id, criterion_id=cid, points=pts))
+                total += float(pts)
+        final_grade = total if final_grade is None else final_grade
+
+    sub.grade = final_grade
+    sub.teacher_comment = body.teacher_comment
+    sub.teacher_comment_author_id = current_user.id
+    now = datetime.now(timezone.utc)
+    sub.graded_at = now
+    sub.returned_at = now
+
+    if final_grade is not None and not (sub.coins_awarded or 0):
+        if final_grade >= 90:
+            add_coins(db, sub.student_id, 500, f"assignment_{sub.id}")
+        elif final_grade >= 70:
+            add_coins(db, sub.student_id, 300, f"assignment_{sub.id}")
+        elif final_grade >= 50:
+            add_coins(db, sub.student_id, 150, f"assignment_{sub.id}")
+        else:
+            add_coins(db, sub.student_id, 50, f"assignment_{sub.id}")
+        sub.coins_awarded = 1
+
     n = Notification(
         user_id=sub.student_id,
-        type="assignment_graded",
-        title="Задание оценено",
-        message=f"Ваша работа оценена: {final_grade}. {body.teacher_comment or ''}",
+        type="assignment_returned",
+        title="Работа возвращена",
+        message=f"Ваша работа проверена и возвращена: {final_grade if final_grade is not None else 'без оценки'}. {body.teacher_comment or ''}",
         link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
     )
     db.add(n)
     db.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "submission_id": sub.id,
+        "assignment_id": a.id,
+        "student_id": sub.student_id,
+        "grade": float(sub.grade) if sub.grade is not None else None,
+        "teacher_comment": sub.teacher_comment,
+        "graded_at": sub.graded_at.isoformat() if sub.graded_at else None,
+        "returned_at": sub.returned_at.isoformat() if sub.returned_at else None,
+        "is_returned": True,
+    }
 
 
 @router.post("/assignments/{assignment_id}/mark-reviewed")

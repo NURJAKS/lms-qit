@@ -15,7 +15,9 @@ type LeaderboardRowData = {
   user_id: number;
   full_name: string;
   email: string;
+  rating_score: number;
   avg_score: number;
+  avg_assignment: number;
   courses_done: number;
   activity: number;
   points: number;
@@ -209,7 +211,15 @@ export function LeaderboardRow({
         </div>
       </td>
       <td className="py-4 px-4">
+        <span className="text-base font-semibold text-[var(--qit-primary)] dark:text-[#00b0ff] tabular-nums">
+          {row.rating_score.toFixed(1)}
+        </span>
+      </td>
+      <td className="py-4 px-4">
         <ScoreProgressBar score={row.avg_score} />
+      </td>
+      <td className="py-4 px-4">
+        <ScoreProgressBar score={row.avg_assignment} />
       </td>
       <td className="py-4 px-4">
         {row.courses_done > 0 ? (

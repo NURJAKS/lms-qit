@@ -15,8 +15,8 @@ import { LearningPath, type FlattenedTopic } from "@/components/courses/Learning
 import { DailyQuestWidget } from "@/components/dashboard/DailyQuestWidget";
 import type { Course } from "@/types";
 import { getLocalizedCourseDesc, getLocalizedCourseTitle, getCourseBannerUrl } from "@/lib/courseUtils";
-import { StudentAssignmentsListView } from "@/components/courses/StudentAssignmentsListView";
 import { StudentCourseClasswork } from "@/components/courses/StudentCourseClasswork";
+import { CourseFeedPanel } from "@/components/courses/CourseFeedPanel";
 
 interface Structure {
   course_id: number;
@@ -30,6 +30,14 @@ interface Structure {
 
 type PaymentStep = "method" | "card" | "loading" | "done";
 type LoadingPhase = "connect" | "process" | "confirm";
+type EnrollmentInfo = {
+  course_id: number;
+  course: Course;
+  manager_assigned?: boolean;
+  in_course_group?: boolean;
+  course_has_groups?: boolean;
+  ready_for_content?: boolean;
+};
 
 function PremiumEnrollButton({
   courseId,
@@ -85,6 +93,8 @@ export default function CourseDetailPage() {
   const [cardCvv, setCardCvv] = useState("123");
   const [paying, setPaying] = useState(false);
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
 
   const { data: course } = useQuery({
     queryKey: ["course", id],
@@ -107,13 +117,16 @@ export default function CourseDetailPage() {
   const { data: enrollments = [] } = useQuery({
     queryKey: ["my-enrollments", userId],
     queryFn: async () => {
-      const { data } = await api.get<Array<{ course_id: number; course: Course }>>("/courses/my/enrollments");
+      const { data } = await api.get<EnrollmentInfo[]>("/courses/my/enrollments");
       return data;
     },
     enabled: userId != null,
   });
 
-  const enrolled = enrollments.some((e) => e.course_id === id);
+  const currentEnrollment = enrollments.find((e) => e.course_id === id);
+  const enrolled = Boolean(currentEnrollment);
+  const readyForContent = currentEnrollment?.ready_for_content === true;
+  const waitingForGroup = enrolled && !readyForContent;
 
   const { data: progressList = [] } = useQuery({
     queryKey: ["progress", id, userId],
@@ -121,7 +134,7 @@ export default function CourseDetailPage() {
       const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean }>>(`/progress/course/${id}`);
       return data;
     },
-    enabled: !!id && enrolled && userId != null,
+    enabled: !!id && enrolled && !waitingForGroup && userId != null,
   });
 
   const { data: stats } = useQuery({
@@ -130,7 +143,7 @@ export default function CourseDetailPage() {
       const { data } = await api.get<{ points: number; progress_percent: number }>("/dashboard/stats");
       return data;
     },
-    enabled: enrolled,
+    enabled: enrolled && !waitingForGroup,
   });
 
   const flattenedPath = useMemo((): FlattenedTopic[] => {
@@ -194,23 +207,23 @@ export default function CourseDetailPage() {
       >(`/tests/available?course_id=${id}`);
       return data;
     },
-    enabled: !!id && enrolled,
+    enabled: !!id && enrolled && !waitingForGroup,
   });
 
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const rawTab = searchParams.get("tab");
-  const courseTab: "tasks" | "people" | "assignments" | "classwork" =
-    rawTab === "assignments"
-      ? "assignments"
-      : rawTab === "classwork"
-        ? "classwork"
-        : rawTab === "people"
-          ? "people"
+  const courseTab: "tasks" | "people" | "classwork" | "feed" =
+    rawTab === "classwork"
+      ? "classwork"
+      : rawTab === "people"
+        ? "people"
+        : rawTab === "feed"
+          ? "feed"
           : "tasks";
 
-  const setCourseTab = (next: "tasks" | "people" | "assignments" | "classwork") => {
+  const setCourseTab = (next: "tasks" | "people" | "classwork" | "feed") => {
     const q = new URLSearchParams(searchParams.toString());
     if (next === "tasks") {
       q.delete("tab");
@@ -223,9 +236,9 @@ export default function CourseDetailPage() {
   };
 
   useEffect(() => {
-    const allowed = new Set(["assignments", "people", "tasks", "classwork"]);
+    const allowed = new Set(["people", "tasks", "classwork", "feed"]);
     const tab = searchParams.get("tab");
-    if (tab === "feed" || (tab && !allowed.has(tab))) {
+    if (tab && !allowed.has(tab)) {
       const q = new URLSearchParams(searchParams.toString());
       q.delete("tab");
       const s = q.toString();
@@ -242,7 +255,7 @@ export default function CourseDetailPage() {
       const { data } = await api.get<Array<{ id: number; full_name: string; email: string }>>(`/courses/${id}/teachers`);
       return data;
     },
-    enabled: !!id && enrolled,
+    enabled: !!id && enrolled && !waitingForGroup,
   });
 
   const openPaymentModal = () => {
@@ -313,6 +326,21 @@ export default function CourseDetailPage() {
     }
   };
 
+  const submitSupportTicket = async () => {
+    const message = supportMessage.trim();
+    if (!message) return;
+    setSupportSubmitting(true);
+    try {
+      await api.post("/support/tickets", { message, course_id: id });
+      setSupportMessage("");
+      alert(t("supportTicketSent"));
+    } catch (e) {
+      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
+    } finally {
+      setSupportSubmitting(false);
+    }
+  };
+
   if (!course) return <p className="text-gray-500">{t("loading")}</p>;
 
   const localizedCourseTitle = getLocalizedCourseTitle(course as any, t as any);
@@ -358,8 +386,8 @@ export default function CourseDetailPage() {
   const totalTopics = flattenedPath.length;
 
   return (
-    <div className={enrolled ? "block" : ""}>
-      <div className={enrolled ? "min-w-0" : ""}>
+    <div className="w-full min-w-0 overflow-x-hidden">
+      <div className="min-w-0">
       {paymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
           <div className="rounded-xl shadow-xl p-6 max-w-md w-full max-h-[90vh] flex flex-col border backdrop-blur-xl bg-white dark:bg-[#1A2238] border-gray-200 dark:border-white/10">
@@ -386,7 +414,7 @@ export default function CourseDetailPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{t("paymentCard")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Visa, Mastercard, MIR</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentCardsSupported")}</p>
                     </div>
                   </button>
                   <button
@@ -398,7 +426,7 @@ export default function CourseDetailPage() {
                       <Smartphone className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-900 dark:text-white">Kaspi.kz</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("paymentKaspiBrand")}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentKaspiConfirm")}</p>
                     </div>
                   </button>
@@ -500,7 +528,7 @@ export default function CourseDetailPage() {
                       />
                     </div>
                     <div className="w-24">
-                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">CVV</label>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("paymentCvvLabel")}</label>
                       <input
                         type="text"
                         value={cardCvv}
@@ -513,7 +541,7 @@ export default function CourseDetailPage() {
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setPaymentStep("method")} className="py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                    Артқа
+                    {t("paymentBack")}
                   </button>
                   <button type="button" onClick={handlePay} disabled={paying} className="flex-1 py-2 px-4 rounded-lg text-white disabled:opacity-50" style={{ background: "var(--qit-primary)" }}>
                     {t("paymentPay")}
@@ -589,22 +617,15 @@ export default function CourseDetailPage() {
         </div>
       ) : (
         <>
-          <div className="flex gap-4 sm:gap-8 border-b border-gray-200 dark:border-gray-600 mb-6">
-            <button
-              type="button"
-              onClick={() => setCourseTab("assignments")}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-                courseTab === "assignments"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
-              }`}
-            >
-              {t("assignmentsList")}
-            </button>
+          {!waitingForGroup && (
+          <nav
+            className="-mx-1 mb-6 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-b border-gray-200 px-1 pb-px [-webkit-overflow-scrolling:touch] dark:border-gray-600 sm:mx-0 sm:gap-6 sm:px-0"
+            aria-label={t("courseSectionsAria")}
+          >
             <button
               type="button"
               onClick={() => setCourseTab("classwork")}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
                 courseTab === "classwork"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
@@ -615,7 +636,7 @@ export default function CourseDetailPage() {
             <button
               type="button"
               onClick={() => setCourseTab("tasks")}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
                 courseTab === "tasks"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
@@ -626,7 +647,7 @@ export default function CourseDetailPage() {
             <button
               type="button"
               onClick={() => setCourseTab("people")}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
                 courseTab === "people"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
@@ -634,61 +655,93 @@ export default function CourseDetailPage() {
             >
               {t("studentCourseTabPeople")}
             </button>
-          </div>
+            <button
+              type="button"
+              onClick={() => setCourseTab("feed")}
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "feed"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("courseFeedTab")}
+            </button>
+          </nav>
+          )}
 
-          {/* Premium Course Header Banner */}
-          <div
-            className="rounded-2xl overflow-hidden mb-6 p-6 sm:p-10 text-white relative shadow-xl border border-white/10"
-            style={{ minHeight: "220px" }}
-          >
-            {/* Background Image with Overlay */}
-            <div 
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 hover:scale-105"
-              style={{ backgroundImage: `url(${getCourseBannerUrl(course)})` }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
-            
-            {/* Glossy Overlay for content */}
-            <div className="relative z-10 flex flex-col h-full justify-center max-w-3xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4 w-fit">
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">{t("learningTrack")}</span>
+          {waitingForGroup && (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
+              <p className="font-semibold">{t("coursePendingGroupTitle")}</p>
+              <p className="mt-1 text-sm">{t("coursePendingGroupBody")}</p>
+              <div className="mt-4">
+                <p className="text-sm font-medium">{t("supportContactPrompt")}</p>
+                <textarea
+                  value={supportMessage}
+                  onChange={(e) => setSupportMessage(e.target.value)}
+                  placeholder={t("supportTicketPlaceholder")}
+                  className="mt-2 w-full rounded-xl border border-amber-300/70 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-amber-500 dark:border-amber-900/50 dark:bg-slate-900 dark:text-gray-100"
+                  rows={4}
+                />
+                <button
+                  type="button"
+                  onClick={submitSupportTicket}
+                  disabled={supportSubmitting || !supportMessage.trim()}
+                  className="mt-3 inline-flex items-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {supportSubmitting ? t("loading") : t("supportSend")}
+                </button>
               </div>
-              <h1 className="text-2xl sm:text-4xl font-extrabold font-montserrat tracking-tight drop-shadow-lg">
-                {localizedCourseTitle}
-              </h1>
-              <p className="text-white/80 text-sm sm:text-base mt-2 line-clamp-2 max-w-2xl font-medium leading-relaxed">
-                {localizedCourseDesc}
-              </p>
-              
-              <div className="mt-6 flex flex-wrap gap-4 text-xs font-semibold">
-                <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
-                  <span className="text-blue-400">●</span>
-                  {completedCount}/{totalTopics} {t("topicsLabel")}
-                </div>
-                {stats && (
-                  <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
-                    <span className="text-green-400">●</span>
-                    {stats.progress_percent}% {t("progressLabel")}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {courseTab === "assignments" && (
-            <div className="mb-6">
-              <StudentAssignmentsListView embedded />
             </div>
           )}
 
-          {courseTab === "classwork" && (
+          {courseTab !== "classwork" && (
+            <div
+              className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 p-4 text-white shadow-xl sm:p-8 lg:p-10"
+              style={{ minHeight: "200px" }}
+            >
+              {/* Background Image with Overlay */}
+              <div
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 hover:scale-105"
+                style={{ backgroundImage: `url(${getCourseBannerUrl(course)})` }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
+
+              {/* Glossy Overlay for content */}
+              <div className="relative z-10 flex h-full max-w-3xl flex-col justify-center">
+                <div className="mb-4 inline-flex w-fit max-w-full items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 backdrop-blur-md">
+                  <Zap className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">{t("learningTrack")}</span>
+                </div>
+                <h1 className="break-words font-montserrat text-xl font-extrabold tracking-tight drop-shadow-lg sm:text-3xl lg:text-4xl">
+                  {localizedCourseTitle}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-white/80 line-clamp-3 sm:line-clamp-2 sm:text-base">
+                  {localizedCourseDesc}
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-4 text-xs font-semibold">
+                  <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
+                    <span className="text-blue-400">●</span>
+                    {completedCount}/{totalTopics} {t("topicsLabel")}
+                  </div>
+                  {stats && (
+                    <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
+                      <span className="text-green-400">●</span>
+                      {stats.progress_percent}% {t("progressLabel")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!waitingForGroup && courseTab === "classwork" && (
             <div className="mb-6 min-w-0">
               <StudentCourseClasswork courseId={id} initialAssignmentId={initialAssignmentId} />
             </div>
           )}
 
-          {courseTab === "tasks" && (
+          {!waitingForGroup && courseTab === "tasks" && (
             <>
               <div className="mb-6">
                 <Link
@@ -799,7 +852,7 @@ export default function CourseDetailPage() {
             </>
           )}
 
-          {courseTab === "people" && (
+          {!waitingForGroup && courseTab === "people" && (
             <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <Users className="w-5 h-5 text-[var(--qit-primary)]" />
@@ -827,6 +880,13 @@ export default function CourseDetailPage() {
                   ))}
                 </ul>
               )}
+            </div>
+          )}
+
+          {!waitingForGroup && courseTab === "feed" && (
+            <div className="mb-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t("courseFeedHeading")}</h2>
+              <CourseFeedPanel variant="student" courseId={id} />
             </div>
           )}
         </>

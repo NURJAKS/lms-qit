@@ -20,19 +20,16 @@ from app.models.group_student import GroupStudent
 from app.models.course_topic import CourseTopic
 from app.schemas.test import TestResponse, TestQuestionForStudent, TestSubmitRequest, TestSubmitResponse
 from app.services.coins import add_coins, has_received_coins_for_reason
+from app.services.topic_flow import can_take_topic_test, topic_test_gate_message
+from app.api.course_access import assert_can_access_course_materials
 
 CERTIFICATE_SAMPLE_URL = "/uploads/certificates/image.png"
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 
 
-def _check_enrollment(db: Session, user_id: int, course_id: int) -> None:
-    e = db.query(CourseEnrollment).filter(
-        CourseEnrollment.user_id == user_id,
-        CourseEnrollment.course_id == course_id,
-    ).first()
-    if not e:
-        raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+def _check_enrollment(db: Session, current_user: User, course_id: int) -> None:
+    assert_can_access_course_materials(db, current_user, course_id)
 
 
 def _check_all_topics_completed(db: Session, user_id: int, course_id: int) -> tuple[bool, int, int]:
@@ -168,7 +165,7 @@ def get_test(
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Тест не найден")
-    _check_enrollment(db, current_user.id, test.course_id)
+    _check_enrollment(db, current_user, test.course_id)
     return test
 
 
@@ -182,7 +179,7 @@ def get_test_questions(
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Тест не найден")
-    _check_enrollment(db, current_user.id, test.course_id)
+    _check_enrollment(db, current_user, test.course_id)
     
     # Проверяем, что все темы пройдены и все задания выполнены перед доступом к контрольному тесту
     if test.is_final:
@@ -198,6 +195,11 @@ def get_test_questions(
                 status_code=403,
                 detail=f"Контрольный тест доступен только после прохождения всех тем курса и выполнения всех заданий. Не выполнено: {reason_text}"
             )
+
+    if test.topic_id and not test.is_final:
+        ok, reason = can_take_topic_test(db, current_user.id, test.topic_id, test.course_id)
+        if not ok:
+            raise HTTPException(status_code=403, detail=topic_test_gate_message(reason))
     
     questions = db.query(TestQuestion).filter(TestQuestion.test_id == test_id).order_by(TestQuestion.order_number).all()
     return [TestQuestionForStudent(id=q.id, test_id=q.test_id, question_text=q.question_text, option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d, order_number=q.order_number) for q in questions]
@@ -214,7 +216,7 @@ def submit_test(
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Тест не найден")
-    _check_enrollment(db, current_user.id, test.course_id)
+    _check_enrollment(db, current_user, test.course_id)
     
     # Проверяем, что все темы пройдены и все задания выполнены перед сдачей контрольного теста
     if test.is_final:
@@ -230,6 +232,11 @@ def submit_test(
                 status_code=403,
                 detail=f"Контрольный тест доступен только после прохождения всех тем курса и выполнения всех заданий. Не выполнено: {reason_text}"
             )
+
+    if test.topic_id and not test.is_final:
+        ok, reason = can_take_topic_test(db, current_user.id, test.topic_id, test.course_id)
+        if not ok:
+            raise HTTPException(status_code=403, detail=topic_test_gate_message(reason))
     questions = db.query(TestQuestion).filter(TestQuestion.test_id == test_id).all()
     q_by_id = {q.id: q for q in questions}
     correct = 0

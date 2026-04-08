@@ -10,6 +10,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { Truck, Package, CheckCircle, Clock, User, Search, X, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDateLocalized } from "@/lib/dateUtils";
+
 
 type Courier = {
   id: number;
@@ -355,18 +357,19 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                                 <div className="flex items-center gap-1.5">
                                   <CheckCircle className="w-3.5 h-3.5" style={{ color: "#10B981" }} />
                                   <span className="text-sm" style={{ color: "#10B981" }}>
-                                    {new Date(delivery.delivered_at).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US", {
+                                    {formatDateLocalized(delivery.delivered_at, lang, {
                                       day: "numeric",
                                       month: "long",
                                       year: "numeric",
                                     })}
+
                                   </span>
                                 </div>
                               ) : delivery.estimated_delivery_date ? (
                                 <div className="flex items-center gap-1.5">
                                   <Clock className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
                                   <span className="text-sm" style={{ color: textColors.secondary }}>
-                                    {t("adminShopExpected")} {new Date(delivery.estimated_delivery_date).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US", {
+                                    {t("adminShopExpected")} {formatDateLocalized(delivery.estimated_delivery_date, lang, {
                                       day: "numeric",
                                       month: "long",
                                       year: "numeric",
@@ -381,7 +384,8 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                             </td>
                             <td className="px-4 py-3 text-sm" style={{ color: textColors.secondary }}>
                               {delivery.purchased_at
-                                ? new Date(delivery.purchased_at).toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US")
+                                ? formatDateLocalized(delivery.purchased_at, lang)
+
                                 : "-"}
                             </td>
                           </tr>

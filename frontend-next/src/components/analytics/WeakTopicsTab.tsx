@@ -7,6 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 
 interface WeakTopic {
   topic_id: number;
@@ -81,10 +82,10 @@ export function WeakTopicsTab() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <h4 className="font-semibold text-sm sm:text-base truncate" style={{ color: textColors.primary }}>
-                  {topic.topic_title}
+                  {getLocalizedTopicTitle(topic.topic_title, t)}
                 </h4>
                 <p className="text-xs mt-0.5 truncate" style={{ color: textColors.secondary }}>
-                  {topic.course_title}
+                  {getLocalizedCourseTitle({ title: topic.course_title } as any, t)}
                 </p>
                 <div className="flex items-center gap-4 mt-3">
                   <div className="flex items-center gap-1.5">

@@ -25,13 +25,14 @@ import { AppHeader } from "@/components/common/AppHeader";
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import { getLocalizedNotificationText } from "@/lib/notificationText";
+import { cn } from "@/lib/utils";
 
 export function AppTopNav() {
   const { user, logout, isAdmin, isTeacher } = useAuthStore();
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { data: notifications = [], refetch } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -65,6 +66,12 @@ export function AppTopNav() {
       refetch();
       setNotifOpen(false);
       if (link) router.push(link);
+    });
+  };
+
+  const markAllRead = () => {
+    api.post("/notifications/read-all").then(() => {
+      refetch();
     });
   };
 
@@ -123,7 +130,7 @@ export function AppTopNav() {
             {isTeacher() && (
               <Link href="/app/teacher" className={navLinkClass("/app/teacher")}>
                 <Users className="w-4 h-4 shrink-0" />
-                {t("teacher")}
+                {t("teacherDashboardSidebar")}
               </Link>
             )}
             {(user?.role === "parent" || isAdmin()) && (
@@ -161,29 +168,53 @@ export function AppTopNav() {
                 </div>
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-80 overflow-auto">
-                  {notifications.length === 0 ? (
-                    <p className="p-4 text-gray-500 dark:text-gray-400 text-sm">
-                      {t("noNotifications")}
-                    </p>
-                  ) : (
-                    notifications.slice(0, 20).map((n) => {
-                      const { title, message } = getLocalizedNotificationText(n, t);
-                      return (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => markRead(n.id, n.link)}
-                          className={`w-full text-left px-4 py-3 border-b dark:border-gray-600 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                            !n.is_read ? "bg-[var(--qit-primary)]/5" : ""
-                          }`}
-                        >
-                          <p className="font-medium text-sm">{title}</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{message}</p>
-                        </button>
-                      );
-                    })
-                  )}
+                <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-[32rem] flex flex-col">
+                  <div className="p-3 border-b dark:border-gray-600 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{t("notifications")}</span>
+                    {unread.length > 0 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAllRead();
+                        }}
+                        className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline"
+                      >
+                        {t("markAllAsRead")}
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {notifications.length === 0 ? (
+                      <p className="p-4 text-gray-500 dark:text-gray-400 text-sm text-center">
+                        {t("noNotifications")}
+                      </p>
+                    ) : (
+                      notifications.slice(0, 50).map((n) => {
+                        const { title, message } = getLocalizedNotificationText(n, t);
+                        return (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => markRead(n.id, n.link)}
+                            className={`w-full text-left px-4 py-3 border-b dark:border-gray-600 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                              !n.is_read ? "bg-[var(--qit-primary)]/5 border-l-2 border-l-[var(--qit-primary)]" : ""
+                            }`}
+                          >
+                            <p className={cn("text-sm", !n.is_read ? "font-bold" : "font-medium text-gray-700 dark:text-gray-200")}>{title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{message}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              {new Date(n.created_at).toLocaleString(lang === "en" ? "en-US" : lang === "kk" ? "kk-KZ" : "ru-RU", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </p>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -282,7 +313,7 @@ function MobileNavMenu({
     { href: "/app/tasks-calendar", icon: Calendar, label: t("tasksCalendar") },
     { href: "/app", icon: Zap, label: t("aiVsStudent") },
     { href: "/app/shop", icon: ShoppingBag, label: t("shop") },
-    ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacher") }] : []),
+    ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacherDashboardSidebar") }] : []),
     ...(userRole === "parent" || isAdmin() ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
     ...(isAdmin() ? [{ href: "/app/admin", icon: LayoutDashboard, label: t("admin") }] : []),
   ];

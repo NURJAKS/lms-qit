@@ -10,7 +10,7 @@ import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
 
 export function DashboardStatsCards() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -55,7 +55,7 @@ export function DashboardStatsCards() {
     },
     {
       icon: Award,
-      value: points.toLocaleString(),
+      value: points.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "ru" ? "ru-RU" : "en-US"),
       label: t("statsPoints"),
       gradient: "from-purple-500 to-pink-600",
       bgGlow: "bg-purple-500/10 dark:bg-purple-500/5",

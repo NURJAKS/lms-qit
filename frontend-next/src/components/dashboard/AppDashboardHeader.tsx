@@ -67,6 +67,12 @@ export function AppDashboardHeader() {
     });
   };
 
+  const markAllRead = () => {
+    api.post("/notifications/read-all").then(() => {
+      refetch();
+    });
+  };
+
   return (
     <header className="hidden lg:block sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-700">
       <div className="flex items-center justify-between h-14 px-4 lg:px-6">
@@ -132,6 +138,20 @@ export function AppDashboardHeader() {
             </button>
             {notifOpen && (
               <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-2xl shadow-xl z-50 max-h-80 overflow-auto">
+                <div className="p-3 border-b dark:border-gray-600 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{t("notifications")}</span>
+                  {unread.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAllRead();
+                      }}
+                      className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline"
+                    >
+                      {t("markAllAsRead")}
+                    </button>
+                  )}
+                </div>
                 {notifications.length === 0 ? (
                   <p className="p-4 text-gray-500 dark:text-gray-400 text-sm">{t("noNotifications")}</p>
                 ) : (

@@ -43,6 +43,19 @@ def mark_read(
     return {"ok": True}
 
 
+@router.post("/read-all")
+def mark_all_read(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False,
+    ).update({"is_read": True})
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/unread-count")
 def unread_count(
     db: Annotated[Session, Depends(get_db)],

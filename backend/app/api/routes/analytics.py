@@ -17,106 +17,29 @@ from app.models.daily_leaderboard_reward import DailyLeaderboardReward
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.assignment_submission import AssignmentSubmission
 from app.services.export_service import generate_xlsx_response
+from app.services.leaderboard_query import fetch_leaderboard_rows
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 def _leaderboard_data(db: Session, course_id: int | None, limit: int):
-    subq = db.query(
-        StudentProgress.user_id,
-        func.avg(StudentProgress.test_score).label("avg_score"),
-        func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-        func.count(StudentProgress.id).label("activity"),
-    ).filter(StudentProgress.is_completed == True)
-    if course_id:
-        subq = subq.filter(StudentProgress.course_id == course_id)
-    subq = subq.group_by(StudentProgress.user_id).subquery()
-    
-    # Assignment grades subquery
-    assign_subq = db.query(
-        AssignmentSubmission.student_id.label("user_id"),
-        func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-    ).filter(
-        AssignmentSubmission.grade.isnot(None),
-    ).group_by(AssignmentSubmission.student_id).subquery()
-    
-    # Получаем студентов с прогрессом
-    q_with_progress = db.query(
-        User.id, User.full_name, User.email, User.points,
-        subq.c.avg_score, subq.c.courses_done, subq.c.activity,
-        assign_subq.c.avg_assignment,
-    ).join(
-        subq, User.id == subq.c.user_id
-    ).outerjoin(
-        assign_subq, User.id == assign_subq.c.user_id
-    )
-    
-    rows_with_progress = q_with_progress.all()
-    
-    # Получаем ID студентов с прогрессом
-    student_ids_with_progress = {r.id for r in rows_with_progress}
-    
-    # Получаем всех студентов без прогресса
-    all_students = db.query(User).filter(User.role == "student").all()
-    students_without_progress = [
-        s for s in all_students 
-        if s.id not in student_ids_with_progress
-    ]
-    
-    # Формируем список студентов с прогрессом
-    ranked_students = []
-    for r in rows_with_progress:
-        ranked_students.append({
-            "user_id": r.id,
-            "full_name": r.full_name,
-            "email": r.email,
-            "points": r.points or 0,
-            "avg_score": float(r.avg_score) if r.avg_score else 0,
-            "avg_assignment": float(r.avg_assignment) if r.avg_assignment else 0,
-            "courses_done": r.courses_done or 0,
-            "activity": r.activity or 0,
-        })
-    
-    # Добавляем студентов без прогресса с нулевыми значениями
-    for s in students_without_progress:
-        ranked_students.append({
-            "user_id": s.id,
-            "full_name": s.full_name,
-            "email": s.email,
-            "points": s.points or 0,
-            "avg_score": 0,
-            "avg_assignment": 0,
-            "courses_done": 0,
-            "activity": 0,
-        })
-    
-    # Сортируем по avg_score (основной критерий) и другим параметрам (разрушение ничьих)
-    ranked_students.sort(
-        key=lambda x: (
-            x["avg_score"],
-            x["avg_assignment"],
-            x["points"],
-            x["courses_done"],
-            x["activity"]
-        ),
-        reverse=True
-    )
-    
-    # Ограничиваем лимитом и добавляем ранги
+    ranked = fetch_leaderboard_rows(db, course_id)
     result = []
-    for i, student in enumerate(ranked_students[:limit]):
-        result.append({
-            "rank": i + 1,
-            "user_id": student["user_id"],
-            "full_name": student["full_name"],
-            "email": student["email"],
-            "avg_score": student["avg_score"],
-            "avg_assignment": student["avg_assignment"],
-            "courses_done": student["courses_done"],
-            "activity": student["activity"],
-            "points": student["points"],
-        })
-    
+    for i, student in enumerate(ranked[:limit]):
+        result.append(
+            {
+                "rank": i + 1,
+                "user_id": student["user_id"],
+                "full_name": student["full_name"],
+                "email": student["email"],
+                "avg_score": student["avg_score"],
+                "avg_assignment": student["avg_assignment"],
+                "courses_done": student["courses_done"],
+                "activity": student["activity"],
+                "points": student["points"],
+                "rating_score": student["rating_score"],
+            }
+        )
     return result
 
 
@@ -134,45 +57,68 @@ def leaderboard(
 def leaderboard_excel(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    lang: str = Query("ru"),
 ):
-    """Экспорт рейтинга студентов в Excel."""
-    subq = db.query(
-        StudentProgress.user_id,
-        func.avg(StudentProgress.test_score).label("avg_score"),
-        func.count(distinct(StudentProgress.course_id)).label("courses_done"),
-        func.count(StudentProgress.id).label("activity"),
-    ).filter(StudentProgress.is_completed == True).group_by(StudentProgress.user_id).subquery()
-    
-    assign_subq = db.query(
-        AssignmentSubmission.student_id.label("user_id"),
-        func.avg(AssignmentSubmission.grade).label("avg_assignment"),
-    ).filter(AssignmentSubmission.grade.isnot(None)).group_by(AssignmentSubmission.student_id).subquery()
-    
-    all_users_q = db.query(
-        User.id, User.full_name, User.email, User.points,
-        subq.c.avg_score, subq.c.courses_done, subq.c.activity,
-        assign_subq.c.avg_assignment,
-    ).join(subq, User.id == subq.c.user_id).outerjoin(
-        assign_subq, User.id == assign_subq.c.user_id
-    ).order_by(
-        (
-            func.coalesce(subq.c.avg_score, 0) * 0.5
-            + func.coalesce(assign_subq.c.avg_assignment, 0) * 0.2
-            + func.coalesce(subq.c.courses_done, 0) * 10 * 0.15
-            + func.coalesce(subq.c.activity, 0) * 0.15
-        ).desc()
-    )
-    
+    """Экспорт рейтинга студентов в Excel (та же формула, что у вкладки «Рейтинг»)."""
+    ranked = fetch_leaderboard_rows(db, course_id=None)
+
+    if lang == "kk":
+        headers = [
+            "Орын",
+            "Аты-жөні",
+            "Email",
+            "Рейтинг баллы",
+            "Тест орташа",
+            "Тапсырма орташа",
+            "Аяқталған курстар",
+            "Белсенділік",
+            "Ұпайлар",
+        ]
+        filename = "reiting"
+    elif lang == "en":
+        headers = [
+            "Rank",
+            "Full Name",
+            "Email",
+            "Rating score",
+            "Avg test score",
+            "Avg assignment grade",
+            "Courses with progress",
+            "Completed topics",
+            "Points",
+        ]
+        filename = "leaderboard"
+    else:
+        headers = [
+            "Место",
+            "ФИО",
+            "Email",
+            "Итог рейтинга",
+            "Средний балл (тесты)",
+            "Средняя оценка (задания)",
+            "Курсов с прогрессом",
+            "Завершено тем",
+            "Баллы",
+        ]
+        filename = "reiting"
+
     rows = []
-    headers = ["Rank", "Full Name", "Email", "Avg Score", "Courses Done", "Activity", "Points"]
-    for i, r in enumerate(all_users_q.all()):
-        rows.append([
-            i + 1, r.full_name, r.email,
-            float(r.avg_score) if r.avg_score else 0,
-            r.courses_done or 0, r.activity or 0, r.points or 0
-        ])
-    
-    return generate_xlsx_response(rows, "leaderboard", headers, sheet_name="Leaderboard")
+    for i, r in enumerate(ranked):
+        rows.append(
+            [
+                i + 1,
+                r["full_name"],
+                r["email"],
+                r["rating_score"],
+                r["avg_score"],
+                r["avg_assignment"],
+                r["courses_done"],
+                r["activity"],
+                r["points"],
+            ]
+        )
+
+    return generate_xlsx_response(rows, filename, headers, sheet_name="Leaderboard")
 
 
 @router.get("/leaderboard/my-last-reward")

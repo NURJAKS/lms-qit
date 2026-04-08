@@ -168,3 +168,41 @@ export function formatProfileStudyDuration(totalSeconds: number, t: TFn): string
 export function profileEmptyDash(t: TFn): string {
   return t("profileValueEmpty");
 }
+
+export function mapCity(value: string | null | undefined, t: TFn): string {
+  if (value == null || value === "") return "";
+  const n = norm(value);
+  if (n === "алматы" || n === "almaty") return t("cityAlmaty");
+  if (n === "астана" || n === "astana" || n === "nur-sultan" || n === "нур-султан") return t("cityAstana");
+  if (n === "шымкент" || n === "shymkent") return t("cityShymkent");
+  if (n === "караганда" || n === "karaganda" || n === "қарағанды") return t("cityKaraganda");
+  if (n === "актобе" || n === "aktobe" || n === "ақтөбе") return t("cityAktobe");
+  if (n === "тараз" || n === "taraz") return t("cityTaraz");
+  if (n === "павлодар" || n === "pavlodar") return t("cityPavlodar");
+  if (n === "усть-каменогорск" || n === "ust-kamenogorsk" || n === "өскемен") return t("cityUstKamenogorsk");
+  if (n === "семей" || n === "semey") return t("citySemey");
+  if (n === "атырау" || n === "atyrau") return t("cityAtyrau");
+  if (n === "кызылорда" || n === "kyzylorda" || n === "қызылорда") return t("cityKyzylorda");
+  if (n === "костанай" || n === "kostanay" || n === "қостанай") return t("cityKostanay");
+  if (n === "уральск" || n === "uralsk" || n === "орал") return t("cityUralsk");
+  if (n === "петропавловск" || n === "petropavl" || n === "петропавл") return t("cityPetropavl");
+  if (n === "актау" || n === "aktau" || n === "ақтау") return t("cityAktau");
+  if (n === "туркестан" || n === "turkistan" || n === "түркістан") return t("cityTurkistan");
+  if (n === "кокшетау" || n === "kokshetau" || n === "көкшетау") return t("cityKokshetau");
+  if (n === "талдыкорган" || n === "taldykorgan" || n === "талдықорған") return t("cityTaldykorgan");
+  if (n === "жанаозен" || n === "zhanaozen" || n === "жаңаөзен") return t("cityZhanaozen");
+  return value;
+}
+
+export function mapRole(value: string | null | undefined, t: TFn): string {
+  if (value == null || value === "") return "";
+  const n = norm(value);
+  if (n === "director") return t("director");
+  if (n === "teacher" || n === "преподаватель" || n === "мұғалім") return t("teacher");
+  if (n === "curator" || n === "куратор") return t("curator");
+  if (n === "admin" || n === "администратор" || n === "әкімші") return t("roleAdmin");
+  if (n === "parent" || n === "родитель" || n === "ата-ана") return t("parent");
+  if (n === "student" || n === "студент" || n === "оқушы") return t("student");
+  if (n === "courier" || n === "курьер" || n === "куртер") return t("adminShopCourier");
+  return value;
+}

@@ -61,6 +61,7 @@ export default function AdminApplicationsPage() {
   const [assignModal, setAssignModal] = useState<{ app_id: number; course_id: number } | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [reopeningId, setReopeningId] = useState<number | null>(null);
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const [assignGroupId, setAssignGroupId] = useState<number | "">("");
 
@@ -157,6 +158,18 @@ export default function AdminApplicationsPage() {
     }
   };
 
+  const handleReopen = async (appId: number) => {
+    setReopeningId(appId);
+    try {
+      await api.post(`/admin/applications/${appId}/reopen`);
+      queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
+    } catch (e) {
+      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+    } finally {
+      setReopeningId(null);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
@@ -241,7 +254,7 @@ export default function AdminApplicationsPage() {
                   )}
                   <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("course")}</th>
                   <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("status")}</th>
-                  {(statusFilter === "pending" || statusFilter === "paid") && (
+                  {(statusFilter === "pending" || statusFilter === "paid" || statusFilter === "rejected") && (
                     <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("actions")}</th>
                   )}
                 </tr>
@@ -324,6 +337,19 @@ export default function AdminApplicationsPage() {
                               className="shadow-red-500/30 hover:shadow-red-500/40"
                             />
                           </div>
+                        </td>
+                      )}
+                      {statusFilter === "rejected" && (
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleReopen(app.id)}
+                            disabled={reopeningId !== null}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 text-sm font-medium ml-auto transition-all shadow-lg shadow-amber-500/30 hover:shadow-amber-500/40"
+                          >
+                            {reopeningId === app.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                            {t("adminReturnToPending")}
+                          </button>
                         </td>
                       )}
                     </tr>

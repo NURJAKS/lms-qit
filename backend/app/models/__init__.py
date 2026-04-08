@@ -14,6 +14,8 @@ from app.models.activity_log import UserActivityLog
 from app.models.study_schedule import StudySchedule
 from app.models.student_goal import StudentGoal
 from app.models.teacher_group import TeacherGroup
+from app.models.group_teacher import GroupTeacher
+
 from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.teacher_assignment_rubric import TeacherAssignmentRubric
@@ -39,8 +41,11 @@ from app.models.course_review import CourseReview
 from app.models.community_post import CommunityPost
 from app.models.community_post_like import CommunityPostLike
 from app.models.topic_note import TopicNote
+from app.models.topic_synopsis import TopicSynopsisSubmission
+from app.models.course_feed_post import CourseFeedPost
 from app.models.student_profile import StudentProfile
 from app.models.material_private_comment import MaterialPrivateComment
+from app.models.support_ticket import SupportTicket
 
 __all__ = [
     "Base",
@@ -59,6 +64,8 @@ __all__ = [
     "StudySchedule",
     "StudentGoal",
     "TeacherGroup",
+    "GroupTeacher",
+
     "GroupStudent",
     "TeacherAssignment",
     "TeacherAssignmentRubric",
@@ -85,6 +92,9 @@ __all__ = [
     "CommunityPost",
     "CommunityPostLike",
     "TopicNote",
+    "TopicSynopsisSubmission",
+    "CourseFeedPost",
     "StudentProfile",
     "MaterialPrivateComment",
+    "SupportTicket",
 ]

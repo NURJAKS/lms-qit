@@ -21,19 +21,19 @@ from app.models.teacher_material import TeacherMaterial
 from app.models.course import Course
 from app.models.notification import Notification
 from app.models.assignment_class_comment import AssignmentClassComment
-from app.api.routes.teacher import _rubric_row_to_api
+from app.models.teacher_group import TeacherGroup
+from app.models.group_teacher import GroupTeacher
+from app.api.routes.teacher import _rubric_row_to_api, _deadline_to_iso_utc
+from app.api.assignment_access import (
+    deadline_passed_utc,
+    is_assignment_submission_closed,
+    submission_closed_http_detail,
+)
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 ALLOWED_SUBMISSION_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".pdf", ".doc", ".docx", ".txt"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-
-
-def _deadline_passed(deadline: datetime | None, now: datetime) -> bool:
-    if deadline is None:
-        return False
-    d = deadline if deadline.tzinfo is not None else deadline.replace(tzinfo=timezone.utc)
-    return d < now
 
 
 def _submission_file_urls(sub: AssignmentSubmission | None) -> list[str]:
@@ -83,8 +83,18 @@ class ClassCommentBody(BaseModel):
 def _can_access_assignment_class_comments(db: Session, user: User, a: TeacherAssignment) -> bool:
     if user.role in ("admin", "director", "curator"):
         return True
-    if user.role == "teacher" and user.id == a.teacher_id:
-        return True
+    if user.role == "teacher":
+        # Check if primary teacher or in group_teachers
+        group = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
+        if not group:
+            return False
+        if group.teacher_id == user.id:
+            return True
+        exists = db.query(GroupTeacher).filter(
+            GroupTeacher.group_id == group.id,
+            GroupTeacher.teacher_id == user.id
+        ).first()
+        return exists is not None
     if user.role == "student":
         return (
             db.query(GroupStudent)
@@ -118,6 +128,9 @@ async def upload_submission_file(
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Вы уже сдали это задание")
+    now = datetime.now(timezone.utc)
+    if is_assignment_submission_closed(a):
+        raise HTTPException(status_code=400, detail=submission_closed_http_detail(a))
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Файл не выбран")
     ext = Path(file.filename).suffix.lower()
@@ -196,7 +209,9 @@ def list_my_assignments(
     out = []
     for a in assignments:
         sub = submissions_by_assignment.get(a.id)
-        closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
+        closed = is_assignment_submission_closed(a)
+        passed = deadline_passed_utc(a.deadline, now)
+        manually_closed = getattr(a, "closed_at", None) is not None
         tu = teachers.get(a.teacher_id)
         teacher_name = (tu.full_name or tu.email or "") if tu else ""
         rubric = rubrics_by_assignment.get(a.id, [])
@@ -218,8 +233,11 @@ def list_my_assignments(
             "attachment_links": _assignment_json_list(getattr(a, "attachment_links", None)),
             "video_urls": _assignment_json_list(getattr(a, "video_urls", None)),
             "test_id": getattr(a, "test_id", None),
-            "deadline": a.deadline.isoformat() if a.deadline else None,
+            "deadline": _deadline_to_iso_utc(a.deadline),
             "closed": closed,
+            "deadline_passed": passed,
+            "manually_closed": manually_closed,
+            "reject_submissions_after_deadline": bool(getattr(a, "reject_submissions_after_deadline", True)),
             "submitted": sub is not None,
             "submitted_at": sub.submitted_at.isoformat() if sub and getattr(sub, "submitted_at", None) else None,
             "graded_at": sub.graded_at.isoformat() if sub and getattr(sub, "graded_at", None) else None,
@@ -339,10 +357,12 @@ def post_assignment_class_comment(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    # Invalidate frontend queries if needed (handled by React Query onSuccess)
     return {
         "id": row.id,
         "author_id": row.author_id,
-        "author_name": current_user.full_name or current_user.email or "",
+        "author_name": (current_user.full_name or current_user.email or ""),
         "author_role": current_user.role,
         "text": row.text,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -370,10 +390,8 @@ def submit_assignment(
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Задание не найдено")
-    now = datetime.now(timezone.utc)
-    is_closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
-    if is_closed:
-        raise HTTPException(status_code=400, detail="Задание закрыто для сдачи или дедлайн истёк")
+    if is_assignment_submission_closed(a):
+        raise HTTPException(status_code=400, detail=submission_closed_http_detail(a))
     in_group = db.query(GroupStudent).filter(
         GroupStudent.student_id == current_user.id,
         GroupStudent.group_id == a.group_id,
@@ -441,12 +459,10 @@ def unsubmit_assignment(
     if submission.graded_at is not None or submission.grade is not None:
         raise HTTPException(status_code=400, detail="Cannot unsubmit a graded submission")
 
-    now = datetime.now(timezone.utc)
-    is_closed = (getattr(a, "closed_at", None) is not None) or _deadline_passed(a.deadline, now)
-    if is_closed:
+    if is_assignment_submission_closed(a):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя отменить сдачу: срок сдачи истёк или задание закрыто",
+            detail="Нельзя отменить сдачу: срок сдачи истёк, задание закрыто или приём работ завершён",
         )
 
     db.delete(submission)

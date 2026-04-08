@@ -175,7 +175,15 @@ class RelatedUserInfo(BaseModel):
     email: str
     role: str
 
+
+class ParentInfo(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
 class UserWithRelationsResponse(UserResponse):
+    parent: ParentInfo | None = None
     children: list[ChildInfo] | None = None
     students: list[RelatedUserInfo] | None = None
     teachers_curators: list[RelatedUserInfo] | None = None

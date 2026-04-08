@@ -121,7 +121,7 @@ export function WelcomeWidget() {
                 </p>
                 <p className="text-xs flex items-center gap-1" style={{ color: textColors.secondary }}>
                   <AlertCircle className="w-3 h-3" />
-                  {t("teacherDashboardHint")}
+                  {t("teacherPendingReviewSubtext")}
                 </p>
               </div>
             </div>

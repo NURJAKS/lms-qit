@@ -332,6 +332,38 @@ def _ensure_teacher_assignments_submission_columns(db_engine: Engine) -> None:
         return
 
 
+def _ensure_assignment_submissions_returned_at_column(db_engine: Engine) -> None:
+    """Add returned_at column to assignment_submissions for publish/return tracking."""
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("assignment_submissions"):
+            return
+        existing = {c["name"] for c in insp.get_columns("assignment_submissions")}
+        if "returned_at" in existing:
+            return
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        dt = "DATETIME" if sqlite else "TIMESTAMPTZ"
+        with db_engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE assignment_submissions ADD COLUMN returned_at {dt}"))
+    except Exception:
+        return
+
+
+def _ensure_assignment_submissions_teacher_comment_author_column(db_engine: Engine) -> None:
+    """Add teacher_comment_author_id to assignment_submissions for author attribution."""
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("assignment_submissions"):
+            return
+        existing = {c["name"] for c in insp.get_columns("assignment_submissions")}
+        if "teacher_comment_author_id" in existing:
+            return
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE assignment_submissions ADD COLUMN teacher_comment_author_id INTEGER"))
+    except Exception:
+        return
+
+
 def _ensure_teacher_questions_extended_columns(db_engine: Engine) -> None:
     try:
         insp = inspect(db_engine)
@@ -380,8 +412,91 @@ def _ensure_teacher_question_answers_answer_text(db_engine: Engine) -> None:
         return
 
 
+def _ensure_teacher_question_answers_extended_columns(db_engine: Engine) -> None:
+    """
+    Backward-compatible migration for legacy SQLite DBs that lack newer
+    teacher_question_answers columns (grade/comment/graded_at/coins_awarded).
+    """
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("teacher_question_answers"):
+            return
+        existing = {c["name"] for c in insp.get_columns("teacher_question_answers")}
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        dt = "DATETIME" if sqlite else "TIMESTAMPTZ"
+        with db_engine.begin() as conn:
+            if "grade" not in existing:
+                conn.execute(text("ALTER TABLE teacher_question_answers ADD COLUMN grade INTEGER"))
+            if "teacher_comment" not in existing:
+                conn.execute(text("ALTER TABLE teacher_question_answers ADD COLUMN teacher_comment TEXT"))
+            if "graded_at" not in existing:
+                conn.execute(text(f"ALTER TABLE teacher_question_answers ADD COLUMN graded_at {dt}"))
+            if "coins_awarded" not in existing:
+                conn.execute(text("ALTER TABLE teacher_question_answers ADD COLUMN coins_awarded INTEGER DEFAULT 0"))
+    except Exception:
+        return
+
+
+def _ensure_topic_synopsis_and_feed_tables(db_engine: Engine) -> None:
+    """Create topic_synopsis_submissions and course_feed_posts if missing."""
+    try:
+        from app.models.topic_synopsis import TopicSynopsisSubmission
+        from app.models.course_feed_post import CourseFeedPost
+
+        TopicSynopsisSubmission.__table__.create(bind=db_engine, checkfirst=True)
+        CourseFeedPost.__table__.create(bind=db_engine, checkfirst=True)
+    except Exception:
+        return
+
+
+def _ensure_topic_synopsis_columns(db_engine: Engine) -> None:
+    """Backfill missing columns for topic_synopsis_submissions on legacy DBs."""
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("topic_synopsis_submissions"):
+            return
+        existing = {c["name"] for c in insp.get_columns("topic_synopsis_submissions")}
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        dt = "DATETIME" if sqlite else "TIMESTAMPTZ"
+        with db_engine.begin() as conn:
+            if "updated_at" not in existing:
+                conn.execute(text(f"ALTER TABLE topic_synopsis_submissions ADD COLUMN updated_at {dt}"))
+    except Exception:
+        return
+
+
+def _ensure_shop_items_secret_content_column(db_engine: Engine) -> None:
+    """Add secret_content column to shop_items."""
+    try:
+        url = str(db_engine.url)
+        if "sqlite" not in url:
+            return
+
+        with db_engine.begin() as conn:
+            result = conn.execute(text("PRAGMA table_info(shop_items)"))
+            rows = list(result)
+            if not rows:
+                return
+            existing = {row[1] for row in rows}
+            if "secret_content" not in existing:
+                conn.execute(text("ALTER TABLE shop_items ADD COLUMN secret_content TEXT"))
+    except Exception:
+        return
+
+
+def _ensure_support_tickets_table(db_engine: Engine) -> None:
+    """Create support_tickets table if missing."""
+    try:
+        from app.models.support_ticket import SupportTicket
+
+        SupportTicket.__table__.create(bind=db_engine, checkfirst=True)
+    except Exception:
+        return
+
+
 def run_migrations() -> None:
     """Entry point for running lightweight, in‑app migrations."""
+    _ensure_topic_synopsis_and_feed_tables(engine)
     _ensure_user_city_column(engine)
     _ensure_user_teacher_columns(engine)
     _ensure_user_admin_columns(engine)
@@ -392,6 +507,12 @@ def run_migrations() -> None:
     _ensure_student_progress_updated_at_column(engine)
     _ensure_user_purchases_price_paid_column(engine)
     _ensure_teacher_assignments_submission_columns(engine)
+    _ensure_assignment_submissions_returned_at_column(engine)
+    _ensure_assignment_submissions_teacher_comment_author_column(engine)
     _ensure_teacher_questions_extended_columns(engine)
     _ensure_teacher_question_answers_answer_text(engine)
+    _ensure_teacher_question_answers_extended_columns(engine)
+    _ensure_topic_synopsis_columns(engine)
+    _ensure_shop_items_secret_content_column(engine)
+    _ensure_support_tickets_table(engine)
 

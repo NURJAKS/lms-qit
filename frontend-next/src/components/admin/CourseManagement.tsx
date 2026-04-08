@@ -127,12 +127,13 @@ export function CourseManagement() {
       )}
       
       {/* Вкладки и кнопка создания */}
-      <div className="flex items-center justify-between gap-4 mb-6 border-b pb-2 w-full" style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)" }}>
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 border-b pb-2 w-full" style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)" }}>
+        <div className="w-full overflow-x-auto">
+          <div className="flex gap-2 min-w-max pr-1">
           <BlurFade delay={0.15} duration={0.4} blur="4px" offset={10}>
             <Link
               href="/app/admin/courses"
-              className={`px-4 py-2 font-medium rounded-lg transition-all ${
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "courses"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -145,7 +146,7 @@ export function CourseManagement() {
         <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
           <Link
             href="/app/admin/courses/tests"
-            className={`px-4 py-2 font-medium rounded-lg transition-all ${
+            className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
               activeTab === "tests"
                 ? "text-white shadow-lg"
                 : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -158,7 +159,7 @@ export function CourseManagement() {
         <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
           <Link
             href="/app/admin/courses/moderation"
-            className={`px-4 py-2 font-medium rounded-lg transition-all ${
+            className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
               activeTab === "moderation"
                 ? "text-white shadow-lg"
                 : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -168,13 +169,14 @@ export function CourseManagement() {
             {t("adminNavModeration")}
           </Link>
         </BlurFade>
+          </div>
         </div>
         {activeTab === "courses" && (
           <BlurFade delay={0.3} duration={0.4} blur="4px" offset={10}>
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-2 px-4 py-2 font-medium rounded-lg text-white shadow-lg transition-all hover:scale-105"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 font-medium rounded-lg text-white shadow-lg transition-all hover:scale-105 whitespace-nowrap"
               style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 0 12px rgba(16, 185, 129, 0.3)" }}
             >
               <Plus className="w-4 h-4" />
@@ -512,6 +514,8 @@ function CourseCreateModal({
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
   const [title, setTitle] = useState("");
+  const [titleRu, setTitleRu] = useState("");
+  const [titleEn, setTitleEn] = useState("");
   const [description, setDescription] = useState("");
   const [isActive, setIsActive] = useState(false);
   const [price, setPrice] = useState("0");
@@ -522,6 +526,8 @@ function CourseCreateModal({
     e.preventDefault();
     const body: {
       title: string;
+      title_ru?: string;
+      title_en?: string;
       description?: string;
       is_active: boolean;
       price: number;
@@ -532,6 +538,8 @@ function CourseCreateModal({
       is_active: isActive,
       price: Number(price) || 0,
     };
+    if (titleRu.trim()) body.title_ru = titleRu.trim();
+    if (titleEn.trim()) body.title_en = titleEn.trim();
     if (description.trim()) body.description = description.trim();
     if (isPremiumOnly) body.is_premium_only = true;
     if (language) body.language = language;
@@ -547,7 +555,7 @@ function CourseCreateModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
-              {t("adminCoursesTitleLabel")} *
+              {t("adminCoursesTitleLabel")} (KZ) *
             </label>
             <input
               type="text"
@@ -556,7 +564,33 @@ function CourseCreateModal({
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
               required
-              placeholder={t("adminCoursesTitleLabel")}
+              placeholder="Python программалау негіздері"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
+              {t("adminCoursesTitleLabel")} (RU)
+            </label>
+            <input
+              type="text"
+              value={titleRu}
+              onChange={(e) => setTitleRu(e.target.value)}
+              className="w-full rounded-lg px-3 py-2"
+              style={inputStyle}
+              placeholder="Основы программирования на Python"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
+              {t("adminCoursesTitleLabel")} (EN)
+            </label>
+            <input
+              type="text"
+              value={titleEn}
+              onChange={(e) => setTitleEn(e.target.value)}
+              className="w-full rounded-lg px-3 py-2"
+              style={inputStyle}
+              placeholder="Python Programming Fundamentals"
             />
           </div>
           <div>
@@ -683,6 +717,8 @@ function CourseEditModal({
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
   const [title, setTitle] = useState(course.title);
+  const [titleRu, setTitleRu] = useState((course as any).title_ru || "");
+  const [titleEn, setTitleEn] = useState((course as any).title_en || "");
   const [description, setDescription] = useState(course.description ?? "");
   const [isActive, setIsActive] = useState(course.is_active);
   const [price, setPrice] = useState(String(Number(course.price)));
@@ -694,12 +730,16 @@ function CourseEditModal({
     e.preventDefault();
     const body: Partial<{
       title: string;
+      title_ru: string;
+      title_en: string;
       description: string;
       is_active: boolean;
       price: number;
       published_at: string | null;
     }> = {};
     if (title !== course.title) body.title = title;
+    if (titleRu !== ((course as any).title_ru || "")) body.title_ru = titleRu;
+    if (titleEn !== ((course as any).title_en || "")) body.title_en = titleEn;
     if (description !== (course.description ?? "")) body.description = description;
     if (isActive !== course.is_active) body.is_active = isActive;
     const p = Number(price);
@@ -717,7 +757,7 @@ function CourseEditModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
-              {t("adminCoursesTitleLabel")}
+              {t("adminCoursesTitleLabel")} (KZ)
             </label>
             <input
               type="text"
@@ -726,6 +766,30 @@ function CourseEditModal({
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
               required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
+              {t("adminCoursesTitleLabel")} (RU)
+            </label>
+            <input
+              type="text"
+              value={titleRu}
+              onChange={(e) => setTitleRu(e.target.value)}
+              className="w-full rounded-lg px-3 py-2"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: textColors.secondary }}>
+              {t("adminCoursesTitleLabel")} (EN)
+            </label>
+            <input
+              type="text"
+              value={titleEn}
+              onChange={(e) => setTitleEn(e.target.value)}
+              className="w-full rounded-lg px-3 py-2"
+              style={inputStyle}
             />
           </div>
           <div>

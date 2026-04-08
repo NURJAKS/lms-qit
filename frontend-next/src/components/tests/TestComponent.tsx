@@ -59,8 +59,9 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
     if (d.passed) {
       return (
         <div className="max-w-xl mx-auto bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-6 text-center">
-          <h2 className="text-xl font-bold text-green-800 dark:text-green-200 mb-2">{t("testPassed")}</h2>
-          <p className="text-green-700 dark:text-green-300 mb-4">{t("testPassedDesc")}</p>
+          <h2 className="text-xl font-bold text-green-800 dark:text-green-200 mb-2">{t("topicTestCongratsTitle")}</h2>
+          <p className="text-green-700 dark:text-green-300 mb-2 font-medium">{t("testPassed")}</p>
+          <p className="text-green-700/90 dark:text-green-300/90 mb-4 text-sm">{t("topicTestCongratsBody")}</p>
           <p className="text-gray-600 dark:text-gray-400 mb-4">{t("testScore")}: {d.score.toFixed(0)}% ({d.correct_count}/{d.total_count})</p>
           <button type="button" onClick={onComplete} className="py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700">{t("profileContinue")}</button>
         </div>

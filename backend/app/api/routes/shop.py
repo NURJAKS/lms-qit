@@ -60,7 +60,21 @@ def get_my_purchases(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Список купленных товаров пользователя."""
+    """Список купленных товаров пользователя с автоматическим обновлением статуса доставки."""
+    now = datetime.utcnow()
+    
+    # Автоматически обновляем статусы заказов, время доставки которых уже наступило
+    db.query(UserPurchase).filter(
+        UserPurchase.user_id == current_user.id,
+        UserPurchase.delivery_status.notin_(["delivered", "cancelled"]),
+        UserPurchase.estimated_delivery_date <= now
+    ).update({
+        "delivery_status": "delivered",
+        "delivered_at": now
+    }, synchronize_session=False)
+    
+    db.commit()
+
     purchases = (
         db.query(UserPurchase)
         .filter(UserPurchase.user_id == current_user.id)

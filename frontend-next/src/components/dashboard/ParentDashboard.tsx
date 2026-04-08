@@ -133,15 +133,19 @@ export function ParentDashboard() {
 
   const reportsByChildId = new Map(childrenReports.map(({ childId, report }) => [childId, report]));
 
-  const { data: childReport, isLoading: childReportLoading, error: childReportError } = useQuery({
+  const selectedChildReportFromList = selectedChildId ? reportsByChildId.get(selectedChildId) ?? null : null;
+
+  const { data: childReportQueryData, isLoading: childReportLoading, error: childReportError } = useQuery({
     queryKey: ["parent-child-report", selectedChildId],
     queryFn: async () => {
       if (!selectedChildId) return null;
       const { data } = await api.get<Report>(`/parent/children/${selectedChildId}/report`);
       return data;
     },
-    enabled: !!selectedChildId,
+    enabled: !!selectedChildId && !selectedChildReportFromList,
   });
+
+  const childReport = selectedChildReportFromList ?? childReportQueryData ?? null;
 
   const { data: childAssignmentsData, isLoading: childAssignmentsLoading, error: childAssignmentsError } = useQuery({
     queryKey: ["parent-child-assignments", selectedChildId],
@@ -167,7 +171,7 @@ export function ParentDashboard() {
     if (!childReport) return;
     const text = [
       `${t("parentReportTitle")}: ${childReport.student.full_name}`,
-      `Email: ${childReport.student.email}`,
+      `${t("email")}: ${childReport.student.email}`,
       "",
       `=== ${t("parentProgress")} ===`,
       ...childReport.courses.flatMap((c) => [

@@ -47,19 +47,21 @@ export function MobileBottomNav() {
     },
   ];
 
+  const activeHref = navItems
+    .filter(({ href }) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 glass-nav border-t border-gray-200/50 dark:border-white/10 px-4 pb-safe">
-      <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
+      <div className="flex items-center justify-around h-16 max-w-lg mx-auto gap-1">
         {navItems.map(({ href, icon: Icon, label }) => {
-          const isActive = href === "/app" 
-            ? pathname === "/app" || pathname === "/app/"
-            : pathname.startsWith(href);
+          const isActive = href === activeHref;
           
           return (
             <Link
               key={href}
               href={href}
-              className={`relative bottom-nav-item active-tap flex flex-col items-center justify-center min-w-[64px] transition-all duration-300 ${
+              className={`relative bottom-nav-item active-tap flex flex-col items-center justify-center min-w-0 flex-1 px-1 transition-all duration-300 ${
                 isActive 
                   ? "text-[var(--qit-accent)] dark:text-[var(--qit-accent)] scale-110" 
                   : "text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
@@ -68,7 +70,10 @@ export function MobileBottomNav() {
               <div className={`p-1 rounded-xl transition-all duration-300 ${isActive ? "bg-[var(--qit-accent)]/10" : ""}`}>
                 <Icon className={`w-6 h-6 ${isActive ? "drop-shadow-[0_0_8px_rgba(255,64,129,0.5)]" : ""}`} />
               </div>
-              <span className={`text-[10px] font-bold mt-0.5 transition-all duration-300 ${isActive ? "opacity-100" : "opacity-80"}`}>
+              <span
+                className={`mt-0.5 max-w-full truncate text-center text-[10px] font-bold transition-all duration-300 ${isActive ? "opacity-100" : "opacity-80"}`}
+                title={label}
+              >
                 {label}
               </span>
               {isActive && (

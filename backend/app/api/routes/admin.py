@@ -16,6 +16,7 @@ from app.models.enrollment import CourseEnrollment
 from app.models.progress import StudentProgress
 from app.models.certificate import Certificate
 from app.models.teacher_group import TeacherGroup
+from app.models.group_teacher import GroupTeacher
 from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.add_student_task import AddStudentTask
@@ -58,6 +59,17 @@ ADMIN_REWARD_COINS_MAX = 100_000
 
 class RewardCoinsBody(BaseModel):
     amount: int
+
+
+class ParentLinkUserInfo(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
+class ParentLinkResponse(BaseModel):
+    student: ParentLinkUserInfo
+    parent: ParentLinkUserInfo | None = None
 
 
 # ---------- Users ----------
@@ -133,10 +145,11 @@ def admin_overview(
 def trigger_daily_rewards(
     current_user: Annotated[User, Depends(get_current_admin_user)],
 ):
-    """Ручной запуск ежедневных наград топ-5 рейтинга (для тестирования)."""
+    """Ручной запуск наград топ-5 (для отладки). В продакшене начисление идёт автоматически: cron 00:05 Asia/Almaty + почасовой catch-up в `app.main` lifespan."""
     from app.jobs.daily_rewards import run_daily_leaderboard_rewards
     awarded = run_daily_leaderboard_rewards()
-    return {"awarded": awarded, "message": f"Начислено наград: {awarded}"}
+    msg = f"Начислено наград: {awarded}" if awarded > 0 else "Награды за сегодня уже были распределены ранее."
+    return {"awarded": awarded, "message": msg}
 
 
 # ---------- Course Applications (Список заявок) ----------
@@ -271,6 +284,32 @@ class AssignCuratorRequest(BaseModel):
     group_id: int
 
 
+class UpdateApplicationStatusRequest(BaseModel):
+    status: str
+
+
+def _resolve_group_assignee(db: Session, group: TeacherGroup) -> User:
+    """Prefer real curator attached to group, fallback to primary teacher."""
+    curator_link = (
+        db.query(GroupTeacher, User)
+        .join(User, GroupTeacher.teacher_id == User.id)
+        .filter(
+            GroupTeacher.group_id == group.id,
+            User.role == "curator",
+        )
+        .order_by(GroupTeacher.id.asc())
+        .first()
+    )
+    if curator_link:
+        _, curator_user = curator_link
+        return curator_user
+
+    teacher = db.query(User).filter(User.id == group.teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Исполнитель для группы не найден")
+    return teacher
+
+
 @router.post("/applications/{app_id}/assign-curator")
 def assign_curator(
     app_id: int,
@@ -295,9 +334,11 @@ def assign_curator(
     course = db.query(Course).filter(Course.id == app.course_id).first()
     course_title = course.title if course else "Курс"
 
+    assignee = _resolve_group_assignee(db, group)
+
     task = AddStudentTask(
         manager_id=current_user.id,
-        teacher_id=group.teacher_id,
+        teacher_id=assignee.id,
         student_id=app.user_id,
         group_id=body.group_id,
         status="pending",
@@ -305,16 +346,21 @@ def assign_curator(
     db.add(task)
 
     notif = Notification(
-        user_id=group.teacher_id,
+        user_id=assignee.id,
         type="add_student_task",
         title="Добавьте студента в группу",
         message=f"Студент {student.full_name or student.email} оплатил курс «{course_title}». Добавьте его в группу «{group.group_name}».",
-        link="/app/teacher?tab=students",
+        link="/app/teacher?tab=requests",
     )
     db.add(notif)
 
     db.commit()
-    return {"message": "Задача назначена куратору", "task_id": task.id}
+    return {
+        "message": "Задача назначена куратору",
+        "task_id": task.id,
+        "assignee_id": assignee.id,
+        "assignee_name": assignee.full_name or assignee.email,
+    }
 
 
 @router.post("/applications/{app_id}/reject")
@@ -334,6 +380,137 @@ def reject_application(
     app.approved_by = current_user.id
     db.commit()
     return {"message": "Заявка отклонена"}
+
+
+@router.post("/applications/{app_id}/reopen")
+def reopen_application(
+    app_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_user)],
+):
+    app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    if app.status != "rejected":
+        raise HTTPException(status_code=400, detail="Только отклоненную заявку можно вернуть на рассмотрение")
+
+    app.status = "pending"
+    app.approved_at = None
+    app.approved_by = None
+    db.commit()
+    return {"message": "Заявка возвращена на рассмотрение"}
+
+
+@router.patch("/applications/{app_id}/status")
+def update_application_status(
+    app_id: int,
+    body: UpdateApplicationStatusRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_user)],
+):
+    from datetime import datetime, timezone
+
+    allowed_statuses = {"pending", "paid", "approved", "rejected"}
+    next_status = (body.status or "").strip().lower()
+    if next_status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="Недопустимый статус заявки")
+
+    app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    app.status = next_status
+    if next_status == "approved":
+        app.approved_at = datetime.now(timezone.utc)
+        app.approved_by = current_user.id
+    elif next_status == "rejected":
+        app.approved_at = datetime.now(timezone.utc)
+        app.approved_by = current_user.id
+    else:
+        app.approved_at = None
+        app.approved_by = None
+
+    if next_status == "paid" and app.confirmed_at is None:
+        app.confirmed_at = datetime.now(timezone.utc)
+
+    db.commit()
+    return {"message": "Статус заявки обновлён", "status": app.status}
+
+
+@router.post("/applications/{app_id}/grant-access")
+def grant_application_access(
+    app_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_user)],
+):
+    from datetime import datetime, timezone
+
+    app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    user = db.query(User).filter(User.id == app.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    course = db.query(Course).filter(Course.id == app.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+
+    now = datetime.now(timezone.utc)
+    amount = float(course.price or 0)
+
+    # One-click grant: keep statuses and access records consistent.
+    app.status = "paid"
+    if app.confirmed_at is None:
+        app.confirmed_at = now
+    app.approved_at = None
+    app.approved_by = None
+    user.is_approved = True
+
+    payment = db.query(Payment).filter(Payment.application_id == app.id).order_by(Payment.id.desc()).first()
+    if payment:
+        payment.status = "completed"
+    else:
+        payment = db.query(Payment).filter(
+            Payment.user_id == app.user_id,
+            Payment.course_id == app.course_id,
+        ).order_by(Payment.id.desc()).first()
+        if payment:
+            payment.status = "completed"
+            payment.application_id = app.id
+            if payment.amount is None:
+                payment.amount = amount
+        else:
+            payment = Payment(
+                user_id=app.user_id,
+                course_id=app.course_id,
+                amount=amount,
+                status="completed",
+                payment_method="card",
+                application_id=app.id,
+            )
+            db.add(payment)
+
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == app.user_id,
+        CourseEnrollment.course_id == app.course_id,
+    ).first()
+    if enrollment:
+        enrollment.payment_confirmed = True
+        if enrollment.payment_amount is None:
+            enrollment.payment_amount = amount
+    else:
+        enrollment = CourseEnrollment(
+            user_id=app.user_id,
+            course_id=app.course_id,
+            payment_confirmed=True,
+            payment_amount=amount,
+        )
+        db.add(enrollment)
+
+    db.commit()
+    return {"message": "Доступ к курсу выдан", "application_id": app.id, "status": app.status}
 
 
 @router.get("/activity-logs")
@@ -420,6 +597,13 @@ def list_users(
         teachers_list = db.query(User).filter(User.id.in_(teacher_ids_for_students)).all()
         teachers_data = {t.id: t for t in teachers_list}
 
+    # Parents for students
+    student_parent_ids = [u.parent_id for u in users if u.role == "student" and u.parent_id]
+    parents_data = {}
+    if student_parent_ids:
+        parents_list = db.query(User).filter(User.id.in_(student_parent_ids), User.role == "parent").all()
+        parents_data = {p.id: p for p in parents_list}
+
     # Children for parents
     parent_ids = [u.id for u in users if u.role == "parent"]
     children_by_parent = {}
@@ -489,11 +673,21 @@ def list_users(
             "is_approved": user.is_approved,
             "has_group_access": None,
             "created_at": user.created_at,
+            "parent": None,
             "children": None,
             "students": None,
             "teachers_curators": None,
             "groups": None,
         }
+
+        # Populate parent (for students)
+        if user.role == "student" and user.parent_id and user.parent_id in parents_data:
+            parent = parents_data[user.parent_id]
+            user_dict["parent"] = {
+                "id": parent.id,
+                "full_name": parent.full_name,
+                "email": parent.email,
+            }
 
         # Populate children (for parents)
         if user.role == "parent" and user.id in children_by_parent:
@@ -574,6 +768,64 @@ def list_users(
         result.append(user_dict)
     
     return result
+
+
+@router.get("/parent-links", response_model=list[ParentLinkResponse])
+def list_parent_links(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_or_director)],
+    search_student: str | None = None,
+    search_parent: str | None = None,
+    only_unlinked: bool = False,
+):
+    students_q = db.query(User).filter(User.role == "student")
+    if search_student:
+        students_q = students_q.filter(
+            User.full_name.ilike(f"%{search_student}%") | User.email.ilike(f"%{search_student}%")
+        )
+    if only_unlinked:
+        students_q = students_q.filter(User.parent_id.is_(None))
+
+    students = students_q.order_by(User.full_name.asc()).all()
+    if not students:
+        return []
+
+    parent_ids = list({s.parent_id for s in students if s.parent_id})
+    parents_by_id: dict[int, User] = {}
+    if parent_ids:
+        parents_q = db.query(User).filter(User.id.in_(parent_ids), User.role == "parent")
+        if search_parent:
+            parents_q = parents_q.filter(
+                User.full_name.ilike(f"%{search_parent}%") | User.email.ilike(f"%{search_parent}%")
+            )
+        parents = parents_q.all()
+        parents_by_id = {p.id: p for p in parents}
+
+    links: list[ParentLinkResponse] = []
+    for student in students:
+        parent = parents_by_id.get(student.parent_id) if student.parent_id else None
+        # If parent search is provided, keep unlinked students and matched parents only.
+        if search_parent and student.parent_id and parent is None:
+            continue
+        links.append(
+            ParentLinkResponse(
+                student=ParentLinkUserInfo(
+                    id=student.id,
+                    full_name=student.full_name,
+                    email=student.email,
+                ),
+                parent=(
+                    ParentLinkUserInfo(
+                        id=parent.id,
+                        full_name=parent.full_name,
+                        email=parent.email,
+                    )
+                    if parent
+                    else None
+                ),
+            )
+        )
+    return links
 
 
 @router.post("/users", response_model=UserResponse)
@@ -942,22 +1194,25 @@ def list_teacher_groups_for_course(
     course_id: int = Query(..., description="Course ID to filter groups"),
 ):
     """Группы учителей по курсу (для модалки назначения)."""
-    rows = (
-        db.query(TeacherGroup, User)
-        .join(User, TeacherGroup.teacher_id == User.id)
+    groups = (
+        db.query(TeacherGroup)
         .filter(TeacherGroup.course_id == course_id)
         .order_by(TeacherGroup.group_name)
         .all()
     )
-    return [
-        {
-            "id": g.id,
-            "group_name": g.group_name,
-            "teacher_id": g.teacher_id,
-            "teacher_name": u.full_name or u.email,
-        }
-        for g, u in rows
-    ]
+    result = []
+    for g in groups:
+        assignee = _resolve_group_assignee(db, g)
+        role_suffix = " (куратор)" if assignee.role == "curator" else " (учитель)"
+        result.append(
+            {
+                "id": g.id,
+                "group_name": g.group_name,
+                "teacher_id": assignee.id,
+                "teacher_name": f"{assignee.full_name or assignee.email}{role_suffix}",
+            }
+        )
+    return result
 
 
 @router.post("/add-student-tasks")
@@ -1007,7 +1262,7 @@ def create_add_student_task(
         type="add_student_task",
         title="Добавьте студента в группу",
         message=f"Менеджер назначил задачу: добавить {student.full_name or student.email} в группу «{group.group_name}».",
-        link="/app/teacher?tab=students",
+        link="/app/teacher?tab=requests",
     )
     db.add(notif)
     db.commit()

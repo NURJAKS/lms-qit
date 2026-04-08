@@ -322,6 +322,10 @@ function CatalogPageContent() {
           course_title: string;
           student_name: string;
           student_email: string;
+          temp_login: string;
+          temp_password: string;
+          parent_temp_login?: string | null;
+          parent_temp_password?: string | null;
         }>("/applications/pay", {
           email: formData.email,
           full_name: formData.full_name,
@@ -342,7 +346,16 @@ function CatalogPageContent() {
         });
 
         if (response && response.data) {
-          const { confirmation_token, course_title, student_name, student_email } = response.data;
+          const {
+            confirmation_token,
+            course_title,
+            student_name,
+            student_email,
+            temp_login,
+            temp_password,
+            parent_temp_login,
+            parent_temp_password,
+          } = response.data;
           setConfirmationToken(confirmation_token);
           const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
           const confirmUrl = `${baseUrl}/confirm-purchase/${confirmation_token}`;
@@ -368,6 +381,20 @@ function CatalogPageContent() {
                       <p style="font-size: 16px; line-height: 1.6;">
                         ${t("emailConfirmPurchaseBody2")}
                       </p>
+                      <div style="background: #1E293B; border-radius: 12px; padding: 20px; margin: 24px 0; border: 1px solid #334155;">
+                        <p style="margin: 0 0 12px 0; font-weight: bold; color: white;">${t("emailLoginCredentials")}</p>
+                        <p style="margin: 4px 0; color: #94A3B8;">${t("emailLogin")} <strong style="color: #60A5FA;">${temp_login}</strong></p>
+                        <p style="margin: 4px 0; color: #94A3B8;">${t("emailPassword")} <strong style="color: #60A5FA;">${temp_password}</strong></p>
+                      </div>
+                      ${
+                        parent_temp_login && parent_temp_password
+                          ? `<div style="background: #1E293B; border-radius: 12px; padding: 20px; margin: 24px 0; border: 1px solid #334155;">
+                               <p style="margin: 0 0 12px 0; font-weight: bold; color: white;">${t("parentCredentials")}</p>
+                               <p style="margin: 4px 0; color: #94A3B8;">${t("emailLogin")} <strong style="color: #60A5FA;">${parent_temp_login}</strong></p>
+                               <p style="margin: 4px 0; color: #94A3B8;">${t("emailPassword")} <strong style="color: #60A5FA;">${parent_temp_password}</strong></p>
+                             </div>`
+                          : ""
+                      }
                       <div style="text-align: center; margin: 32px 0;">
                         <a href="${confirmUrl}" style="background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 16px 40px; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 16px; display: inline-block;">${t("emailConfirmPurchaseButton")}</a>
                       </div>

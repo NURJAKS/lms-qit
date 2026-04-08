@@ -40,17 +40,17 @@ export default function AppLayout({
   if (!hasHydrated || !token) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-[var(--qit-bg-deep)]">
+    <div className="min-h-screen overflow-x-hidden bg-gray-100 dark:bg-[var(--qit-bg-deep)]">
       <AppDashboardSidebar />
       <div
-        className={`min-h-screen flex flex-col pt-16 lg:pt-0 transition-[padding-left] duration-300 bg-gray-100 dark:bg-[var(--qit-bg-deep)] ${
+        className={`min-h-screen min-w-0 flex flex-col pt-16 lg:pt-0 transition-[padding-left] duration-300 bg-gray-100 dark:bg-[var(--qit-bg-deep)] ${
           collapsed ? "lg:pl-[4.5rem]" : "lg:pl-72"
         }`}
       >
         <AppDashboardHeader />
-        <main className="flex-1 pt-0 bg-gray-100 dark:bg-[var(--qit-bg-deep)]">
+        <main className="flex-1 min-w-0 pt-0 bg-gray-100 dark:bg-[var(--qit-bg-deep)]">
           <div className="pt-2 pb-24 lg:pb-6 px-3 sm:px-4 md:px-6">
-            <div className="max-w-7xl mx-auto">{children}</div>
+            <div className="max-w-7xl mx-auto w-full min-w-0">{children}</div>
           </div>
         </main>
       </div>

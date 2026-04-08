@@ -88,52 +88,16 @@ export function AdminOverview() {
   });
 
 
-  const departments = data?.departments ?? [];
+  const departments = (data?.departments ?? []).filter(
+    (dept) => dept.id !== "certificates" && dept.id !== "assignments"
+  );
   const usersByRole = data?.users_by_role ?? {};
   const newUsersWeek = data?.new_users_week ?? 0;
   const newEnrollmentsWeek = data?.new_enrollments_week ?? 0;
   const pendingUsers = data?.pending_users ?? 0;
   const pendingCourses = data?.pending_courses ?? 0;
 
-  // Основные KPI карточки
-  const kpiCards = [
-    {
-      id: "users",
-      label: t("adminTotalUsers"),
-      value: data?.total_users ?? 0,
-      icon: Users,
-      color: "from-blue-500 to-cyan-500",
-      bgColor: "bg-blue-500/10",
-      link: "/app/admin/users",
-    },
-    {
-      id: "courses",
-      label: t("adminActiveCourses"),
-      value: data?.total_courses ?? 0,
-      icon: BookOpen,
-      color: "from-purple-500 to-pink-500",
-      bgColor: "bg-purple-500/10",
-      link: "/app/admin/courses",
-    },
-    {
-      id: "enrollments",
-      label: t("adminEnrollments"),
-      value: departments.find((d) => d.id === "enrollments")?.count ?? 0,
-      icon: ClipboardList,
-      color: "from-green-500 to-emerald-500",
-      bgColor: "bg-green-500/10",
-      link: "/app/admin/courses",
-    },
-    {
-      id: "progress",
-      label: t("adminCompletedTopics"),
-      value: departments.find((d) => d.id === "progress")?.count ?? 0,
-      icon: Award,
-      color: "from-orange-500 to-red-500",
-      bgColor: "bg-orange-500/10",
-      link: "/app/admin/analytics",
-    },
-  ];
+
 
   // Статистика по ролям
   const roleLabels: Record<string, string> = {
@@ -194,6 +158,8 @@ export function AdminOverview() {
       application_created: "adminLogApplicationCreated",
       application_approved: "adminLogApplicationApproved",
       payment_approved: "adminLogPaymentApproved",
+      course_updated: "adminLogCourseUpdated",
+      coins_rewarded: "adminLogCoinsRewarded",
     };
     const key = labels[action];
     return key ? t(key as any) : action;
@@ -239,40 +205,7 @@ export function AdminOverview() {
         </div>
       </BlurFade>
 
-      {/* Основные KPI карточки */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpiCards.map((card, index) => {
-          const Icon = card.icon;
-          return (
-            <BlurFade key={card.id} delay={0.1 + index * 0.05} direction="up" offset={20}>
-              <Link href={card.link}>
-                <motion.div
-                  className="rounded-xl p-6 cursor-pointer group transition-all duration-300 hover:shadow-xl"
-                  style={{
-                    ...glassStyle,
-                    border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.1)",
-                  }}
-                  whileHover={{ scale: 1.02, y: -4 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center bg-gradient-to-br ${card.color} shadow-lg`}>
-                      <Icon className="w-6 h-6 text-white" />
-                    </div>
-                    <TrendingUp className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: textColors.secondary }} />
-                  </div>
-                  <p className="text-3xl font-bold mb-1" style={{ color: textColors.primary }}>
-                    <AnimatedNumber value={card.value} duration={1.5} />
-                  </p>
-                  <p className="text-sm font-medium" style={{ color: textColors.secondary }}>
-                    {card.label}
-                  </p>
-                </motion.div>
-              </Link>
-            </BlurFade>
-          );
-        })}
-      </div>
+
 
       {/* Разделы процессов */}
       <BlurFade delay={0.2} direction="up" offset={20}>

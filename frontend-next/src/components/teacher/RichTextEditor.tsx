@@ -56,7 +56,7 @@ function Toolbar({ editor, t }: { editor: Editor | null; t: (key: TranslationKey
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         className={`p-2 rounded ${editor.isActive("underline") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
-        title="Underline"
+        title={t("richTextUnderline")}
       >
         <span className="block text-sm leading-none" style={{ textDecoration: "underline" }}>
           U
@@ -67,7 +67,7 @@ function Toolbar({ editor, t }: { editor: Editor | null; t: (key: TranslationKey
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.chain().focus().toggleStrike().run()}
         className={`p-2 rounded ${editor.isActive("strike") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
-        title="Strikethrough"
+        title={t("richTextStrikethrough")}
       >
         <span className="block text-sm leading-none" style={{ textDecoration: "line-through" }}>
           S

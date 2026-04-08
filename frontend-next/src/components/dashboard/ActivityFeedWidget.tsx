@@ -35,9 +35,15 @@ export function ActivityFeedWidget() {
   const { data: activities = [], isLoading } = useQuery({
     queryKey: [teacherMode ? "teacher-recent-submissions" : "student-activity-feed", lang],
     queryFn: async () => {
+      const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+        return await Promise.race([
+          promise,
+          new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+        ]);
+      };
       try {
         if (teacherMode) {
-          const { data } = await api.get<Array<{
+          const { data } = await withTimeout(api.get<Array<{
             id: number;
             student_name: string;
             assignment_id: number;
@@ -45,7 +51,7 @@ export function ActivityFeedWidget() {
             group_name: string;
             submitted_at: string;
             grade: number | null;
-          }>>("/teacher/recent-submissions");
+          }>>("/teacher/recent-submissions"), 7000);
           return data.map(s => ({
             id: s.id,
             type: "submission",
@@ -53,10 +59,10 @@ export function ActivityFeedWidget() {
             subtext: `${t("activitySubtext_submitted")} ${s.assignment_title}`,
             group: s.group_name,
             time: s.submitted_at,
-            link: `/app/teacher/view-answers/${s.assignment_id}`
+            link: `/app/teacher/view-answers/${s.assignment_id}?tab=submissions`
           }));
         } else {
-          const { data } = await api.get<Array<any>>("/dashboard/events");
+          const { data } = await withTimeout(api.get<Array<any>>("/dashboard/events"), 7000);
           return data.slice(0, 10).map((e: any) => {
             let type = "other";
             const notes = (e.notes || "").toLowerCase();
@@ -79,6 +85,8 @@ export function ActivityFeedWidget() {
         return [];
       }
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const getActivityIcon = (type: string) => {
@@ -100,6 +108,7 @@ export function ActivityFeedWidget() {
   };
 
   const isDark = theme === "dark";
+  const teacherReviewHref = "/app/teacher/courses/review";
 
   return (
     <motion.div 
@@ -113,16 +122,39 @@ export function ActivityFeedWidget() {
           : "linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(243, 244, 246, 0.8) 100%)",
       }}
     >
-      <div className="p-5 text-white flex items-center justify-between relative overflow-hidden" 
-           style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}>
-        <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
-        <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-30 blur-2xl bg-white" />
-        <div className="flex items-center gap-2 relative z-10">
-          <Clock className="w-5 h-5" />
-          <h3 className="font-bold text-base tracking-tight">{teacherMode ? t("recentActivity") : t("recentActivity")}</h3>
+      {teacherMode ? (
+        <Link
+          href={teacherReviewHref}
+          className="p-5 text-white flex items-center justify-between relative overflow-hidden group"
+          style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
+        >
+          <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-30 blur-2xl bg-white" />
+          <div className="flex items-center gap-2 relative z-10 min-w-0">
+            <Clock className="w-5 h-5 shrink-0" />
+            <h3 className="font-bold text-base tracking-tight">{t("recentActivity")}</h3>
+          </div>
+          <div className="relative z-10 flex items-center gap-2 shrink-0">
+            {isLoading && (
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+            )}
+            <ChevronRight className="w-5 h-5 opacity-80 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </Link>
+      ) : (
+        <div
+          className="p-5 text-white flex items-center justify-between relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
+        >
+          <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-30 blur-2xl bg-white" />
+          <div className="flex items-center gap-2 relative z-10">
+            <Clock className="w-5 h-5" />
+            <h3 className="font-bold text-base tracking-tight">{t("recentActivity")}</h3>
+          </div>
+          {isLoading && <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full relative z-10" />}
         </div>
-        {isLoading && <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full relative z-10" />}
-      </div>
+      )}
 
       <div className="p-4">
         <AnimatePresence mode="popLayout">
@@ -145,8 +177,11 @@ export function ActivityFeedWidget() {
                 const color = getActivityColor(activity.type);
                 const timeAgo = formatTimeAgo(activity.time, t);
 
+                const href = typeof activity.link === "string" && activity.link.trim() ? activity.link : null;
                 return (
-                  <Link key={activity.id + "-" + idx} href={activity.link}>
+                  <div key={activity.id + "-" + idx}>
+                  {href ? (
+                  <Link href={href}>
                     <motion.div
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -185,6 +220,44 @@ export function ActivityFeedWidget() {
                       <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-40 transition-opacity self-center" />
                     </motion.div>
                   </Link>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="flex items-start gap-3 p-3.5 rounded-2xl transition-all mb-3"
+                      style={{
+                        background: isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.02)",
+                        border: `1px solid ${isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"}`,
+                      }}
+                    >
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white shadow-lg shadow-blue-500/10"
+                        style={{ background: `linear-gradient(135deg, ${color}, ${color}dd)` }}
+                      >
+                        {getActivityIcon(activity.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-sm font-bold truncate leading-tight mb-0.5" style={{ color: textColors.primary }}>
+                            {activity.message}
+                          </p>
+                          <span className="text-[10px] font-medium whitespace-nowrap opacity-60" style={{ color: textColors.secondary }}>
+                            {timeAgo}
+                          </span>
+                        </div>
+                        <p className="text-xs opacity-70 truncate line-clamp-1 mb-0.5" style={{ color: textColors.secondary }}>
+                          {activity.subtext}
+                        </p>
+                        {activity.group && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10" style={{ color: textColors.secondary }}>
+                            {activity.group}
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                  </div>
                 );
               })}
             </div>
@@ -192,7 +265,7 @@ export function ActivityFeedWidget() {
         </AnimatePresence>
 
         <Link
-          href={teacherMode ? "/app/teacher" : "/app"}
+          href={teacherMode ? teacherReviewHref : "/app"}
           className="mt-4 flex items-center justify-center w-full py-3 rounded-2xl font-bold text-sm transition-all bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 group"
         >
           {t("viewAll")}

@@ -10,9 +10,9 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.models.progress import StudentProgress
-from app.models.enrollment import CourseEnrollment
 from app.models.course_module import CourseModule
 from app.models.course_topic import CourseTopic
+from app.api.course_access import assert_can_access_course_materials
 from app.services.coins import add_coins, has_received_coins_for_reason
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -24,15 +24,11 @@ FREE_DAILY_VIDEO_WATCH_LIMIT = 2 * 60 * 60  # 2 часа = 7200 секунд
 class VideoProgressUpdate(BaseModel):
     topic_id: int
     video_watched_seconds: int
+    video_duration: int | None = None
 
 
-def _check_enrollment(db: Session, user_id: int, course_id: int) -> None:
-    e = db.query(CourseEnrollment).filter(
-        CourseEnrollment.user_id == user_id,
-        CourseEnrollment.course_id == course_id,
-    ).first()
-    if not e:
-        raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+def _check_enrollment(db: Session, current_user: User, course_id: int) -> None:
+    assert_can_access_course_materials(db, current_user, course_id)
 
 
 def check_daily_video_watch_limit(db: Session, user_id: int, is_premium: bool, additional_seconds: int = 0) -> tuple[bool, int, int]:
@@ -97,6 +93,12 @@ def update_video_progress(
     topic = db.query(CourseTopic).filter(CourseTopic.id == body.topic_id).first()
     if not topic:
         raise HTTPException(status_code=404, detail="Тема не найдена")
+
+    reported_duration = body.video_duration if body.video_duration and body.video_duration > 0 else None
+    if reported_duration is not None:
+        current_duration = topic.video_duration or 0
+        if current_duration <= 0 or abs(current_duration - reported_duration) > 2:
+            topic.video_duration = reported_duration
     
     # Получаем текущий прогресс по теме
     prog = db.query(StudentProgress).filter(
@@ -119,7 +121,7 @@ def update_video_progress(
             )
     
     if not prog:
-        _check_enrollment(db, current_user.id, topic.course_id)
+        _check_enrollment(db, current_user, topic.course_id)
         prog = StudentProgress(
             user_id=current_user.id,
             course_id=topic.course_id,
@@ -131,8 +133,9 @@ def update_video_progress(
         prog.video_watched_seconds = max(prog.video_watched_seconds or 0, body.video_watched_seconds)
     
     # Начисление coins за просмотр теории (90%+ видео), один раз за тему
-    if topic.video_duration and topic.video_duration > 0:
-        watched_percent = (body.video_watched_seconds / topic.video_duration) * 100
+    effective_duration = (reported_duration or topic.video_duration or 0)
+    if effective_duration > 0:
+        watched_percent = (body.video_watched_seconds / effective_duration) * 100
         if watched_percent >= 90:
             theory_reason = f"theory_{body.topic_id}"
             if not has_received_coins_for_reason(db, current_user.id, theory_reason):
@@ -169,7 +172,7 @@ def get_course_progress(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _check_enrollment(db, current_user.id, course_id)
+    _check_enrollment(db, current_user, course_id)
     items = db.query(StudentProgress).filter(
         StudentProgress.user_id == current_user.id,
         StudentProgress.course_id == course_id,

@@ -15,10 +15,10 @@ import {
   ChevronsUpDown,
   ClipboardList,
   FileText,
+  Filter,
   Globe,
   Loader2,
   MessageSquare,
-  MoreVertical,
   Paperclip,
   Plus,
   Users,
@@ -48,6 +48,9 @@ type AssignmentRow = {
   topic_title: string | null;
   deadline: string | null;
   closed: boolean;
+  manually_closed?: boolean;
+  deadline_passed?: boolean;
+  reject_submissions_after_deadline?: boolean;
   submitted: boolean;
   grade: number | null;
   teacher_comment: string | null;
@@ -81,9 +84,24 @@ type MaterialRow = {
   created_at: string | null;
 };
 
+type QuestionRow = {
+  id: number;
+  text: string;
+  type: string;
+  course_id: number;
+  course_title: string;
+  topic_id: number | null;
+  topic_title: string | null;
+  status: "not_submitted" | "submitted";
+  grade: number | null;
+  teacher_comment: string | null;
+  created_at: string | null;
+};
+
 type ClassworkItem =
   | { kind: "assignment"; data: AssignmentRow }
-  | { kind: "material"; data: MaterialRow };
+  | { kind: "material"; data: MaterialRow }
+  | { kind: "question"; data: QuestionRow };
 
 type SubmissionAttachment = { kind: "file" | "link"; url: string };
 
@@ -102,11 +120,12 @@ type TopicSection = {
 /** Stable empty refs so React deps / useEffect do not fire every render when query has no data yet. */
 const EMPTY_ASSIGNMENTS: AssignmentRow[] = [];
 const EMPTY_MATERIALS: MaterialRow[] = [];
+const EMPTY_QUESTIONS: QuestionRow[] = [];
 const EMPTY_TOPICS: CourseTopic[] = [];
 
-function attachmentLabel(url: string) {
+function attachmentLabel(url: string, googleFormText: string = "Google Form") {
   const lower = url.toLowerCase();
-  if (lower.includes("forms")) return "Google Form";
+  if (lower.includes("forms")) return googleFormText;
   try {
     return new URL(url).hostname;
   } catch {
@@ -141,11 +160,12 @@ function apiErrorDetail(err: unknown): string | null {
   return null;
 }
 
-function formatDateShort(iso: string | null) {
+function formatDateShort(iso: string | null, lang: string = "ru") {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+    const locale = lang === "en" ? "en-US" : lang === "kk" ? "kk-KZ" : "ru-RU";
+    return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
   } catch {
     return iso;
   }
@@ -190,13 +210,14 @@ function fileKindIcon(name: string) {
 }
 
 function AttachmentsBlock({ urls, links }: { urls: string[]; links: string[] }) {
+  const { t } = useLanguage();
   const border = "border-gray-200 dark:border-gray-700";
   return (
     <div className="space-y-3">
       {urls.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-            <TranslationOr keyName="assignmentAttachFiles" fallback="Files" />
+            {t("assignmentAttachFiles")}
           </div>
           <div className="space-y-1">
             {urls.map((u, idx) => {
@@ -221,7 +242,7 @@ function AttachmentsBlock({ urls, links }: { urls: string[]; links: string[] }) 
       {links.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-            <TranslationOr keyName="linkOption" fallback="Links" />
+            {t("linkOption")}
           </div>
           <div className="space-y-1">
             {links.map((u, idx) => (
@@ -232,7 +253,7 @@ function AttachmentsBlock({ urls, links }: { urls: string[]; links: string[] }) 
                 rel="noopener noreferrer"
                 className={`block rounded-xl border px-3 py-2 text-sm hover:underline truncate ${border}`}
               >
-                {attachmentLabel(u)}
+                {attachmentLabel(u, t("googleFormLabel"))}
               </a>
             ))}
           </div>
@@ -251,6 +272,7 @@ function AttachmentsBlockRich({
   links: string[];
   linkTitle: string;
 }) {
+  const { t } = useLanguage();
   const border = "border-gray-200 dark:border-gray-700";
   if (urls.length === 0 && links.length === 0) return null;
   return (
@@ -290,7 +312,7 @@ function AttachmentsBlockRich({
           <Globe className="h-10 w-10 shrink-0 text-gray-400" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{linkTitle}</p>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{attachmentLabel(u)}</p>
+            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{attachmentLabel(u, t("googleFormLabel"))}</p>
           </div>
         </a>
       ))}
@@ -608,6 +630,18 @@ export function StudentCourseClasswork({
   });
   const materials = materialsData ?? EMPTY_MATERIALS;
 
+  const { data: questionsData } = useQuery({
+    queryKey: ["student-questions", courseId],
+    queryFn: async () => {
+      const { data } = await api.get<QuestionRow[]>(`/questions/my`);
+      return Array.isArray(data) ? data : [];
+    },
+    staleTime: 60_000,
+    enabled: courseIdOk,
+    retry: 1,
+  });
+  const questions = questionsData ?? EMPTY_QUESTIONS;
+
   const courseAssignments = useMemo(
     () => assignments.filter((a) => a.course_id === courseId),
     [assignments, courseId]
@@ -618,16 +652,25 @@ export function StudentCourseClasswork({
     [materials, courseId]
   );
 
+  const courseQuestions = useMemo(
+    () => questions.filter((q) => q.course_id === courseId),
+    [questions, courseId]
+  );
+
   const topicSections = useMemo(() => {
     const assignmentItems = (arr: AssignmentRow[]): ClassworkItem[] =>
       arr.map((a) => ({ kind: "assignment" as const, data: a }));
     const materialItems = (arr: MaterialRow[]): ClassworkItem[] =>
       arr.map((m) => ({ kind: "material" as const, data: m }));
+    const questionItems = (arr: QuestionRow[]): ClassworkItem[] =>
+      arr.map((q) => ({ kind: "question" as const, data: q }));
 
     const filterA = (arr: AssignmentRow[]) =>
       topicFilter === "all" ? arr : arr.filter((a) => a.topic_id === topicFilter);
     const filterM = (arr: MaterialRow[]) =>
       topicFilter === "all" ? arr : arr.filter((m) => m.topic_id === topicFilter);
+    const filterQ = (arr: QuestionRow[]) =>
+      topicFilter === "all" ? arr : arr.filter((q) => q.topic_id === topicFilter);
 
     const sections: TopicSection[] = [];
 
@@ -635,6 +678,7 @@ export function StudentCourseClasswork({
       const items: ClassworkItem[] = [
         ...assignmentItems(filterA(courseAssignments.filter((a) => a.topic_id === tp.id))),
         ...materialItems(filterM(courseMaterials.filter((m) => m.topic_id === tp.id))),
+        ...questionItems(filterQ(courseQuestions.filter((q) => q.topic_id === tp.id))),
       ];
       sections.push({ key: `t-${tp.id}`, topicId: tp.id, title: tp.title, items });
     }
@@ -642,6 +686,7 @@ export function StudentCourseClasswork({
     const uncatItems: ClassworkItem[] = [
       ...assignmentItems(filterA(courseAssignments.filter((a) => a.topic_id == null))),
       ...materialItems(filterM(courseMaterials.filter((m) => m.topic_id == null))),
+      ...questionItems(filterQ(courseQuestions.filter((q) => q.topic_id == null))),
     ];
     if (uncatItems.length > 0) {
       sections.push({ key: "uncategorized", topicId: null, title: t("courseTopicUncategorized"), items: uncatItems });
@@ -649,7 +694,7 @@ export function StudentCourseClasswork({
 
     if (topicFilter === "all") return sections;
     return sections.filter((s) => s.items.length > 0 || s.topicId === topicFilter);
-  }, [courseAssignments, courseMaterials, topics, topicFilter, t]);
+  }, [courseAssignments, courseMaterials, courseQuestions, topics, topicFilter, t]);
 
   const selectedAssignment = useMemo(() => {
     if (selectedAssignmentId == null) return null;
@@ -733,7 +778,12 @@ export function StudentCourseClasswork({
       setWorkActionError(null);
     },
     onError: (err) => {
-      setWorkActionError(apiErrorDetail(err) ?? t("assignmentSubmitErrorGeneric"));
+      const detail = apiErrorDetail(err);
+      if (detail === "Cannot unsubmit a graded submission") {
+        setWorkActionError(t("unsubmitErrorGraded"));
+      } else {
+        setWorkActionError(detail ?? t("assignmentSubmitErrorGeneric"));
+      }
     },
   });
 
@@ -923,15 +973,15 @@ export function StudentCourseClasswork({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_360px]">
+        <div className="grid grid-cols-1 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <div className="min-w-0 space-y-6">
             <div className="flex flex-col gap-4 border-b border-gray-100 pb-6 dark:border-gray-800 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex min-w-0 items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/20">
-                  <ClipboardList className="h-6 w-6" />
+              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/20 sm:h-12 sm:w-12">
+                  <ClipboardList className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-3xl font-extrabold leading-tight text-gray-900 dark:text-white">{a.title}</h1>
+                  <h1 className="break-words text-2xl font-extrabold leading-tight text-gray-900 dark:text-white sm:text-3xl">{a.title}</h1>
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium text-gray-600 dark:text-gray-300">
                     <span className="font-semibold text-gray-900 dark:text-white">
                       {a.teacher_name?.trim() || t("studentTeacher")}
@@ -972,7 +1022,7 @@ export function StudentCourseClasswork({
 
             {a.description ? (
               <div
-                className="prose prose-blue max-w-none leading-relaxed text-gray-800 dark:prose-invert dark:text-gray-100"
+                className="prose prose-blue max-w-none break-words leading-relaxed text-gray-800 dark:prose-invert dark:text-gray-100 [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
                 dangerouslySetInnerHTML={{ __html: a.description }}
               />
             ) : null}
@@ -1029,8 +1079,17 @@ export function StudentCourseClasswork({
 
               {submissionBlocked ? (
                 <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300">
-                  <p className="font-semibold">{t("assignmentCannotSubmitPastDeadline")}</p>
-                  <p className="mt-2 text-xs leading-relaxed opacity-95">{t("assignmentDeadlinePassedStudentExplanation")}</p>
+                  {a.manually_closed ? (
+                    <>
+                      <p className="font-semibold">{t("assignmentClosedByTeacherTitle")}</p>
+                      <p className="mt-2 text-xs leading-relaxed opacity-95">{t("assignmentClosedByTeacherBody")}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold">{t("assignmentCannotSubmitPastDeadline")}</p>
+                      <p className="mt-2 text-xs leading-relaxed opacity-95">{t("assignmentDeadlinePassedStudentExplanation")}</p>
+                    </>
+                  )}
                 </div>
               ) : null}
 
@@ -1252,11 +1311,11 @@ export function StudentCourseClasswork({
         </div>
 
         {showConfirmDialog ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
             <div
               role="dialog"
               aria-modal="true"
-              className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800"
+              className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-700 dark:bg-gray-800 sm:p-6"
             >
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{t("handInAssignment")}</h3>
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
@@ -1290,7 +1349,7 @@ export function StudentCourseClasswork({
                   {submissionDraft.trim()}
                 </p>
               ) : null}
-              <div className="mt-6 flex justify-end gap-2">
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setShowConfirmDialog(false)}
@@ -1327,37 +1386,45 @@ export function StudentCourseClasswork({
   return (
     <div className="min-w-0 space-y-5">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         {/* Topic filter dropdown */}
-        <div className="relative" ref={topicFilterRef}>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 pl-1">{t("topicFilter")}</div>
+        <div className="relative min-w-0 max-w-full" ref={topicFilterRef}>
+          <div className="mb-1 pl-1 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{t("topicFilter")}</div>
           <button
             type="button"
             onClick={() => setTopicFilterOpen((o) => !o)}
-            className="inline-flex items-center justify-between gap-2 min-w-[180px] rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/50 transition-colors"
+            className="group inline-flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:border-blue-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500 dark:hover:bg-gray-700/50 min-w-0 w-full max-w-[min(100%,320px)] sm:min-w-[260px] sm:w-auto"
           >
-            <span className="truncate">{topicFilter === "all" ? t("allTopics") : topics.find((tp) => tp.id === topicFilter)?.title ?? t("allTopics")}</span>
-            <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
+            <div className="flex items-center gap-2 min-w-0">
+              <Filter className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors shrink-0" />
+              <span className="truncate">{topicFilter === "all" ? t("allTopics") : topics.find((tp) => tp.id === topicFilter)?.title ?? t("allTopics")}</span>
+            </div>
+            <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform duration-200 shrink-0", topicFilterOpen && "rotate-180")} />
           </button>
           {topicFilterOpen && (
-            <div className="absolute left-0 top-full mt-1 z-40 min-w-[220px] max-h-64 overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+            <div className="absolute left-0 top-full mt-2 z-40 min-w-[240px] max-h-72 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900 animate-in fade-in zoom-in duration-100">
               <button
                 type="button"
                 className={cn(
-                  "w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
-                  topicFilter === "all" && "font-semibold text-blue-600 dark:text-blue-400"
+                  "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
+                  topicFilter === "all" 
+                    ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
                 )}
                 onClick={() => { setTopicFilter("all"); setTopicFilterOpen(false); }}
               >
                 {t("allTopics")}
               </button>
+              <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
               {topics.map((tp) => (
                 <button
                   key={tp.id}
                   type="button"
                   className={cn(
-                    "w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-200",
-                    topicFilter === tp.id && "font-semibold text-blue-600 dark:text-blue-400"
+                    "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
+                    topicFilter === tp.id 
+                      ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
                   )}
                   onClick={() => { setTopicFilter(tp.id); setTopicFilterOpen(false); }}
                 >
@@ -1368,16 +1435,11 @@ export function StudentCourseClasswork({
           )}
         </div>
 
-        <div className="flex-1" />
-
-        {/* Open profile button */}
-
-
         {/* Collapse/Expand all */}
         <button
           type="button"
           onClick={toggleAllCollapsed}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
         >
           {allCollapsed ? (
             <>
@@ -1420,15 +1482,6 @@ export function StudentCourseClasswork({
                   <div className="p-1.5 rounded-full text-gray-500 dark:text-gray-400">
                     {collapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
                   </div>
-                  <button
-                    type="button"
-                    className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    <MoreVertical className="w-5 h-5" />
-                  </button>
                 </div>
 
                 {/* Section items */}
@@ -1445,7 +1498,7 @@ export function StudentCourseClasswork({
                           return (
                             <div
                               key={`m-${mat.id}`}
-                              className="flex items-center gap-3 px-2 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors rounded-lg"
+                              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 rounded-lg"
                             >
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-500 text-white">
                                 <FileText className="h-4 w-4" />
@@ -1453,13 +1506,42 @@ export function StudentCourseClasswork({
                               <span className="flex-1 min-w-0 truncate text-sm text-gray-900 dark:text-white">
                                 {mat.title}
                               </span>
-                              <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                              <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
                                 {mat.created_at ? `${t("publishedLabel")} ${formatPostedDate(mat.created_at, dateLocale, t)}` : ""}
                               </span>
-                              <button type="button" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-colors shrink-0">
-                                <MoreVertical className="w-4 h-4" />
-                              </button>
                             </div>
+                          );
+                        }
+                        if (cItem.kind === "question") {
+                          const q = cItem.data as QuestionRow;
+                          const isGraded = q.grade !== null;
+                          return (
+                            <Link
+                              key={`q-${q.id}`}
+                              href={`/app/teacher/view-questions/${q.id}`}
+                              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 rounded-lg group"
+                            >
+                              <div className={cn(
+                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-transform group-hover:scale-110",
+                                isGraded ? "bg-green-500" : "bg-blue-500"
+                              )}>
+                                <MessageSquare className="h-4 w-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block truncate text-sm font-medium text-gray-900 dark:text-white">
+                                  {q.text}
+                                </span>
+                                {q.status === "submitted" && (
+                                  <span className="text-[10px] text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    {isGraded ? `${t("gradedStatus")}: ${q.grade}` : t("submittedStatus")}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
+                                {q.created_at ? `${t("publishedLabel")} ${formatPostedDate(q.created_at, dateLocale, t)}` : ""}
+                              </span>
+                            </Link>
                           );
                         }
 
@@ -1485,7 +1567,7 @@ export function StudentCourseClasswork({
                                 }
                               }}
                               className={cn(
-                                "flex items-center gap-3 px-2 py-3 cursor-pointer transition-colors rounded-lg",
+                                "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 cursor-pointer transition-colors rounded-lg",
                                 isExpanded
                                   ? "bg-blue-50/50 dark:bg-blue-900/10"
                                   : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
@@ -1510,23 +1592,22 @@ export function StudentCourseClasswork({
                                   )}
                                 </div>
                               </div>
-                              <span className={cn(
-                                "shrink-0 text-xs",
-                                isOverdue ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400"
-                              )}>
+                              <span
+                                className={cn(
+                                  "shrink-0 text-[10px] sm:text-xs",
+                                  isOverdue ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400"
+                                )}
+                              >
                                 {item.deadline
-                                  ? `${t("dueDateShort")} ${formatDateShort(item.deadline)}`
+                                  ? `${t("dueDateShort")} ${formatDateShort(item.deadline, lang)}`
                                   : t("noDueDate")}
                               </span>
-                              <button type="button" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-colors shrink-0" onClick={(e) => e.stopPropagation()}>
-                                <MoreVertical className="w-4 h-4" />
-                              </button>
                             </div>
 
                             {/* Expanded inline details */}
                             {isExpanded && (
-                              <div className="border-t border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800 px-4 py-5 space-y-4">
-                                <div className="pl-12 space-y-4">
+                              <div className="border-t border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800 px-3 py-4 sm:px-4 sm:py-5 space-y-4">
+                                <div className="space-y-4 pl-0 sm:pl-12">
                                   {/* Meta: Posted + Grade status */}
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="font-medium text-gray-500 dark:text-gray-400">
@@ -1542,7 +1623,7 @@ export function StudentCourseClasswork({
                                   {/* Description */}
                                   {item.description && (
                                     <div
-                                      className="prose prose-sm prose-blue dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
+                                      className="prose prose-sm prose-blue max-w-none break-words text-gray-700 dark:prose-invert dark:text-gray-300 [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
                                       dangerouslySetInnerHTML={{ __html: item.description }}
                                     />
                                   )}
@@ -1568,7 +1649,7 @@ export function StudentCourseClasswork({
                                             href={u}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 min-w-[180px] max-w-[280px] hover:shadow transition-shadow"
+                                            className="flex min-w-0 w-full max-w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5 transition-shadow hover:shadow dark:border-gray-700 dark:bg-gray-900 sm:min-w-[180px] sm:max-w-[280px] sm:w-auto"
                                           >
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{name}</p>
@@ -1584,7 +1665,7 @@ export function StudentCourseClasswork({
                                           href={u}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 min-w-[180px] max-w-[280px] hover:shadow transition-shadow"
+                                          className="flex min-w-0 w-full max-w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5 transition-shadow hover:shadow dark:border-gray-700 dark:bg-gray-900 sm:min-w-[180px] sm:max-w-[280px] sm:w-auto"
                                         >
                                           <div className="min-w-0 flex-1">
                                             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{t("linkOption")}</p>

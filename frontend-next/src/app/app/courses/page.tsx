@@ -231,7 +231,7 @@ export default function MyCoursesPage() {
                           className="w-full text-left flex flex-col rounded-t-2xl overflow-hidden"
                         >
                           <div
-                            className="h-[100px] w-full px-4 flex flex-col justify-center shrink-0 relative overflow-hidden"
+                            className="h-[160px] w-full px-4 flex flex-col justify-center shrink-0 relative overflow-hidden"
                           >
                             {/* Background Image Banner */}
                             <div 
@@ -247,7 +247,7 @@ export default function MyCoursesPage() {
                             {y ? <div className="relative z-10 text-white/90 text-sm font-semibold mt-1">{y}</div> : null}
                           </div>
                         </button>
-                        <div className="p-4 flex-1 flex flex-col gap-3 min-h-[88px]">
+                        <div className="p-4 flex-1 flex flex-col gap-3 min-h-[100px]">
                           <button
                             type="button"
                             onClick={() => router.push(`/app/courses/${c.id}`)}

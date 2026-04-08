@@ -2,6 +2,7 @@
 
 import { Trash2, Link as LinkIcon } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 
 function getHost(url: string): string {
@@ -20,6 +21,7 @@ export function LinkAttachmentCard({
   onRemove: () => void;
 }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const isDark = theme === "dark";
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -53,7 +55,7 @@ export function LinkAttachmentCard({
         type="button"
         onClick={onRemove}
         className="shrink-0 p-1.5 rounded-lg text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-        aria-label="Remove"
+        aria-label={t("remove")}
       >
         <Trash2 className="w-4 h-4" />
       </button>

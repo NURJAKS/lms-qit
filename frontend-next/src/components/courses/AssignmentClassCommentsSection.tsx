@@ -15,7 +15,14 @@ export type ClassCommentRow = {
   created_at: string | null;
 };
 
-export function AssignmentClassCommentsSection({ assignmentId }: { assignmentId: number }) {
+export function AssignmentClassCommentsSection({
+  assignmentId,
+  hideHeading = false,
+}: {
+  assignmentId: number;
+  /** When the parent already renders the section title (e.g. teacher assignment page). */
+  hideHeading?: boolean;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
@@ -43,8 +50,12 @@ export function AssignmentClassCommentsSection({ assignmentId }: { assignmentId:
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-bold text-gray-900 dark:text-white">{t("assignmentClassComments")}</h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{t("assignmentClassCommentsHint")}</p>
+      {hideHeading ? null : (
+        <>
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white">{t("assignmentClassComments")}</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{t("assignmentClassCommentsHint")}</p>
+        </>
+      )}
 
       {isPending ? (
         <p className="text-sm text-gray-500">{t("loading")}</p>

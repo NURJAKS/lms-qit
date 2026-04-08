@@ -25,6 +25,7 @@ import {
   DownloadCloud,
   Clock,
   MessageSquare,
+  Smartphone,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
@@ -70,7 +71,7 @@ const freeLimits = [
 ] as const;
 
 export default function PremiumPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const router = useRouter();
   const { user, setAuth } = useAuthStore();
 
@@ -93,6 +94,7 @@ export default function PremiumPage() {
   const [cardCvv, setCardCvv] = useState("123");
   const [paying, setPaying] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "kaspi" | "halyk" | "eurasian" | "tinkoff" | "jusan" | "forte" | null>(null);
 
   const { data: config } = useQuery({
     queryKey: ["premium-config"],
@@ -132,6 +134,7 @@ export default function PremiumPage() {
   const openPaymentModal = () => {
     setPaymentModal(true);
     setPaymentStep("method");
+    setPaymentMethod(null);
     setTransactionId(null);
   };
 
@@ -272,15 +275,99 @@ export default function PremiumPage() {
             {paymentStep === "method" && (
               <>
                 <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {t("premiumPlanName")} — {price.toLocaleString("ru-KZ")}₸
+                  {t("premiumPlanName")} — {price.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-KZ")}₸
                 </p>
-                <div className="flex gap-3 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                   <button
                     type="button"
-                    onClick={() => setPaymentStep("card")}
-                    className="flex-1 flex items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-purple-500 dark:hover:border-purple-500 transition-colors"
+                    onClick={() => { setPaymentMethod("card"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
                   >
-                    <CreditCard className="w-6 h-6" /> {t("paymentCard")}
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("paymentCard")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentCardsSupported")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("kaspi"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("paymentKaspiBrand")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentKaspiConfirm")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("halyk"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("halyk")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentHalykFast")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("eurasian"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("eurasianBank")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("tinkoff"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("tinkoff")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("jusan"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("jusan")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("forte"); setPaymentStep("card"); }}
+                    className="group relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left hover:opacity-80 border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-700/50"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{t("forte")}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentBankCard")}</p>
+                    </div>
                   </button>
                 </div>
                 <button type="button" onClick={() => setPaymentModal(false)} className="w-full py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -367,7 +454,7 @@ export default function PremiumPage() {
 
       {/* Hero */}
       <div
-        className="relative rounded-3xl overflow-hidden mb-10 sm:mb-16 p-5 sm:p-8 md:p-12 lg:p-20 text-white"
+        className="relative rounded-3xl overflow-hidden mb-8 sm:mb-10 p-4 sm:p-6 md:p-8 lg:p-10 text-white"
         style={{
           background: "linear-gradient(135deg, #1a237e 0%, #311b92 40%, #7c3aed 100%)",
           boxShadow: "0 25px 50px -12px rgba(124, 58, 237, 0.35)",
@@ -377,35 +464,35 @@ export default function PremiumPage() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-pink-400 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
         </div>
-        <div className="relative flex flex-col md:flex-row items-center gap-12">
+        <div className="relative flex flex-col md:flex-row items-center gap-6 md:gap-8">
           <div className="flex-1 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 text-base font-medium mb-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/20 text-sm font-medium mb-4">
               <Sparkles className="w-5 h-5" />
               {t("premiumBadge")}
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold font-montserrat leading-[1.1] mb-4 sm:mb-6 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-bold font-montserrat leading-[1.1] mb-3 sm:mb-4 tracking-tight">
               {t("premiumPageTitle")}
             </h1>
-            <p className="text-white/90 text-base sm:text-lg md:text-2xl max-w-2xl leading-relaxed">
+            <p className="text-white/90 text-sm sm:text-base md:text-xl max-w-2xl leading-relaxed">
               {t("premiumPageSubtitle")}
             </p>
           </div>
-          <div className="hidden md:flex w-40 h-40 lg:w-48 lg:h-48 rounded-3xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0">
-            <Crown className="w-20 h-20 lg:w-24 lg:h-24 text-white" />
+          <div className="hidden md:flex w-28 h-28 lg:w-36 lg:h-36 rounded-3xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0">
+            <Crown className="w-14 h-14 lg:w-16 lg:h-16 text-white" />
           </div>
         </div>
       </div>
 
       {/* Free vs Premium Comparison */}
-      <div className="mb-16">
-        <h2 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-center text-gray-900 dark:text-white mb-8 sm:mb-12 tracking-tight">
+      <div className="mb-10">
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-6 sm:mb-8 tracking-tight">
           {t("freeVsPremiumTitle")}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
           {/* Free Plan */}
-          <div className="rounded-3xl p-5 sm:p-8 lg:p-10 bg-gray-50 dark:bg-gray-800/50 border-2 border-gray-200 dark:border-gray-700">
-            <div className="text-center mb-8">
-              <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          <div className="rounded-3xl p-4 sm:p-6 lg:p-7 bg-gray-50 dark:bg-gray-800/50 border-2 border-gray-200 dark:border-gray-700">
+            <div className="text-center mb-5">
+              <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1">
                 {t("freePlan")}
               </h3>
             </div>
@@ -415,7 +502,7 @@ export default function PremiumPage() {
                   <span className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0 mt-0.5">
                     <X className="w-4 h-4 text-red-600 dark:text-red-400" />
                   </span>
-                  <span className="text-base sm:text-lg">{t(key)}</span>
+                  <span className="text-sm sm:text-base">{t(key)}</span>
                 </li>
               ))}
             </ul>
@@ -423,7 +510,7 @@ export default function PremiumPage() {
 
           {/* Premium Plan */}
           <div
-            className="relative rounded-3xl p-5 sm:p-8 lg:p-10 border-2 overflow-hidden"
+            className="relative rounded-3xl p-4 sm:p-6 lg:p-7 border-2 overflow-hidden"
             style={{
               background: "linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(91, 33, 182, 0.1) 100%)",
               borderColor: "rgba(124, 58, 237, 0.3)",
@@ -432,11 +519,11 @@ export default function PremiumPage() {
             <div className="absolute top-0 right-0 px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-bold rounded-bl-2xl">
               {t("premiumPopular")}
             </div>
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-white mb-4">
-                <Crown className="w-8 h-8" />
+            <div className="text-center mb-5">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-white mb-3">
+                <Crown className="w-6 h-6" />
               </div>
-              <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+              <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1">
                 {t("premiumPlan")}
               </h3>
             </div>
@@ -446,7 +533,7 @@ export default function PremiumPage() {
                   <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shrink-0 mt-0.5">
                     <Check className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   </span>
-                  <span className="text-base sm:text-lg">{t(key as TranslationKey)}</span>
+                  <span className="text-sm sm:text-base">{t(key as TranslationKey)}</span>
                 </li>
               ))}
             </ul>
@@ -455,24 +542,24 @@ export default function PremiumPage() {
       </div>
 
       {/* Premium Features Grid */}
-      <div className="mb-16">
-        <h2 className="text-4xl md:text-5xl font-bold text-center text-gray-900 dark:text-white mb-12 tracking-tight">
+      <div className="mb-10">
+        <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-7 tracking-tight">
           {t("premiumWhatIncluded")}
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
           {premiumFeatures.map(({ icon: Icon, key }, i) => (
             <div
               key={key}
-              className="flex flex-col items-center text-center p-8 lg:p-10 rounded-3xl bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 overflow-hidden group hover:shadow-2xl transition-all duration-300"
+              className="flex flex-col items-center text-center p-5 lg:p-6 rounded-3xl bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 overflow-hidden group hover:shadow-2xl transition-all duration-300"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <div
-                className="w-20 h-20 lg:w-24 lg:h-24 rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform"
+                className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center mb-4 text-white group-hover:scale-110 transition-transform"
                 style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)" }}
               >
-                <Icon className="w-10 h-10 lg:w-12 lg:h-12" />
+                <Icon className="w-7 h-7 lg:w-8 lg:h-8" />
               </div>
-              <h3 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white leading-tight">
+              <h3 className="text-base lg:text-lg font-bold text-gray-900 dark:text-white leading-tight">
                 {t(key as TranslationKey)}
                 {key === "premiumFeature1" && premiumCourses.length > 0 && ` (${premiumCourses.length})`}
               </h3>
@@ -483,7 +570,7 @@ export default function PremiumPage() {
 
       {/* Pricing card */}
       <div
-        className="relative rounded-3xl overflow-hidden border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 via-indigo-50/90 to-violet-50 dark:from-gray-800/95 dark:via-purple-900/20 dark:to-gray-800/95 mb-16"
+        className="relative rounded-3xl overflow-hidden border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 via-indigo-50/90 to-violet-50 dark:from-gray-800/95 dark:via-purple-900/20 dark:to-gray-800/95 mb-10"
         style={{
           boxShadow: "0 20px 40px rgba(124, 58, 237, 0.15)",
         }}
@@ -491,28 +578,28 @@ export default function PremiumPage() {
         <div className="absolute top-0 right-0 px-6 py-2 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-bold rounded-bl-2xl">
           {t("premiumPopular")}
         </div>
-        <div className="p-10 md:p-12 lg:p-16">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8 mb-12">
+        <div className="p-6 md:p-8 lg:p-10">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-8">
             <div>
-              <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
                 {t("premiumPlanName")}
               </h2>
-              <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 mb-6">
+              <p className="text-base md:text-lg text-gray-600 dark:text-gray-400 mb-3">
                 {t("premiumPlanDesc")}
               </p>
               <div className="flex items-baseline gap-3">
-                <span className="text-5xl md:text-6xl font-bold text-purple-700 dark:text-purple-400">
-                  {price.toLocaleString("ru-KZ")}
+                <span className="text-4xl md:text-5xl font-bold text-purple-700 dark:text-purple-400">
+                  {price.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-KZ")}
                 </span>
-                <span className="text-2xl text-gray-500">₸</span>
-                <span className="text-lg text-gray-500">/ {t("premiumOneTime")}</span>
+                <span className="text-xl text-gray-500">₸</span>
+                <span className="text-base text-gray-500">/ {t("premiumOneTime")}</span>
               </div>
             </div>
             <div className="shrink-0">
               <button
                 onClick={openPaymentModal}
                 disabled={loading || purchaseMutation.isPending}
-                className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl font-bold text-white text-xl transition-all hover:scale-105 hover:shadow-xl disabled:opacity-70 disabled:hover:scale-100 disabled:hover:shadow-none"
+                className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-2xl font-bold text-white text-base transition-all hover:scale-105 hover:shadow-xl disabled:opacity-70 disabled:hover:scale-100 disabled:hover:shadow-none"
                 style={{
                   background: "linear-gradient(135deg, #7c3aed, #5b21b6)",
                   boxShadow: "0 10px 30px rgba(124, 58, 237, 0.4)",
@@ -523,17 +610,17 @@ export default function PremiumPage() {
                 ) : (
                   <>
                     {t("premiumBuyNow")}
-                    <ArrowRight className="w-6 h-6" />
+                    <ArrowRight className="w-5 h-5" />
                   </>
                 )}
               </button>
             </div>
           </div>
 
-          <div className="pt-8 border-t-2 border-purple-200/60 dark:border-purple-900/50">
+          <div className="pt-6 border-t-2 border-purple-200/60 dark:border-purple-900/50">
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(["premiumInclude1", "premiumInclude2", "premiumInclude3", "premiumInclude4", "premiumInclude5", "premiumInclude6", "premiumInclude7", "premiumInclude8", "premiumInclude9", "premiumInclude10", "premiumInclude11", "premiumInclude12"] as const).map((key) => (
-                <li key={key} className="flex items-center gap-4 text-lg text-gray-700 dark:text-gray-300">
+                <li key={key} className="flex items-center gap-3 text-base text-gray-700 dark:text-gray-300">
                   <span className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shrink-0">
                     <Check className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   </span>
@@ -547,14 +634,14 @@ export default function PremiumPage() {
 
       {/* Premium courses list */}
       {premiumCourses.length > 0 && (
-        <div className="mb-16 p-8 lg:p-10 rounded-3xl bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-6">
-            <Lock className="w-8 h-8 text-purple-500" />
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
+        <div className="mb-10 p-6 lg:p-7 rounded-3xl bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-4">
+            <Lock className="w-6 h-6 text-purple-500" />
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
               {t("premiumCoursesListTitle")}
             </h2>
           </div>
-          <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-base text-gray-600 dark:text-gray-400 mb-4">
             {t("premiumCoursesListDesc")}
           </p>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">

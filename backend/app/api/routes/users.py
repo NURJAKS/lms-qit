@@ -25,6 +25,7 @@ from app.models.student_profile import StudentProfile
 from app.schemas.student_profile import StudentProfileMergedResponse, StudentProfileUpdate
 from app.models.teacher_group import TeacherGroup
 from app.models.group_student import GroupStudent
+from app.api.course_access import has_any_ready_course_access
 from app.schemas.user import UserResponse, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -256,9 +257,7 @@ def get_me(
 ):
     data = UserResponse.model_validate(current_user).model_dump()
     if current_user.role == "student":
-        data["has_group_access"] = (
-            db.query(GroupStudent).filter(GroupStudent.student_id == current_user.id).first() is not None
-        )
+        data["has_group_access"] = has_any_ready_course_access(db, current_user.id)
     else:
         data["has_group_access"] = True
     return data

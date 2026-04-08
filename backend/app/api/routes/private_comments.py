@@ -32,13 +32,15 @@ def _assignment_private_thread_entries(
     assignment: TeacherAssignment,
     submission: AssignmentSubmission | None,
     student_user: User | None,
-    teacher_user: User | None,
+    assignment_teacher_user: User | None,
+    teacher_comment_author_user: User | None,
 ) -> list[dict]:
     """Student note (student_private_comment) then teacher feedback (teacher_comment)."""
     if not submission:
         return []
     out: list[dict] = []
-    teacher_name = (teacher_user.full_name or teacher_user.email) if teacher_user else None
+    teacher_display_user = teacher_comment_author_user or assignment_teacher_user
+    teacher_name = (teacher_display_user.full_name or teacher_display_user.email) if teacher_display_user else None
     student_name = (student_user.full_name or student_user.email) if student_user else None
     sid = submission.id
     spc = getattr(submission, "student_private_comment", None)
@@ -63,7 +65,7 @@ def _assignment_private_thread_entries(
                 "target_type": "assignment",
                 "target_id": assignment.id,
                 "author_role": "teacher",
-                "author_id": assignment.teacher_id,
+                "author_id": teacher_display_user.id if teacher_display_user else assignment.teacher_id,
                 "author_name": teacher_name,
                 "text": str(tc).strip(),
                 "created_at": submission.graded_at.isoformat() if submission.graded_at else None,
@@ -91,7 +93,7 @@ def list_private_comments(
         if not assignment:
             raise HTTPException(status_code=404, detail="Assignment not found")
 
-        teacher_user = db.query(User).filter(User.id == assignment.teacher_id).first()
+        assignment_teacher_user = db.query(User).filter(User.id == assignment.teacher_id).first()
         
         # Decide which student we're looking at
         target_student_id = None
@@ -120,7 +122,20 @@ def list_private_comments(
                 .first()
             )
             student_user = db.query(User).filter(User.id == target_student_id).first()
-            out.extend(_assignment_private_thread_entries(assignment, submission, student_user, teacher_user))
+            teacher_comment_author_user = (
+                db.query(User).filter(User.id == submission.teacher_comment_author_id).first()
+                if submission and submission.teacher_comment_author_id
+                else None
+            )
+            out.extend(
+                _assignment_private_thread_entries(
+                    assignment,
+                    submission,
+                    student_user,
+                    assignment_teacher_user,
+                    teacher_comment_author_user,
+                )
+            )
         else:
             # Teacher viewing ALL threads (not common for this endpoint but handled)
             rows = (
@@ -130,7 +145,18 @@ def list_private_comments(
                 .all()
             )
             for submission, student_user in rows:
-                for entry in _assignment_private_thread_entries(assignment, submission, student_user, teacher_user):
+                teacher_comment_author_user = (
+                    db.query(User).filter(User.id == submission.teacher_comment_author_id).first()
+                    if submission.teacher_comment_author_id
+                    else None
+                )
+                for entry in _assignment_private_thread_entries(
+                    assignment,
+                    submission,
+                    student_user,
+                    assignment_teacher_user,
+                    teacher_comment_author_user,
+                ):
                     entry["student_id"] = submission.student_id
                     out.append(entry)
 

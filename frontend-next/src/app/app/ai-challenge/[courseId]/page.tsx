@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { ChevronLeft, Trophy, Zap, User, Bot, Clock, Layers, Brain, Star, Sparkles, Bug, Code, Terminal, GraduationCap, Shield } from "lucide-react";
+import { Trophy, Zap, User, Bot, Clock, Layers, Brain, Star, Sparkles, Bug, Code, Terminal, GraduationCap, Shield } from "lucide-react";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { Particles } from "@/components/ui/particles";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
@@ -70,6 +70,11 @@ interface ResultsResponse {
     user_answer: string;
     correct_answer: string;
     explanation?: string;
+    explanation_by_lang?: {
+      ru?: string;
+      kk?: string;
+      en?: string;
+    };
   }>;
   metrics?: {
     user_speed_avg_sec: number;
@@ -153,6 +158,40 @@ function parseChallengeTopicFromUrl(s: string | null): ChallengeTopic | null {
   return null;
 }
 
+function getAllowedTopicsForMode(mode: GameMode): ChallengeTopic[] {
+  if (mode === "find_bug" || mode === "guess_output" || mode === "speed_code") {
+    return ["python", "web"];
+  }
+  return ["python", "web", "informatics", "cybersecurity"];
+}
+
+function localizeNewModeCategory(category: string, t: (key: string) => string): string {
+  const normalized = category.trim().toLowerCase();
+  const keyMap: Record<string, string> = {
+    all: "aiCategoryAll",
+    python: "aiCategoryPython",
+    javascript: "aiCategoryJavascript",
+    html_css: "aiCategoryHtmlCss",
+    algorithms: "aiCategoryAlgorithms",
+    cs_general: "aiCategoryCsGeneral",
+    cybersecurity: "aiTopicCybersecurity",
+    web: "aiClassicTrackWeb",
+  };
+  const key = keyMap[normalized];
+  return key ? t(key) : category;
+}
+
+function localizeNewModeLevel(level: string, t: (key: string) => string): string {
+  const normalized = level.trim().toLowerCase();
+  const keyMap: Record<string, string> = {
+    beginner: "aiLevelBeginner",
+    intermediate: "aiLevelIntermediate",
+    expert: "aiLevelExpert",
+  };
+  const key = keyMap[normalized];
+  return key ? t(key) : level;
+}
+
 // LEVEL_LABELS will be created using translations inside the component
 
 export default function AIChallengePage() {
@@ -198,6 +237,7 @@ export default function AIChallengePage() {
   );
   const [levelConfirmed, setLevelConfirmed] = useState(urlAutostart);
   const isClassicChallengeMode = !["find_bug", "guess_output", "speed_code"].includes(gameMode);
+  const allowedTopics = getAllowedTopicsForMode(gameMode);
   const { data: classicHelpCourseId } = useQuery({
     queryKey: ["classic-help-course-id", challengeTopic],
     queryFn: async () => {
@@ -611,7 +651,9 @@ export default function AIChallengePage() {
   }, [cardResult, gameMode, currentQ, questions.length]);
 
   const topicDescriptionLabel =
-    challengeTopic === "python"
+    challengeTopic == null
+      ? t("aiClassicTrackAll")
+      : challengeTopic === "python"
       ? t("aiClassicTrackPython")
       : challengeTopic === "web"
         ? t("aiClassicTrackWeb")
@@ -619,7 +661,7 @@ export default function AIChallengePage() {
           ? t("aiClassicTrackInformatics")
           : challengeTopic === "cybersecurity"
             ? t("aiTopicCybersecurity")
-            : t("aiClassicTrackPython");
+            : t("aiClassicTrackAll");
 
   const canStartFromIntro =
     wizardGameSelected &&
@@ -646,6 +688,15 @@ export default function AIChallengePage() {
     setAiLevel(l);
     setLevelConfirmed(true);
   };
+
+  useEffect(() => {
+    if (challengeTopic && !allowedTopics.includes(challengeTopic)) {
+      setChallengeTopic(null);
+      setLevelConfirmed(false);
+      startMutation.reset();
+      newModeStartMutation.reset();
+    }
+  }, [allowedTopics, challengeTopic, startMutation, newModeStartMutation]);
 
   if (!course) {
     return (
@@ -733,14 +784,6 @@ export default function AIChallengePage() {
       )}
       
       <div className="relative max-w-4xl mx-auto z-10 px-1 sm:px-0">
-        {shouldShowIntro && (
-          <BlurFade delay={0.05}>
-            <Link href="/app/ai-challenge/1" className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 mb-6 transition-colors">
-              <ChevronLeft className="w-4 h-4" /> {t("back")}
-            </Link>
-          </BlurFade>
-        )}
-
       {/* Показываем загрузку, если параметры переданы и игра начинается */}
       {isLoadingGame && (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -912,54 +955,27 @@ export default function AIChallengePage() {
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("aiTopicLabel")}:</p>
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => selectWizardTopic("python")}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          challengeTopic === "python"
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                        }`}
-                      >
-                        <span aria-hidden>🐍</span>
-                        {t("aiClassicTrackPython")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectWizardTopic("web")}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          challengeTopic === "web"
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                        }`}
-                      >
-                        <span aria-hidden>🌐</span>
-                        {t("aiClassicTrackWeb")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectWizardTopic("informatics")}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          challengeTopic === "informatics"
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                        }`}
-                      >
-                        <GraduationCap className="w-4 h-4" />
-                        {t("aiClassicTrackInformatics")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectWizardTopic("cybersecurity")}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          challengeTopic === "cybersecurity"
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                        }`}
-                      >
-                        <Shield className="w-4 h-4" aria-hidden />
-                        {t("aiTopicCybersecurity")}
-                      </button>
+                      {allowedTopics.map((topic) => (
+                        <button
+                          key={topic}
+                          type="button"
+                          onClick={() => selectWizardTopic(topic)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            challengeTopic === topic
+                              ? "bg-purple-600 text-white"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          }`}
+                        >
+                          {topic === "python" && <span aria-hidden>🐍</span>}
+                          {topic === "web" && <span aria-hidden>🌐</span>}
+                          {topic === "informatics" && <GraduationCap className="w-4 h-4" />}
+                          {topic === "cybersecurity" && <Shield className="w-4 h-4" aria-hidden />}
+                          {topic === "python" && t("aiClassicTrackPython")}
+                          {topic === "web" && t("aiClassicTrackWeb")}
+                          {topic === "informatics" && t("aiClassicTrackInformatics")}
+                          {topic === "cybersecurity" && t("aiTopicCybersecurity")}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -977,11 +993,9 @@ export default function AIChallengePage() {
                           type="button"
                           onClick={() => selectWizardLevel(l)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            aiLevel === l && levelConfirmed
+                            levelConfirmed && aiLevel === l
                               ? "bg-purple-600 text-white"
-                              : aiLevel === l
-                                ? "bg-purple-100 dark:bg-purple-900/40 text-purple-900 dark:text-purple-100 ring-2 ring-purple-400 dark:ring-purple-500"
-                                : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                           }`}
                         >
                           {l === "beginner" ? t("aiLevelBeginner") : l === "intermediate" ? t("aiLevelIntermediate") : t("aiLevelExpert")}
@@ -1060,7 +1074,7 @@ export default function AIChallengePage() {
             </div>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{t("aiCard")} {currentQ + 1} / {questions.length}</p>
-          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}с</p>
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}{t("aiSecondsShort")}</p>
           {cardResult ? (
             <div className="space-y-4">
               <p className={`text-lg font-semibold ${cardResult === "user" ? "text-green-600" : "text-amber-600"}`}>
@@ -1074,7 +1088,11 @@ export default function AIChallengePage() {
           ) : (
             <>
               <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">{questions[currentQ].question_text}</h2>
-              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">{t("aiWaitAnswer").replace("{time}", aiTimes[currentQ]?.toFixed(1) || "0")}</p>
+              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+                {t("aiWaitAnswer")
+                  .replace("{time}", aiTimes[currentQ]?.toFixed(1) || "0")
+                  .replace("{unit}", t("aiSecondsShort"))}
+              </p>
               <div className="space-y-3">
                 {["a", "b", "c", "d"].map((key) => {
                   const q = questions[currentQ];
@@ -1157,7 +1175,7 @@ export default function AIChallengePage() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
               <Clock className="w-5 h-5" />
-              <span className="font-bold text-lg">{timeLeft}с</span>
+          <span className="font-bold text-lg">{timeLeft}{t("aiSecondsShort")}</span>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
@@ -1191,7 +1209,7 @@ export default function AIChallengePage() {
             </div>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{t("teacherCreateQuestion")} {currentQ + 1} / {questions.length}</p>
-          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}с</p>
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t("aiTime")}: {aiTimes[currentQ]?.toFixed(1)}{t("aiSecondsShort")}</p>
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-6">{questions[currentQ].question_text}</h2>
           <div className="space-y-3">
             {["a", "b", "c", "d"].map((key) => {
@@ -1241,7 +1259,7 @@ export default function AIChallengePage() {
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
                   <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span className={`text-sm font-mono font-bold ${newModeTimeLeft < 10 ? "text-red-500 animate-pulse" : "text-blue-700 dark:text-blue-300"}`}>
-                    {newModeTimeLeft}s
+                    {newModeTimeLeft}{t("aiSecondsShort")}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800">
@@ -1254,10 +1272,10 @@ export default function AIChallengePage() {
             {/* Category + Level badge */}
             <div className="flex items-center justify-center gap-2 mb-4">
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300">
-                {CATEGORY_ICONS[q.category] || "📝"} {q.category}
+                {CATEGORY_ICONS[q.category] || "📝"} {localizeNewModeCategory(q.category, t)}
               </span>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
-                {q.level}
+                {localizeNewModeLevel(q.level, t)}
               </span>
             </div>
 
@@ -1354,14 +1372,14 @@ export default function AIChallengePage() {
             <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <p className="font-medium text-gray-700 dark:text-gray-300">{t("aiUser")}</p>
               <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{results.user_correct}/{results.total_questions}</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.user_time.toFixed(1)}с</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.user_time.toFixed(1)}{t("aiSecondsShort")}</p>
               {results.user_bonus_points > 0 && <p className="text-sm text-green-600 dark:text-green-400">{t("bonus")}: +{results.user_bonus_points}</p>}
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{t("aiTotal")}: {results.user_total_score}</p>
             </div>
             <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <p className="font-medium text-gray-700 dark:text-gray-300">{t("aiBot")}</p>
               <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{results.ai_correct}/{results.total_questions}</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.ai_time.toFixed(1)}с</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("aiThinkingSpeed")}: {results.ai_time.toFixed(1)}{t("aiSecondsShort")}</p>
               {results.ai_bonus_points > 0 && <p className="text-sm text-green-600 dark:text-green-400">{t("bonus")}: +{results.ai_bonus_points}</p>}
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{t("aiTotal")}: {results.ai_total_score}</p>
             </div>
@@ -1502,7 +1520,10 @@ export default function AIChallengePage() {
                     )}
                     {detail.explanation && (
                       <p className="text-xs text-gray-600 dark:text-gray-400 italic mt-2">
-                        <span className="font-bold not-italic">{t("aiExplanation")}:</span> {detail.explanation}
+                        <span className="font-bold not-italic">{t("aiExplanation")}:</span>{" "}
+                        {detail.explanation_by_lang?.[lang as "ru" | "kk" | "en"] ||
+                          detail.explanation_by_lang?.ru ||
+                          detail.explanation}
                       </p>
                     )}
                   </div>

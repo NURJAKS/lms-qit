@@ -20,6 +20,8 @@ inserts «HTML дегеніміз не?» as Web course topic order 1 when the D
 
   python seed_data.py --seed-informatics-course
 creates «Информатика және ақпараттық технологиялар негіздері» (жалпы ИТ сұрақтары) if missing — AI Challenge «Информатика» трегі үшін.
+  python seed_data.py --seed-cyber-course
+populates «Кибер қауіпсіздік негіздері» with modules/topics/tests if the course exists but has no topics.
 """
 import os
 import sys
@@ -321,6 +323,76 @@ INFO_FINAL_QUESTIONS = [
     ("Zero-day уязвимость дегеніміз не?", "a", "Жаңа анықталған, әлі жаппа жоқ немесе кең таралмаған қауіп", "Тек вирус атауы", "Тек антивирус нұсқасы", "Тек интернет жылдамдығы"),
 ]
 
+# Киберқауіпсіздік курсы (AI Challenge «Основы кибербезопасности» трегі)
+CYBER_COURSE_TITLE = "Кибер қауіпсіздік негіздері"
+
+QUESTIONS_CYBER_TOPIC_1 = [
+    ("CIA үштігі дегеніміз не?", "a", "Құпиялылық, бүтіндік, қолжетімділік", "Тек CPU, RAM, диск", "Тек HTTP, HTTPS, FTP", "Тек логин, пароль, email"),
+    ("Қауіп (threat) мен осалдық (vulnerability) айырмашылығы неде?", "b", "Екеуі де бірдей", "Қауіп — ықтимал зиян, осалдық — жүйедегі әлсіздік", "Тек антивирус атауы", "Тек пароль ұзындығы"),
+    ("Least privilege принципі не білдіреді?", "c", "Барлықға admin беру", "Парольсіз кіру", "Тек қажет минималды құқық беру", "Тек күндізгі уақытта жұмыс"),
+]
+
+QUESTIONS_CYBER_TOPIC_2 = [
+    ("Құпия сөзді сақтаудың дұрыс тәсілі қайсысы?", "a", "bcrypt/Argon2 сияқты KDF және тұз", "Тек MD5 хеші", "Тек Base64 кодтау", "Құпия сөзді ашық мәтінде сақтау"),
+    ("Екі факторлы аутентификация (2FA) не үшін?", "d", "Тек экранды құлыптау", "Тек файл өлшемін кішірейту", "Тек Wi‑Fi жылдамдығы", "Құпия сөзден бөлек екінші фактормен кіруді растау"),
+    ("Сессия cookie үшін қандай белгілер қауіпсіздікке көмектеседі?", "b", "Тек Public=true", "HttpOnly, Secure, SameSite", "Тек max-age=999", "Тек color=white"),
+]
+
+QUESTIONS_CYBER_TOPIC_3 = [
+    ("Фишинг шабуылы қалай сипатталады?", "a", "Жалған сайт/email арқылы деректерді алдау", "Тек аппараттық қате", "Тек экран жарықтығы", "Тек процессор сағаты"),
+    ("Социальная инженерия дегеніміз не?", "c", "Тек SQL сұранысы", "Тек шифрлау алгоритмі", "Адамды алдап ақпарат алу", "Тек желілік кабель"),
+    ("Спуфинг (email spoofing) дегеніміз не?", "a", "Жіберушіні бұрмалау", "Тек вирус жою", "Тек диск форматтау", "Тек DNS кэшін тазалау"),
+]
+
+QUESTIONS_CYBER_TOPIC_4 = [
+    ("Malware түрлеріне не жатады?", "b", "Тек текст редакторы", "Вирус, троян, шифрлеуші-қолхат", "Тек браузер кэші", "Тек PNG файл"),
+    ("Ransomware не істейді?", "d", "Тек экранды жарықтандырады", "Тек интернетті тездетеді", "Тек құжатты басып шығарады", "Файлдарды шифрлеп төлем сұрайды"),
+    ("Zero-day осалдық дегеніміз не?", "a", "Жаңа анықталған, әлі жаппа жоқ немесе кең таралмаған қауіп", "Тек күн нөмірі", "Тек антивирус логотипі", "Тек Wi‑Fi атауы"),
+]
+
+QUESTIONS_CYBER_TOPIC_5 = [
+    ("Симметриялық шифрлау дегеніміз не?", "a", "Бір кілт шифрлау/дешифрлеу", "Екі әр түрлі кілтсіз жұмыс істемейді", "Тек хештеу", "Тек сжатие"),
+    ("HTTPS не қамтамасыз етеді?", "c", "Тек сурет сапасын", "Тек экран өлшемін", "Транспорт деңгейінде шифрланған HTTP", "Тек CPU жиілігін"),
+    ("Хештеу парольді сақтау үшін не үшін қолданылады?", "b", "Тек файл өлшемін көрсету", "Бір бағытты айналдыру (оригиналды қалпына келтіру қиын)", "Тек уақыт белгісі", "Тек кескін пиксельдері"),
+]
+
+QUESTIONS_CYBER_TOPIC_6 = [
+    ("Firewall не үшін қажет?", "a", "Трафикті сүзу және саясат бойынша рұқсат/тыйым", "Тек принтерді басқару", "Тек экран жарықтығын", "Тек дыбыс деңгейін"),
+    ("VPN не береді?", "d", "Тек экран түсін өзгертеді", "Тек файл кеңейтімін", "Тек күнтізбе", "Туннельдеу және желі трафигін қорғау"),
+    ("DDoS шабуылы дегеніміз не?", "b", "Тек бір реттік сұраныс", "Қызметті көптеген сұраныспен басып тастау", "Тек файл жою", "Тек құпия сөз өзгерту"),
+]
+
+QUESTIONS_CYBER_TOPIC_7 = [
+    ("Логтарды (logging) не үшін жинайды?", "a", "Оқиғаларды тексеру және тергеу", "Тек диск бос орнын", "Тек экран суретін", "Тек пернетақта түсін"),
+    ("SIEM жүйесі не үшін қолданылады?", "c", "Тек видео монтаж", "Тек музыка ойнату", "Оқиғаларды жинақтау және корреляциялау", "Тек принтер драйвері"),
+    ("IDS/IPS айырмашылығы неде?", "a", "IDS анықтайды, IPS блоктай/басады", "Екеуі де тек лог жинамайды", "Тек антивирус", "Тек DNS"),
+]
+
+QUESTIONS_CYBER_TOPIC_8 = [
+    ("Инцидентке жауап жоспары не үшін?", "b", "Тек маркетинг", "Оқиға кезінде реттелген әрекеттер", "Тек курсты аяқтау", "Тек күнтізбе"),
+    ("Резервтік көшірме (backup) 3-2-1 ережесі не білдіреді?", "d", "Тек 3 күн сақтау", "Тек 2 файл", "Тек 1 диск", "Көптеген көшірмелер, түрлі орындар, бір офлайн"),
+    ("Патчинг (жаңарту) не үшін маңызды?", "a", "Осалдықтарды жабу", "Тек интерфейс түсін өзгерту", "Тек пернетақта тілін", "Тек сағат уақытын"),
+]
+
+TOPIC_QUESTIONS_CYBERSECURITY = [
+    QUESTIONS_CYBER_TOPIC_1,
+    QUESTIONS_CYBER_TOPIC_2,
+    QUESTIONS_CYBER_TOPIC_3,
+    QUESTIONS_CYBER_TOPIC_4,
+    QUESTIONS_CYBER_TOPIC_5,
+    QUESTIONS_CYBER_TOPIC_6,
+    QUESTIONS_CYBER_TOPIC_7,
+    QUESTIONS_CYBER_TOPIC_8,
+]
+
+CYBER_FINAL_QUESTIONS = [
+    ("OWASP Top 10 тізімінің мақсаты неде?", "a", "Веб-қосымшалардағы негізгі қауіптерді анықтау", "Тек CPU модельдері", "Тек HTML тегтері", "Тек CSS түстері"),
+    ("SQL инъекциясынан қорғанудың дұрыс тәсілі қайсысы?", "b", "Строкаларды конкатенациялау", "Параметрленген сұраулар/подготовленные запросы", "Тек eval() қолдану", "Тек GET арқылы жіберу"),
+    ("Шифрлеудегі «аутентификациялық шифрлеу» дегеніміз не?", "c", "Тек сурет сапасы", "Тек файл атауы", "Шифрленген дерек пен MAC/HMAC арқылы бүтіндікті тексеру", "Тек уақыт белгісі"),
+    ("Корпоративтік сегментация не береді?", "d", "Тек экранды үлкейту", "Тек дыбыс", "Тек принтер", "Желіні бөліктерге бөлу және қауіпті шектеу"),
+    ("SOC командасының негізгі рөлі неде?", "a", "Бақылау, анықтау, реагирование", "Тек курстарды жасау", "Тек студенттерді бағалау", "Тек веб-дизайн"),
+]
+
 
 def _add_questions_to_test(db, test_id, questions_list):
     """Add question tuples (question_text, correct, a, b, c, d) to test."""
@@ -477,6 +549,63 @@ def _populate_informatics_modules_topics_tests(db, course_id: int) -> None:
     db.flush()
     _add_questions_to_test(db, final3.id, INFO_FINAL_QUESTIONS)
     db.commit()
+
+
+def _populate_cybersecurity_modules_topics_tests(db, course_id: int) -> None:
+    """Киберқауіпсіздік: модульдер, тақырыптар, тақырыптық тесттер және қорытынды."""
+    mc1 = CourseModule(course_id=course_id, title="Негіздері мен модельдер", order_number=1, description="CIA, қауіп, осалдық")
+    mc2 = CourseModule(course_id=course_id, title="Кіруді қорғау", order_number=2, description="Пароль, 2FA, cookie")
+    mc3 = CourseModule(course_id=course_id, title="Шабуылдар және қорғаныс", order_number=3, description="Фишинг, malware, желi, оқиғалар")
+    db.add(mc1)
+    db.add(mc2)
+    db.add(mc3)
+    db.flush()
+    _blank_c = [""] * 8
+    topics_c = [
+        (mc1.id, "Киберқауіпсіздік негіздері және CIA", 1, "https://www.youtube.com/watch?v=inWWhrC6EN0", 600, _blank_c[0]),
+        (mc1.id, "Құпия сөздер және аутентификация", 2, "https://www.youtube.com/watch?v=yzHNnj4hfpI", 600, _blank_c[1]),
+        (mc2.id, "Фишинг және социальная инженерия", 3, "https://www.youtube.com/watch?v=0zW8er_8c0Y", 600, _blank_c[2]),
+        (mc2.id, "Malware және шифрлеуші-қолхат", 4, "https://www.youtube.com/watch?v=0zW8er_8c0Y", 600, _blank_c[3]),
+        (mc2.id, "Шифрлау және HTTPS", 5, "https://www.youtube.com/watch?v=7_LPdttKXPc", 600, _blank_c[4]),
+        (mc3.id, "Firewall, VPN және DDoS", 6, "https://www.youtube.com/watch?v=3QhU9jd03a0", 600, _blank_c[5]),
+        (mc3.id, "Логтар және SIEM", 7, "https://www.youtube.com/watch?v=rL8X2mlNHPM", 600, _blank_c[6]),
+        (mc3.id, "Инцидентке жауап және резервтік көшірме", 8, "https://www.youtube.com/watch?v=zsjvFFKOm3c", 600, _blank_c[7]),
+    ]
+    for mod_id, title, order, video, dur, desc in topics_c:
+        t = CourseTopic(course_id=course_id, module_id=mod_id, title=title, order_number=order, video_url=video, video_duration=dur, description=desc)
+        db.add(t)
+    db.commit()
+    topic_ids_c = [t.id for t in db.query(CourseTopic).filter(CourseTopic.course_id == course_id).order_by(CourseTopic.order_number).all()]
+    for idx, tid in enumerate(topic_ids_c):
+        if idx >= len(TOPIC_QUESTIONS_CYBERSECURITY):
+            break
+        qs = TOPIC_QUESTIONS_CYBERSECURITY[idx]
+        test = Test(topic_id=tid, course_id=course_id, title=f"Тест {idx+1}", passing_score=70, question_count=len(qs), is_final=0, time_limit_seconds=600)
+        db.add(test)
+        db.flush()
+        _add_questions_to_test(db, test.id, qs)
+    final_c = Test(topic_id=None, course_id=course_id, title="Киберқауіпсіздік - Қорытынды тест", passing_score=70, question_count=len(CYBER_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    db.add(final_c)
+    db.flush()
+    _add_questions_to_test(db, final_c.id, CYBER_FINAL_QUESTIONS)
+    db.commit()
+
+
+def seed_cybersecurity_course_if_missing(db) -> None:
+    """Бар БД-да кибер курс бос болса немесе тақырыпсыз болса — толықтырады."""
+    if not db.query(User).filter(User.email == "admin@edu.kz").first():
+        print("admin@edu.kz not found. Run full seed first.")
+        return
+    c = db.query(Course).filter(Course.title == CYBER_COURSE_TITLE).first()
+    if not c:
+        print("Cybersecurity course not found by title.")
+        return
+    n_topics = db.query(CourseTopic).filter(CourseTopic.course_id == c.id).count()
+    if n_topics > 0:
+        print("Cybersecurity course already has topics.")
+        return
+    _populate_cybersecurity_modules_topics_tests(db, c.id)
+    print(f"Populated cybersecurity course id={c.id} with modules/topics/tests.")
 
 
 def _clear_course_modules_topics_tests(db, course_id: int) -> None:
@@ -678,6 +807,22 @@ def _seed_courses_only(db, admin_id, cat_ids):
     db.flush()
     _populate_informatics_modules_topics_tests(db, c3.id)
 
+    # Course 4: Киберқауіпсіздік (AI Challenge «кибербезопасность» трегі)
+    c_cyber = Course(
+        title=CYBER_COURSE_TITLE,
+        description="Ақпараттық қауіпсіздік: кіруді қорғау, шифрлау, желілік қорғаныс, шабуылдарды тану және оқиғаларға жауап.",
+        category_id=cat_ids[0],
+        is_active=True,
+        price=Decimal("50000.00"),
+        language="kz",
+        created_by=admin_id,
+        published_at=datetime.now(timezone.utc),
+        image_url="https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&q=80",
+    )
+    db.add(c_cyber)
+    db.flush()
+    _populate_cybersecurity_modules_topics_tests(db, c_cyber.id)
+
     inactive = [
         ("Машиналық оқыту негіздері", "Жасанды интеллект пен ML алгоритмдері. Жақында.", cat_ids[2], 45000, "https://www.shutterstock.com/image-illustration/robot-hand-holding-ai-ml-600nw-2661516405.jpg"),
         ("React әзірлеу", "Заманауи веб-қосымшалар жасау. Жақында.", cat_ids[1], 40000, "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&q=80"),
@@ -693,7 +838,6 @@ def _seed_courses_only(db, admin_id, cat_ids):
         ("Figma дизайн құралы", "Веб-дизайн және прототиптеу. Жақында.", cat_ids[4], 35000, "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&q=80"),
         ("Git және GitHub", "Нұсқаларды басқару. Жақында.", cat_ids[0], 25000, "https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?w=400&q=80"),
         ("AWS бұлтты қызметтер", "Amazon Web Services негіздері. Жақында.", cat_ids[0], 55000, "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&q=80"),
-        ("Кибер қауіпсіздік негіздері", "Ақпараттық қауіпсіздік. Жақында.", cat_ids[0], 50000, "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=400&q=80"),
         ("Блокчейн технологиясы", "Криптовалюта және смарт-келісімшарттар. Жақында.", cat_ids[2], 60000, "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&q=80"),
         ("Agile және Scrum", "Жобаларды басқару әдістемесі. Жақында.", cat_ids[0], 28000, "https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&q=80"),
         ("Тестілеу және QA", "Бағдарламалық қамтаманы тестілеу. Жақында.", cat_ids[0], 38000, "https://images.unsplash.com/photo-1551434678-e076c223a692?w=400&q=80"),
@@ -723,6 +867,9 @@ def seed():
             if "--seed-informatics-course" in sys.argv:
                 seed_informatics_course_if_missing(db)
                 return
+            if "--seed-cyber-course" in sys.argv:
+                seed_cybersecurity_course_if_missing(db)
+                return
             if "--courses-only" in sys.argv:
                 admin_user = db.query(User).filter(User.email == "admin@edu.kz").first()
                 admin_id = admin_user.id
@@ -731,7 +878,7 @@ def seed():
                     return
                 cat_ids = _ensure_categories(db)
                 _seed_courses_only(db, admin_id, cat_ids)
-                print("Seed completed: categories (if missing), 3 active courses (Python, Web, Informatics) with modules/topics/tests, 18 mock courses.")
+                print("Seed completed: categories (if missing), 4 active courses (Python, Web, Informatics, Cybersecurity) with modules/topics/tests, 17 mock courses.")
                 return
             # Add director/curator if missing (for existing DBs)
             if not db.query(User).filter(User.email == "director@edu.kz").first():
@@ -939,7 +1086,7 @@ def seed():
         db.commit()
 
         _seed_courses_only(db, admin_id, cat_ids)
-        print("Seed completed: users, categories, 3 active courses (Python, Web, Informatics) with modules/topics/tests, 18 mock courses (all open).")
+        print("Seed completed: users, categories, 4 active courses (Python, Web, Informatics, Cybersecurity) with modules/topics/tests, 17 mock courses (all open).")
     finally:
         db.close()
 

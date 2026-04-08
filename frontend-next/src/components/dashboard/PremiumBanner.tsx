@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { api } from "@/api/client";
 
 export function PremiumBanner() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuthStore();
 
   const { data: config } = useQuery({
@@ -47,7 +47,7 @@ export function PremiumBanner() {
           </p>
           <div className="flex flex-wrap items-center gap-3 mt-3">
             <span className="text-lg font-bold text-purple-700 dark:text-purple-400">
-              {price.toLocaleString("ru-KZ")} ₸
+              {price.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-KZ")} ₸
             </span>
             <Link
               href="/app/premium"

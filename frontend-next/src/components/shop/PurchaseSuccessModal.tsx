@@ -118,13 +118,13 @@ export function PurchaseSuccessModal({
                     }}
                   >
                     <p className="text-sm text-center mb-3" style={{ color: textColors.secondary }}>
-                      {t("shopDeliveryEstimated")}
+                      {itemTitle === t("shopCartItems") ? t("shopCartItemsHint") : t("shopDeliveryEstimated")}
                     </p>
                     {deliveryDate && (
                       <div className="flex items-center gap-2 justify-center">
                         <Calendar className="w-4 h-4" style={{ color: "#06B6D4" }} />
                         <p className="text-sm" style={{ color: textColors.secondary }}>
-                          {t("shopDeliveryDateLabel")} {deliveryDate}
+                          {itemTitle === t("shopCartItems") ? t("shopCartItemsDeliveryDate") : t("shopDeliveryDateLabel")} {deliveryDate}
                         </p>
                       </div>
                     )}

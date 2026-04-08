@@ -8,7 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
+import { formatDateTimeLocalized } from "@/lib/dateUtils";
 
 type Deadline = {
   id: number;
@@ -51,8 +52,7 @@ function formatDueDate(dateStr: string, t: any, lang: string): string {
   if (diffDays === 1) return t("tomorrow");
   if (diffDays < 7) return t("daysLeft").replace("{count}", String(diffDays));
   
-  const locale = lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US";
-  return date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  return formatDateTimeLocalized(dateStr, lang, { hour: "2-digit", minute: "2-digit" });
 }
 
 export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" | "grid" }) {
@@ -88,7 +88,10 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
                 dueDate: a.deadline,
                 courseTitle: a.course_title,
                 priority,
-                link: `/app/teacher/view-answers/${a.id}`
+                link:
+                  typeof a.group_id === "number"
+                    ? `/app/teacher/courses/${a.group_id}/assignment/${a.id}`
+                    : `/app/teacher/view-answers/${a.id}`,
               } as Deadline;
             });
         } else {
@@ -114,6 +117,7 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
   }
 
   const isGrid = layout === "grid";
+  const teacherReviewHref = "/app/teacher/courses/review";
 
   return (
     <motion.div
@@ -130,22 +134,44 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
       className="relative overflow-hidden group border border-white/10"
     >
       <div className={`flex items-center justify-between ${isGrid ? "mb-4" : "mb-6"}`}>
-        <div className={`flex items-center gap-3`}>
-          <div className={`${isGrid ? "w-8 h-8" : "w-10 h-10"} rounded-xl bg-orange-500/10 flex items-center justify-center`}>
-            <Clock className={`${isGrid ? "w-4 h-4" : "w-5 h-5"} text-orange-500`} />
+        {teacherMode ? (
+          <Link href={teacherReviewHref} className="flex items-center gap-3 min-w-0 rounded-xl -m-1 p-1 hover:opacity-90 transition-opacity">
+            <div className={`${isGrid ? "w-8 h-8" : "w-10 h-10"} rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0`}>
+              <Clock className={`${isGrid ? "w-4 h-4" : "w-5 h-5"} text-orange-500`} />
+            </div>
+            <div className="min-w-0">
+              <h3 className={`${isGrid ? "text-base" : "text-lg"} font-bold`} style={{ color: textColors.primary }}>
+                {t("upcomingDeadlines")}
+              </h3>
+              {!isGrid && (
+                <p className="text-xs opacity-60" style={{ color: textColors.secondary }}>
+                  {deadlines.length} {t("assignments").toLowerCase()}
+                </p>
+              )}
+            </div>
+          </Link>
+        ) : (
+          <div className={`flex items-center gap-3`}>
+            <div className={`${isGrid ? "w-8 h-8" : "w-10 h-10"} rounded-xl bg-orange-500/10 flex items-center justify-center`}>
+              <Clock className={`${isGrid ? "w-4 h-4" : "w-5 h-5"} text-orange-500`} />
+            </div>
+            <div>
+              <h3 className={`${isGrid ? "text-base" : "text-lg"} font-bold`} style={{ color: textColors.primary }}>
+                {t("upcomingDeadlines")}
+              </h3>
+              {!isGrid && (
+                <p className="text-xs opacity-60" style={{ color: textColors.secondary }}>
+                  {deadlines.length} {t("assignments").toLowerCase()}
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <h3 className={`${isGrid ? "text-base" : "text-lg"} font-bold`} style={{ color: textColors.primary }}>
-              {t("upcomingDeadlines")}
-            </h3>
-            {!isGrid && (
-              <p className="text-xs opacity-60" style={{ color: textColors.secondary }}>
-                {deadlines.length} {t("assignments").toLowerCase()}
-              </p>
-            )}
-          </div>
-        </div>
-        <Link href="/app/tasks-calendar" className="p-2 rounded-xl hover:bg-white/5 transition-colors">
+        )}
+        <Link
+          href={teacherMode ? teacherReviewHref : "/app/courses?tab=assignments"}
+          className="p-2 rounded-xl hover:bg-white/5 transition-colors"
+          aria-label={t("viewAll")}
+        >
           <ChevronRight className="w-5 h-5 opacity-40" />
         </Link>
       </div>
@@ -219,7 +245,7 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
       </div>
 
       <Link
-        href={teacherMode ? "/app/teacher?tab=assignments" : "/app/tasks-calendar"}
+        href={teacherMode ? teacherReviewHref : "/app/courses?tab=assignments"}
         className="mt-4 flex items-center justify-center w-full py-3 rounded-2xl font-bold text-sm transition-all bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 group"
       >
         {t("viewAll")}

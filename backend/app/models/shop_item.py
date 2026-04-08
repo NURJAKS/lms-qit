@@ -14,6 +14,7 @@ class ShopItem(Base):
     category = Column(String(50), nullable=False)  # book, souvenir, cap, notebook, a4, headphones, keyboard, laptop, monitor, mouse, webcam, bag, other
     icon_name = Column(String(50))  # Lucide icon name for frontend
     image_url = Column(String(500))
+    secret_content = Column(Text, nullable=True)  # Секретный контент, видимый после доставки
     is_active = Column(Integer, default=1)  # 1=active, 0=inactive
 
     purchases = relationship("UserPurchase", back_populates="shop_item")

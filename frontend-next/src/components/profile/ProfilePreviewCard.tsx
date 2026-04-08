@@ -15,6 +15,8 @@ import {
   mapEducationalProcessRole,
   mapStudyForm,
   profileEmptyDash,
+  mapCity,
+  mapRole,
 } from "@/lib/profileFieldLabels";
 
 type ProfilePreviewCardProps = {
@@ -53,14 +55,7 @@ function formatDate(value: string | null | undefined, lang: string): string | nu
 }
 
 function pickRoleLabel(profile: SafeProfilePreviewData, t: TFn): string {
-  if (profile.role === "director") return t("director");
-  if (profile.role === "teacher") return t("teacher");
-  if (profile.role === "curator") return t("curator");
-  if (profile.role === "admin") return t("roleAdmin");
-  if (profile.role === "parent") return t("parent");
-  if (profile.role === "student") return t("student");
-  if (profile.role === "courier") return t("adminShopCourier");
-  return profile.role;
+  return mapRole(profile.role, t);
 }
 
 const teacherLikeWorkSection = (profile: SafeProfilePreviewData, t: TFn): Section => ({
@@ -122,7 +117,7 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
         { label: t("profileFullName"), value: profile.full_name },
         { label: t("role"), value: roleLabel },
         { label: t("profileStatus"), value: displayStatus ? displayStatus : dash },
-        { label: t("profileCity"), value: profile.city ? profile.city : dash },
+        { label: t("profileCity"), value: profile.city ? mapCity(profile.city, t) : dash },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     },
     {
@@ -247,7 +242,7 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
                 <span className="mobile-safe-text">{profile.email}</span>
                 {profile.phone && <span>{profile.phone}</span>}
-                {profile.city && <span>{profile.city}</span>}
+                {profile.city && <span>{mapCity(profile.city, t)}</span>}
               </div>
             </div>
           </div>

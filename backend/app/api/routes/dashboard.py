@@ -24,6 +24,14 @@ from app.models.coin_transaction_log import CoinTransactionLog
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _deadline_to_iso_utc(deadline: datetime | None) -> str | None:
+    if deadline is None:
+        return None
+    if deadline.tzinfo is None:
+        return deadline.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    return deadline.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 @router.get("/stats")
 def get_dashboard_stats(
     db: Annotated[Session, Depends(get_db)],
@@ -796,7 +804,7 @@ def get_upcoming_deadlines(
             "id": a.id,
             "title": a.title,
             "type": deadline_type,
-            "dueDate": a.deadline.isoformat(),
+            "dueDate": _deadline_to_iso_utc(a.deadline),
             "courseId": a.course_id,
             "courseTitle": course.title if course else "",
             "priority": priority,

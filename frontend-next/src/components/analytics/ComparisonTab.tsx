@@ -7,6 +7,7 @@ import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 
 interface ComparisonData {
   my_avg: number;
@@ -181,7 +182,7 @@ export function ComparisonTab() {
                 <div key={c.course_title}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium truncate" style={{ color: textColors.primary }}>
-                      {c.course_title}
+                      {getLocalizedCourseTitle({ title: c.course_title } as any, t)}
                     </span>
                     <span className="text-sm font-bold shrink-0 ml-2" style={{ color: barColor }}>
                       {c.my_avg}%

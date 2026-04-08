@@ -9,14 +9,17 @@ import type { Lang } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { Plus, X, FileText } from "lucide-react";
+import { Plus, X, FileText, MoreVertical, Pencil, Trash2, Loader2, Edit2, AlertTriangle } from "lucide-react";
 import { getCourseBannerUrl } from "@/lib/courseUtils";
+import { useAuthStore } from "@/store/authStore";
+import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 
 type Group = {
   id: number;
   course_id: number;
   course_title: string;
   group_name: string;
+  teacher_id: number;
   students_count: number;
   created_at: string | null;
 };
@@ -62,6 +65,7 @@ export default function TeacherCoursesPage() {
   const router = useRouter();
   const { t, lang } = useLanguage();
   const { theme } = useTheme();
+  const isDark = theme === "dark";
   const queryClient = useQueryClient();
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -79,6 +83,8 @@ export default function TeacherCoursesPage() {
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renamingGroup, setRenamingGroup] = useState<Group | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const [menuOpenGroupId, setMenuOpenGroupId] = useState<number | null>(null);
+  const { user, isTeacher } = useAuthStore();
 
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ["teacher-groups"],
@@ -134,9 +140,9 @@ export default function TeacherCoursesPage() {
 
   const handleCreate = () => {
     if (!newCourseName.trim() || !newCourseId) return;
-    createGroupMutation.mutate({ 
-      course_id: typeof newCourseId === "number" ? newCourseId : 1, 
-      group_name: newCourseName.trim() 
+    createGroupMutation.mutate({
+      course_id: typeof newCourseId === "number" ? newCourseId : 1,
+      group_name: newCourseName.trim()
     });
   };
 
@@ -188,11 +194,10 @@ export default function TeacherCoursesPage() {
         <button
           type="button"
           onClick={() => setActiveTab("active")}
-          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "active"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent opacity-80 hover:opacity-100"
-          }`}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === "active"
+            ? "border-blue-600 text-blue-600"
+            : "border-transparent opacity-80 hover:opacity-100"
+            }`}
         >
           {t("teacherActiveCourses")} ({groups.length})
         </button>
@@ -218,8 +223,8 @@ export default function TeacherCoursesPage() {
               const y = yearFromCreated(g.created_at);
               const deadlineLine = nearest?.deadline
                 ? t("teacherCourseCardDeadlineLine")
-                    .replace("{when}", formatDueWhen(nearest.deadline, lang))
-                    .replace("{title}", nearest.title)
+                  .replace("{when}", formatDueWhen(nearest.deadline, lang))
+                  .replace("{title}", nearest.title)
                 : null;
 
               return (
@@ -235,10 +240,10 @@ export default function TeacherCoursesPage() {
                         className="w-full text-left flex flex-col rounded-t-2xl overflow-hidden"
                       >
                         <div
-                          className="h-[100px] w-full px-4 flex flex-col justify-center shrink-0 relative overflow-hidden"
+                          className="h-[160px] w-full px-4 flex flex-col justify-center shrink-0 relative overflow-hidden"
                         >
                           {/* Background Image Banner */}
-                          <div 
+                          <div
                             className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
                             style={{ backgroundImage: `url(${getCourseBannerUrl({ title: g.course_title })})` }}
                           />
@@ -249,7 +254,72 @@ export default function TeacherCoursesPage() {
                           {y ? <div className="relative z-10 text-white/90 text-sm font-semibold mt-1">{y}</div> : null}
                         </div>
                       </button>
-                      <div className="p-4 flex-1 flex flex-col gap-3 min-h-[88px]">
+
+                      {/* Three dots menu - Moved outside overflow-hidden header */}
+                      <div className="absolute top-2 right-2 z-30">
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenGroupId(menuOpenGroupId === g.id ? null : g.id);
+                            }}
+                            className="p-1.5 rounded-full bg-black/20 hover:bg-black/40 text-white transition-colors"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                          
+                          {menuOpenGroupId === g.id && (
+                            <div 
+                              className="absolute right-0 mt-2 w-48 rounded-xl py-2 z-50 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                              style={{ 
+                                ...modalStyle,
+                                border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.1)" 
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRenamingGroup(g);
+                                  setRenameTitle(g.group_name);
+                                  setRenameModalOpen(true);
+                                  setMenuOpenGroupId(null);
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                                style={{ color: textColors.primary }}
+                              >
+                                <Pencil className="w-4 h-4" style={{ color: textColors.secondary }} />
+                                {t("edit") || "Изменить"}
+                              </button>
+                              
+                              {(user?.role === "admin" || g.teacher_id === user?.id) && (
+                                <div className="px-1 pt-1 mt-1 border-t" style={{ borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
+                                  <DeleteConfirmButton
+                                    onDelete={() => deleteGroupMutation.mutate(g.id)}
+                                    isLoading={deleteGroupMutation.isPending && deleteGroupMutation.variables === g.id}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-500/10 px-3 py-2.5 rounded-lg"
+                                    text={t("delete") || "Удалить"}
+                                    title={`${t("teacherDeleteGroup") || "Удалить группу"}: ${g.group_name}?`}
+                                    description={t("confirmDelete") || "Это действие нельзя отменить."}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Click outside to close menu overlay */}
+                      {menuOpenGroupId === g.id && (
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={() => setMenuOpenGroupId(null)}
+                        />
+                      )}
+                      <div className="p-4 flex-1 flex flex-col gap-3 min-h-[100px]">
                         <button
                           type="button"
                           onClick={() => router.push(`/app/teacher/courses/${g.id}`)}
@@ -299,7 +369,7 @@ export default function TeacherCoursesPage() {
                   value={newCourseId}
                   onChange={(e) => setNewCourseId(e.target.value ? Number(e.target.value) : "")}
                 >
-                  <option value="">Select a course...</option>
+                  <option value="">{t("teacherSelectCoursePlaceholder")}</option>
                   {catalogCourses.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}

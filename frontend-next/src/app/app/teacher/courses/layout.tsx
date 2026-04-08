@@ -148,9 +148,9 @@ export default function TeacherCoursesLayout({ children }: { children: React.Rea
   });
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen w-full max-w-full min-w-0 flex flex-col overflow-x-hidden lg:flex-row">
       <div
-        className={`lg:hidden flex items-center gap-3 px-4 py-3 border-b sticky top-0 z-30 backdrop-blur-md ${headerBorder}`}
+        className={`lg:hidden mb-3 flex items-center gap-3 rounded-xl border px-4 py-3 ${headerBorder}`}
         style={{ ...glassStyle }}
       >
         <button
@@ -204,7 +204,7 @@ export default function TeacherCoursesLayout({ children }: { children: React.Rea
         </div>
       ) : null}
 
-      <main className="flex-1 min-w-0 p-4 lg:p-8">{children}</main>
+      <main className="flex-1 min-w-0 overflow-x-hidden p-4 lg:p-8">{children}</main>
     </div>
   );
 }

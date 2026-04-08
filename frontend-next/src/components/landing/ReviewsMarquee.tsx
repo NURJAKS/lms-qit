@@ -34,16 +34,20 @@ export function ReviewsMarquee({
     async function load() {
       setLoading(true);
       try {
+        // Fetch all reviews and sort them: featured first
         const { data } = await apiClient.get<PublicReview[]>("/reviews", {
-          params: { is_featured: true, limit: 36 },
+          params: { limit: 100 },
         });
         if (cancelled) return;
-        if (data?.length) {
-          setReviews(data);
-          return;
+        
+        if (data) {
+          const sorted = [...data].sort((a, b) => {
+            if (a.is_featured && !b.is_featured) return -1;
+            if (!a.is_featured && b.is_featured) return 1;
+            return 0;
+          });
+          setReviews(sorted);
         }
-        const { data: all } = await apiClient.get<PublicReview[]>("/reviews", { params: { limit: 36 } });
-        if (!cancelled) setReviews(all ?? []);
       } catch {
         if (!cancelled) setReviews([]);
       } finally {
@@ -72,7 +76,14 @@ export function ReviewsMarquee({
     );
   }
 
-  const duplicatedReviews = [...reviews, ...reviews];
+  // Ensure we have enough items for a smooth marquee loop.
+  // We repeat the reviews list until we have at least 15 items.
+  let duplicatedReviews = [...reviews];
+  while (duplicatedReviews.length > 0 && duplicatedReviews.length < 15) {
+    duplicatedReviews = [...duplicatedReviews, ...reviews];
+  }
+  // And then double it for the marquee translateX(-50%) logic
+  duplicatedReviews = [...duplicatedReviews, ...duplicatedReviews];
 
   return (
     <div className={cn("relative w-full overflow-hidden py-12 bg-transparent", className)}>

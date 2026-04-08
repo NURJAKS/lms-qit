@@ -60,9 +60,14 @@ class SubmitApplicationResponse(BaseModel):
 
 class PayApplicationResponse(BaseModel):
     message: str
+    confirmation_token: str
     course_title: str
     student_name: str
     student_email: str
+    temp_login: str
+    temp_password: str
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
 
 
 class PayApplicationRequest(BaseModel):
@@ -133,7 +138,7 @@ def pay_application(
         existing_paid = db.query(CourseApplication).filter(
             CourseApplication.user_id == user.id,
             CourseApplication.course_id == body.course_id,
-            CourseApplication.status == "paid",
+            CourseApplication.status.in_(["paid", "approved"]),
         ).first()
         if existing_paid:
             raise HTTPException(status_code=400, detail="Вы уже оплатили этот курс.")
@@ -153,6 +158,8 @@ def pay_application(
         db.flush()
 
     parent_user: User | None = None
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
 
     if body.parent_email.strip():
         if body.parent_email.lower() != body.email.lower():
@@ -165,6 +172,7 @@ def pay_application(
                     parent_user.full_name = body.parent_full_name or parent_user.full_name
                     parent_user.phone = body.parent_phone or parent_user.phone
                     parent_user.address = body.parent_city or parent_user.address
+                    parent_temp_login = parent_user.email
                 else:
                     parent_user = existing_parent if existing_parent.role == "parent" else None
             else:
@@ -180,34 +188,64 @@ def pay_application(
                 )
                 db.add(parent_user)
                 db.flush()
+                parent_temp_login = parent_user.email
 
     if parent_user:
         user.parent_id = parent_user.id
 
     confirmation_token = secrets.token_urlsafe(48)
+    reusable_app = db.query(CourseApplication).filter(
+        CourseApplication.user_id == user.id,
+        CourseApplication.course_id == body.course_id,
+        CourseApplication.status.in_(["rejected", "pending", "pending_confirmation"]),
+    ).order_by(CourseApplication.id.desc()).first()
 
-    app = CourseApplication(
-        user_id=user.id,
-        course_id=body.course_id,
-        status="pending_confirmation",
-        email=body.email,
-        full_name=body.full_name,
-        phone=body.phone or None,
-        city=body.city or None,
-        student_birth_date=body.student_birth_date,
-        student_age=body.student_age,
-        student_iin=body.student_iin or None,
-        parent_email=body.parent_email or None,
-        parent_full_name=body.parent_full_name or None,
-        parent_phone=body.parent_phone or None,
-        parent_city=body.parent_city or None,
-        parent_birth_date=body.parent_birth_date,
-        parent_age=body.parent_age,
-        parent_iin=body.parent_iin or None,
-        confirmation_token=confirmation_token,
-    )
-    db.add(app)
-    db.flush()
+    if reusable_app:
+        # Reuse previous non-final application to avoid stale duplicates in admin lists.
+        app = reusable_app
+        app.status = "pending_confirmation"
+        app.email = body.email
+        app.full_name = body.full_name
+        app.phone = body.phone or None
+        app.city = body.city or None
+        app.student_birth_date = body.student_birth_date
+        app.student_age = body.student_age
+        app.student_iin = body.student_iin or None
+        app.parent_email = body.parent_email or None
+        app.parent_full_name = body.parent_full_name or None
+        app.parent_phone = body.parent_phone or None
+        app.parent_city = body.parent_city or None
+        app.parent_birth_date = body.parent_birth_date
+        app.parent_age = body.parent_age
+        app.parent_iin = body.parent_iin or None
+        app.confirmation_token = confirmation_token
+        app.confirmed_at = None
+        app.approved_at = None
+        app.approved_by = None
+        app.created_at = datetime.now(timezone.utc)
+    else:
+        app = CourseApplication(
+            user_id=user.id,
+            course_id=body.course_id,
+            status="pending_confirmation",
+            email=body.email,
+            full_name=body.full_name,
+            phone=body.phone or None,
+            city=body.city or None,
+            student_birth_date=body.student_birth_date,
+            student_age=body.student_age,
+            student_iin=body.student_iin or None,
+            parent_email=body.parent_email or None,
+            parent_full_name=body.parent_full_name or None,
+            parent_phone=body.parent_phone or None,
+            parent_city=body.parent_city or None,
+            parent_birth_date=body.parent_birth_date,
+            parent_age=body.parent_age,
+            parent_iin=body.parent_iin or None,
+            confirmation_token=confirmation_token,
+        )
+        db.add(app)
+        db.flush()
 
     amount = float(course.price or 0)
     payment = Payment(
@@ -232,12 +270,33 @@ def pay_application(
         db.add(n)
 
     db.commit()
+    try:
+        user_lang = getattr(user, "language", "ru") or "ru"
+        if user_lang not in ["ru", "kk", "en"]:
+            user_lang = "ru"
+        send_course_purchase_email(
+            to_email=user.email,
+            student_name=user.full_name,
+            course_title=course.title,
+            temp_login=user.email,
+            temp_password=temp_password,
+            parent_temp_login=parent_temp_login,
+            parent_temp_password=parent_temp_password,
+            lang=user_lang,
+        )
+    except Exception:
+        pass
 
     return PayApplicationResponse(
         message="Оплата принята. Подтвердите покупку по ссылке, отправленной на ваш email.",
+        confirmation_token=confirmation_token,
         course_title=course.title,
         student_name=body.full_name,
         student_email=body.email,
+        temp_login=user.email,
+        temp_password=temp_password,
+        parent_temp_login=parent_temp_login,
+        parent_temp_password=parent_temp_password,
     )
 
 

@@ -52,6 +52,7 @@ import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types";
 import { getLocalizedShopItemTitle, getLocalizedShopItemDesc, CATEGORY_KEYS } from "@/lib/shopUtils";
+import { formatDateTimeLocalized } from "@/lib/dateUtils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BookOpen,
@@ -98,6 +99,7 @@ type Purchase = {
   delivered_at?: string | null;
   courier_id?: number | null;
   courier_name?: string | null;
+  secret_content?: string | null;
 };
 
 type CartItem = ShopItem & {
@@ -159,6 +161,7 @@ export default function ShopPage() {
   const [successDeliveryDate, setSuccessDeliveryDate] = useState<string | undefined>();
   const [pendingPurchase, setPendingPurchase] = useState<{ type: "single" | "cart"; itemId?: number } | null>(null);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
 
   const textColors = getTextColors(theme);
   const cardStyle = getGlassCardStyle(theme);
@@ -463,6 +466,7 @@ export default function ShopPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedItem(null);
+        setViewingPurchase(null);
         setIsCartOpen(false);
       }
     };
@@ -531,7 +535,7 @@ export default function ShopPage() {
                         <h3 className="font-medium truncate" style={{ color: textColors.primary }}>{getLocalizedShopItemTitle(p as any, lang, t)}</h3>
                         {p.purchased_at && (
                           <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>
-                            {new Date(p.purchased_at).toLocaleDateString(locale)}
+                            {formatDateTimeLocalized(p.purchased_at, lang, { hour: undefined, minute: undefined })}
                           </p>
                         )}
                       </div>
@@ -554,15 +558,25 @@ export default function ShopPage() {
                           />
                         </div>
                         {p.delivery_status === "delivered" && p.delivered_at && (
-                          <div className="flex items-center gap-1 text-xs" style={{ color: "#10B981" }}>
-                            <CheckCircle className="w-3 h-3" />
-                            <span>{t("shopDeliveredOn")} {new Date(p.delivered_at).toLocaleDateString(locale)}</span>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-1 text-xs" style={{ color: "#10B981" }}>
+                              <CheckCircle className="w-3 h-3" />
+                              <span>{t("shopDeliveredOn")} {formatDateTimeLocalized(p.delivered_at, lang, { hour: undefined, minute: undefined })}</span>
+                            </div>
+                            <button
+                              onClick={() => setViewingPurchase(p)}
+                              className="w-full py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90 flex items-center justify-center gap-1.5"
+                              style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10B981", border: "1px solid rgba(16, 185, 129, 0.2)" }}
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              {t("shopViewContent")}
+                            </button>
                           </div>
                         )}
                         {p.delivery_status !== "delivered" && p.estimated_delivery_date && (
                           <div className="flex items-center gap-1 text-xs" style={{ color: textColors.secondary }}>
                             <Truck className="w-3 h-3" />
-                            <span>{t("shopExpectedOn")} {new Date(p.estimated_delivery_date).toLocaleDateString(locale)}</span>
+                            <span>{t("shopExpectedOn")} {formatDateTimeLocalized(p.estimated_delivery_date, lang, { hour: undefined, minute: undefined })}</span>
                           </div>
                         )}
                       </div>
@@ -816,6 +830,98 @@ export default function ShopPage() {
                         : t("shopNotEnoughCoins")}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {viewingPurchase && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: isDark ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.3)" }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="purchase-detail-title"
+            onClick={() => setViewingPurchase(null)}
+          >
+            <div
+              className="rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto backdrop-blur-xl border"
+              style={{ ...getDashboardCardStyle(theme), border: isDark ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(0, 0, 0, 0.1)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <h2 id="purchase-detail-title" className="text-xl font-bold mb-2" style={{ color: textColors.primary }}>
+                  {getLocalizedShopItemTitle(viewingPurchase as any, lang, t)}
+                </h2>
+                <p className="text-xs mb-4" style={{ color: textColors.secondary }}>
+                  Purchase #{viewingPurchase.id}
+                </p>
+
+                <div className="space-y-2 text-sm mb-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <span style={{ color: textColors.secondary }}>{t("shopDeliveryStatus")}</span>
+                    <span style={{ color: getDeliveryStatusColor(viewingPurchase.delivery_status) }}>
+                      {viewingPurchase.delivery_status && DELIVERY_STATUS_KEYS[viewingPurchase.delivery_status]
+                        ? t(DELIVERY_STATUS_KEYS[viewingPurchase.delivery_status] as any)
+                        : viewingPurchase.delivery_status ?? "-"}
+                    </span>
+                  </div>
+                  {viewingPurchase.purchased_at && (
+                    <div className="flex items-center justify-between gap-4">
+                      <span style={{ color: textColors.secondary }}>{t("adminShopPurchaseDate")}</span>
+                      <span style={{ color: textColors.primary }}>
+                        {formatDateTimeLocalized(viewingPurchase.purchased_at, lang, { hour: undefined, minute: undefined })}
+                      </span>
+                    </div>
+                  )}
+                  {viewingPurchase.delivered_at && (
+                    <div className="flex items-center justify-between gap-4">
+                      <span style={{ color: textColors.secondary }}>{t("shopDeliveredOn")}</span>
+                      <span style={{ color: "#10B981" }}>
+                        {formatDateTimeLocalized(viewingPurchase.delivered_at, lang, { hour: undefined, minute: undefined })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  className="mb-6 p-4 rounded-xl border text-sm"
+                  style={{
+                    borderColor: isDark ? "rgba(16,185,129,0.35)" : "rgba(16,185,129,0.25)",
+                    background: isDark ? "rgba(16,185,129,0.12)" : "rgba(16,185,129,0.08)",
+                    color: isDark ? "#6EE7B7" : "#047857",
+                  }}
+                >
+                  {lang === "ru"
+                    ? "Этот товар уже закреплен за вами."
+                    : lang === "kk"
+                      ? "Бұл тауар енді сізге тиесілі."
+                      : "This item is now assigned to your account."}
+                </div>
+
+                {viewingPurchase.description && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold mb-2" style={{ color: textColors.primary }}>
+                      {t("shopProductDescription")}
+                    </h3>
+                    <p className="text-sm" style={{ color: textColors.secondary }}>
+                      {getLocalizedShopItemDesc(viewingPurchase as any, lang, t)}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setViewingPurchase(null)}
+                  className="w-full py-2.5 rounded-lg font-medium transition-colors"
+                  style={{
+                    color: textColors.primary,
+                    background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
+                    border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.1)",
+                  }}
+                >
+                  {t("shopProductClose")}
+                </button>
               </div>
             </div>
           </div>

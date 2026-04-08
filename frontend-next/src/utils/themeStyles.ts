@@ -16,11 +16,11 @@ export function getGlassCardStyle(theme: Theme) {
     };
   }
   return {
-    background: "#FFFFFF",
+    background: "#F8FAFC",
     borderWidth: "1px",
     borderStyle: "solid",
-    borderColor: "rgba(0, 0, 0, 0.06)",
-    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)",
+    borderColor: "rgba(0, 0, 0, 0.08)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)",
   };
 }
 

@@ -13,7 +13,7 @@ type Tip = {
 };
 
 export function LeaderboardMotivationWidget() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuthStore();
   const { theme } = useTheme();
   const glassStyle = getGlassCardStyle(theme);
@@ -139,7 +139,7 @@ export function LeaderboardMotivationWidget() {
               <span>{t("profileCoins")}</span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold mb-2" style={{ color: textColors.primary }}>
-              {coins.toLocaleString()}
+              {coins.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "ru" ? "ru-RU" : "en-US")}
             </p>
             <p className="text-sm leading-6 mb-4" style={{ color: textColors.secondary }}>
               {t("leaderboardMotivationReward")}

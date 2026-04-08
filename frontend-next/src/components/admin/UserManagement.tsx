@@ -14,6 +14,7 @@ import { BlurFade } from "@/components/ui/blur-fade";
 import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { formatDateTimeLocalized, formatDateLocalized } from "@/lib/dateUtils";
+import { mapCity } from "@/lib/profileFieldLabels";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -31,6 +32,16 @@ type UserRow = {
   phone?: string | null;
   birth_date?: string | null;
   address?: string | null;
+  parent?: {
+    id: number;
+    full_name: string;
+    email: string;
+  } | null;
+  children?: Array<{
+    id: number;
+    full_name: string;
+    email: string;
+  }> | null;
 };
 
 type StudentWithoutGroup = {
@@ -66,6 +77,24 @@ type TeacherGroupOption = {
   teacher_name: string;
 };
 
+type ParentOption = {
+  id: number;
+  full_name: string;
+};
+
+type ParentLinkRow = {
+  student: {
+    id: number;
+    full_name: string;
+    email: string;
+  };
+  parent: {
+    id: number;
+    full_name: string;
+    email: string;
+  } | null;
+};
+
 export function UserManagement() {
   const { t, lang } = useLanguage();
   const { theme } = useTheme();
@@ -78,9 +107,17 @@ export function UserManagement() {
   const { user } = useAuthStore();
   const canManageUsers = useAuthStore((s) => s.canManageUsers());
   const isCurator = user?.role === "curator";
-  const [activeTab, setActiveTab] = useState<"users" | "without-group" | "applications">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "parents" | "relations" | "without-group" | "applications">("users");
   const [search, setSearch] = useState("");
+  const [relationStudentSearch, setRelationStudentSearch] = useState("");
+  const [relationParentSearch, setRelationParentSearch] = useState("");
+  const [showOnlyUnlinked, setShowOnlyUnlinked] = useState(false);
+  const [selectedParentByStudent, setSelectedParentByStudent] = useState<Record<number, string>>({});
   const [statusFilter, setStatusFilter] = useState<string>("paid");
+  const [selectedStatusByApp, setSelectedStatusByApp] = useState<Record<number, string>>({});
+  const [assignCuratorModal, setAssignCuratorModal] = useState<{ appId: number; courseId: number } | null>(null);
+  const [assignCuratorGroupId, setAssignCuratorGroupId] = useState<number | "">("");
+  const [uiToast, setUiToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [assignModal, setAssignModal] = useState<StudentWithoutGroup | null>(null);
@@ -92,11 +129,34 @@ export function UserManagement() {
     queryKey: ["admin-users", search],
     queryFn: async () => {
       const { data } = await api.get<UserRow[]>(
-        `/admin/users?search=${encodeURIComponent(search)}`
+        `/admin/users?search=${encodeURIComponent(search)}&include_relations=true`
       );
       return data;
     },
-    enabled: activeTab === "users",
+    enabled: activeTab === "users" || activeTab === "parents",
+  });
+
+  const { data: relationRows = [] } = useQuery({
+    queryKey: ["admin-parent-links", relationStudentSearch, relationParentSearch, showOnlyUnlinked],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (relationStudentSearch.trim()) params.set("search_student", relationStudentSearch.trim());
+      if (relationParentSearch.trim()) params.set("search_parent", relationParentSearch.trim());
+      if (showOnlyUnlinked) params.set("only_unlinked", "true");
+      const query = params.toString();
+      const { data } = await api.get<ParentLinkRow[]>(`/admin/parent-links${query ? `?${query}` : ""}`);
+      return data;
+    },
+    enabled: activeTab === "relations",
+  });
+
+  const { data: parentOptions = [] } = useQuery({
+    queryKey: ["admin-users-parents-options"],
+    queryFn: async () => {
+      const { data } = await api.get<ParentOption[]>("/admin/users?role=parent");
+      return data;
+    },
+    enabled: activeTab === "users" || activeTab === "relations",
   });
 
   const { data: studentsWithoutGroup = [] } = useQuery({
@@ -118,6 +178,17 @@ export function UserManagement() {
     enabled: activeTab === "applications",
   });
 
+  const { data: applicationTeacherGroups = [] } = useQuery({
+    queryKey: ["admin-teacher-groups-applications", assignCuratorModal?.courseId],
+    queryFn: async () => {
+      const { data } = await api.get<TeacherGroupOption[]>(
+        `/admin/teacher-groups?course_id=${assignCuratorModal!.courseId}`
+      );
+      return data;
+    },
+    enabled: !!assignCuratorModal?.courseId,
+  });
+
   const updateMutation = useMutation({
     mutationFn: async ({
       id,
@@ -131,7 +202,19 @@ export function UserManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-parent-links"] });
       setEditing(null);
+    },
+  });
+
+  const linkParentMutation = useMutation({
+    mutationFn: async ({ studentId, parentId }: { studentId: number; parentId: number | null }) => {
+      const { data } = await api.patch(`/admin/users/${studentId}`, { parent_id: parentId });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-parent-links"] });
     },
   });
 
@@ -170,6 +253,87 @@ export function UserManagement() {
   });
 
   const [rewardError, setRewardError] = useState<string | null>(null);
+
+  const applicationStatusMutation = useMutation({
+    mutationFn: async ({ appId, status }: { appId: number; status: string }) => {
+      const { data } = await api.patch(`/admin/applications/${appId}/status`, { status });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
+    },
+  });
+
+  const grantAccessMutation = useMutation({
+    mutationFn: async (appId: number) => {
+      const { data } = await api.post(`/admin/applications/${appId}/grant-access`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-students-without-group"] });
+      setUiToast({ type: "success", text: t("adminGrantAccessSuccess") });
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setUiToast({ type: "error", text: e?.response?.data?.detail ?? t("error") });
+    },
+  });
+
+  const assignCuratorMutation = useMutation({
+    mutationFn: async ({ appId, groupId }: { appId: number; groupId: number }) => {
+      const { data } = await api.post(`/admin/applications/${appId}/assign-curator`, {
+        group_id: groupId,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      setAssignCuratorModal(null);
+      setAssignCuratorGroupId("");
+      queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
+      setUiToast({ type: "success", text: t("adminAssignToCuratorSuccess") });
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setUiToast({ type: "error", text: e?.response?.data?.detail ?? t("error") });
+    },
+  });
+
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    for (const row of relationRows) {
+      next[row.student.id] = row.parent ? String(row.parent.id) : "";
+    }
+    setSelectedParentByStudent((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length !== nextKeys.length) return next;
+      for (const key of nextKeys) {
+        if (prev[Number(key)] !== next[Number(key)]) return next;
+      }
+      return prev;
+    });
+  }, [relationRows]);
+
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    for (const app of applications) {
+      next[app.id] = app.status;
+    }
+    setSelectedStatusByApp((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length !== nextKeys.length) return next;
+      for (const key of nextKeys) {
+        if (prev[Number(key)] !== next[Number(key)]) return next;
+      }
+      return prev;
+    });
+  }, [applications]);
+
+  useEffect(() => {
+    if (!uiToast) return;
+    const timer = setTimeout(() => setUiToast(null), 2600);
+    return () => clearTimeout(timer);
+  }, [uiToast]);
 
   const handleExportExcel = async () => {
     try {
@@ -230,6 +394,7 @@ export function UserManagement() {
   };
 
   const formatDate = (d: string | null) => formatDateTimeLocalized(d, lang);
+  const parentUsers = users.filter((u) => u.role === "parent");
 
   return (
     <div>
@@ -260,12 +425,13 @@ export function UserManagement() {
           </div>
         </BlurFade>
       )}
-      <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 dark:border-white/10 pb-2 w-full">
+      <div className="mb-6 border-b border-gray-200 dark:border-white/10 pb-2 w-full overflow-x-auto">
+        <div className="flex gap-2 min-w-max pr-1">
         <BlurFade delay={0.15} duration={0.4} blur="4px" offset={10}>
           <button
             type="button"
             onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 font-medium rounded-lg transition-all ${
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "users"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -278,8 +444,36 @@ export function UserManagement() {
         <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
           <button
             type="button"
+            onClick={() => setActiveTab("parents")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
+                activeTab === "parents"
+                  ? "text-white shadow-lg"
+                  : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+              style={activeTab === "parents" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
+          >
+            {t("parentsTab")}
+          </button>
+        </BlurFade>
+        <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
+          <button
+            type="button"
+            onClick={() => setActiveTab("relations")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
+                activeTab === "relations"
+                  ? "text-white shadow-lg"
+                  : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+              style={activeTab === "relations" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
+          >
+            {t("adminRelationsTab")}
+          </button>
+        </BlurFade>
+        <BlurFade delay={0.3} duration={0.4} blur="4px" offset={10}>
+          <button
+            type="button"
             onClick={() => setActiveTab("without-group")}
-              className={`px-4 py-2 font-medium rounded-lg transition-all ${
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "without-group"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -289,11 +483,11 @@ export function UserManagement() {
             {t("adminStudentsWithoutGroup")}
           </button>
         </BlurFade>
-        <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
+        <BlurFade delay={0.35} duration={0.4} blur="4px" offset={10}>
           <button
             type="button"
             onClick={() => setActiveTab("applications")}
-              className={`px-4 py-2 font-medium rounded-lg transition-all ${
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "applications"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -303,11 +497,12 @@ export function UserManagement() {
             {t("applicationsList")}
           </button>
         </BlurFade>
+        </div>
       </div>
       <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
         <div className="flex flex-col md:flex-row gap-4 mb-6 w-full justify-between items-start md:items-center">
           <div className="flex flex-wrap gap-3 flex-1 w-full">
-            {activeTab === "users" && (
+            {(activeTab === "users" || activeTab === "parents") && (
               <input
                 type="text"
                 placeholder={t("adminSearch")}
@@ -316,6 +511,36 @@ export function UserManagement() {
                 className="border-0 rounded-xl px-4 py-2.5 w-full md:w-64 transition-all backdrop-blur-sm"
                 style={getInputStyle(theme)}
               />
+            )}
+            {activeTab === "relations" && (
+              <>
+                <input
+                  type="text"
+                  placeholder={t("adminRelationSearchStudent")}
+                  value={relationStudentSearch}
+                  onChange={(e) => setRelationStudentSearch(e.target.value)}
+                  className="border-0 rounded-xl px-4 py-2.5 w-full md:w-64 transition-all backdrop-blur-sm"
+                  style={getInputStyle(theme)}
+                />
+                <input
+                  type="text"
+                  placeholder={t("adminRelationSearchParent")}
+                  value={relationParentSearch}
+                  onChange={(e) => setRelationParentSearch(e.target.value)}
+                  className="border-0 rounded-xl px-4 py-2.5 w-full md:w-64 transition-all backdrop-blur-sm"
+                  style={getInputStyle(theme)}
+                />
+                <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl" style={getGlassCardStyle(theme)}>
+                  <input
+                    type="checkbox"
+                    checked={showOnlyUnlinked}
+                    onChange={(e) => setShowOnlyUnlinked(e.target.checked)}
+                  />
+                  <span className="text-sm" style={{ color: textColors.secondary }}>
+                    {t("adminOnlyUnlinked")}
+                  </span>
+                </label>
+              </>
             )}
             {activeTab === "applications" && (
               <div className="flex flex-wrap gap-2">
@@ -353,7 +578,7 @@ export function UserManagement() {
                 className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-white border-0 font-medium shadow-lg bg-gradient-to-r from-[#FF4181] to-[#B938EB]"
                 shimmerColor="#ffffff"
               >
-                <Download className="w-4 h-4 shrink-0" /> Excel
+                <Download className="w-4 h-4 shrink-0" /> {t("excelLabel")}
               </ShimmerButton>
             </div>
           )}
@@ -374,6 +599,9 @@ export function UserManagement() {
                 </th>
                 <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
                   {t("role")}
+                </th>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminRelationColumn")}
                 </th>
                 {canManageUsers && (
                   <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
@@ -414,6 +642,35 @@ export function UserManagement() {
                     {u.role}
                   </span>
                 </td>
+                <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                  {u.role === "student" ? (
+                    u.parent ? (
+                      <div>
+                        <p style={{ color: textColors.primary }}>{u.parent.full_name}</p>
+                        <p className="text-xs">ID: {u.parent.id}</p>
+                      </div>
+                    ) : (
+                      t("adminNoParentAssigned")
+                    )
+                  ) : u.role === "parent" ? (
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
+                        {t("adminChildrenCountLabel")}: {u.children?.length ?? 0}
+                      </span>
+                      {(u.children ?? []).slice(0, 3).map((child) => (
+                        <span
+                          key={child.id}
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
+                        >
+                          {child.full_name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 {canManageUsers && (
                   <td className="py-4 px-6 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -452,6 +709,187 @@ export function UserManagement() {
                   )}
                     </tr>
                 ))}
+            </tbody>
+          </table>
+          </div>
+          ) : activeTab === "parents" ? (
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px]">
+            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+              <tr>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminFullName")}
+                </th>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("email")}
+                </th>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminParentsLinkedStudents")}
+                </th>
+                <th className="text-right py-4 px-6 font-semibold text-sm w-52" style={{ color: textColors.primary }}>
+                  {t("adminCoursesActions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {parentUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                    {t("noParentsFound")}
+                  </td>
+                </tr>
+              ) : (
+                parentUsers.map((u) => (
+                  <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                    <td className="py-4 px-6">
+                      <div>
+                        <Link
+                          href={`/app/profile/${u.id}`}
+                          className="font-medium transition-colors hover:text-[#8B5CF6] inline-block"
+                          style={{ color: textColors.primary }}
+                        >
+                          {u.full_name}
+                        </Link>
+                        <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6" style={{ color: textColors.primary }}>{u.email}</td>
+                    <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                      {u.children && u.children.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
+                            {t("childrenCount").replace("{count}", String(u.children.length))}
+                          </span>
+                          {u.children.map((child) => (
+                            <span
+                              key={child.id}
+                              className="text-xs px-2 py-0.5 rounded-full"
+                              style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
+                            >
+                              {child.full_name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        t("noChildren")
+                      )}
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("relations")}
+                        className="py-2 px-4 rounded-lg text-white text-sm"
+                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                      >
+                        {t("adminOpenRelationManager")}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          </div>
+          ) : activeTab === "relations" ? (
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+              <tr>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("student")}
+                </th>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminCurrentParent")}
+                </th>
+                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminSelectParentToLink")}
+                </th>
+                <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("adminCoursesActions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {relationRows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                    {t("adminNoRelationsFound")}
+                  </td>
+                </tr>
+              ) : (
+                relationRows.map((row) => {
+                  const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
+                  return (
+                    <tr
+                      key={row.student.id}
+                      className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}
+                    >
+                      <td className="py-4 px-6">
+                        <div>
+                          <p style={{ color: textColors.primary }}>{row.student.full_name}</p>
+                          <p className="text-xs" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                        {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                      </td>
+                      <td className="py-4 px-6">
+                        <select
+                          value={selectedParent}
+                          onChange={(e) =>
+                            setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
+                          }
+                          className="w-full border-0 rounded-lg px-3 py-2"
+                          style={inputStyle}
+                        >
+                          <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
+                            — {t("adminSelectNone")}
+                          </option>
+                          {parentOptions.map((parent) => (
+                            <option
+                              key={parent.id}
+                              value={parent.id}
+                              style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
+                            >
+                              {parent.full_name} (#{parent.id})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              linkParentMutation.mutate({
+                                studentId: row.student.id,
+                                parentId: selectedParent ? Number(selectedParent) : null,
+                              })
+                            }
+                            disabled={linkParentMutation.isPending}
+                            className="py-2 px-4 rounded-lg text-white text-sm disabled:opacity-60"
+                            style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                          >
+                            {t("adminLinkSave")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
+                            disabled={linkParentMutation.isPending}
+                            className="py-2 px-4 rounded-lg text-sm disabled:opacity-60"
+                            style={{
+                              background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
+                              color: "#EF4444",
+                            }}
+                          >
+                            {t("adminUnlinkParent")}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
           </div>
@@ -554,12 +992,15 @@ export function UserManagement() {
                 <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
                   {t("status")}
                 </th>
+                <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                  {t("actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
               {applications.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center">
+                    <td colSpan={9} className="py-12 text-center">
                       <div className="flex flex-col items-center">
                         <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(139, 92, 246, 0.2)" }}>
                           <ClipboardList className="w-8 h-8" style={{ color: "#8B5CF6" }} />
@@ -589,6 +1030,66 @@ export function UserManagement() {
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)}`}>
                       {statusLabel(app.status)}
                     </span>
+                  </td>
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <select
+                        value={selectedStatusByApp[app.id] ?? app.status}
+                        onChange={(e) =>
+                          setSelectedStatusByApp((prev) => ({
+                            ...prev,
+                            [app.id]: e.target.value,
+                          }))
+                        }
+                        className="border-0 rounded-lg px-3 py-2 text-sm"
+                        style={inputStyle}
+                      >
+                        <option value="paid">{statusLabel("paid")}</option>
+                        <option value="pending">{statusLabel("pending")}</option>
+                        <option value="approved">{statusLabel("approved")}</option>
+                        <option value="rejected">{statusLabel("rejected")}</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          applicationStatusMutation.mutate({
+                            appId: app.id,
+                            status: selectedStatusByApp[app.id] ?? app.status,
+                          })
+                        }
+                        disabled={
+                          applicationStatusMutation.isPending ||
+                          (selectedStatusByApp[app.id] ?? app.status) === app.status
+                        }
+                        className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
+                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                      >
+                        {t("save")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => grantAccessMutation.mutate(app.id)}
+                        disabled={grantAccessMutation.isPending}
+                        className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
+                        style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+                        title={t("adminGrantAccessHint")}
+                      >
+                        {grantAccessMutation.isPending ? "..." : t("adminGrantAccess")}
+                      </button>
+                      {app.status === "paid" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssignCuratorModal({ appId: app.id, courseId: app.course_id });
+                            setAssignCuratorGroupId("");
+                          }}
+                          className="py-2 px-3 rounded-lg text-white text-sm"
+                          style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)" }}
+                        >
+                          {t("adminAssignToCurator")}
+                        </button>
+                      )}
+                    </div>
                     </td>
                     </tr>
                 ))
@@ -609,6 +1110,75 @@ export function UserManagement() {
             setAssignModal(null);
           }}
         />
+      )}
+
+      {assignCuratorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
+          <div className="rounded-xl shadow-xl p-6 max-w-md mx-4 w-full" style={modalStyle}>
+            <h2 className="text-lg font-semibold mb-2" style={{ color: textColors.primary }}>{t("adminAssignToCurator")}</h2>
+            <p className="text-sm mb-4" style={{ color: textColors.secondary }}>{t("adminAssignToCuratorHint")}</p>
+            {applicationTeacherGroups.length === 0 ? (
+              <p className="text-sm" style={{ color: "#f59e0b" }}>{t("adminNoGroupsForCourse")}</p>
+            ) : (
+              <select
+                value={assignCuratorGroupId}
+                onChange={(e) => setAssignCuratorGroupId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full border-0 rounded-lg px-3 py-2 mb-4"
+                style={inputStyle}
+              >
+                <option value="">— {t("adminSelectNone")}</option>
+                {applicationTeacherGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.group_name} ({g.teacher_name})
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignCuratorModal(null);
+                  setAssignCuratorGroupId("");
+                }}
+                className="flex-1 py-2 rounded-lg"
+                style={{ border: "1px solid rgba(148,163,184,0.4)", color: textColors.primary }}
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof assignCuratorGroupId !== "number") return;
+                  assignCuratorMutation.mutate({
+                    appId: assignCuratorModal.appId,
+                    groupId: assignCuratorGroupId,
+                  });
+                }}
+                disabled={assignCuratorMutation.isPending || typeof assignCuratorGroupId !== "number"}
+                className="flex-1 py-2 rounded-lg text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)" }}
+              >
+                {assignCuratorMutation.isPending ? "..." : t("adminAssignConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uiToast && (
+        <div className="fixed top-4 right-4 z-[60]">
+          <div
+            className="rounded-xl px-4 py-3 shadow-xl border backdrop-blur-md"
+            style={{
+              background: isDark ? "rgba(17,24,39,0.9)" : "rgba(255,255,255,0.95)",
+              borderColor: uiToast.type === "success" ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)",
+              color: textColors.primary,
+            }}
+          >
+            {uiToast.text}
+          </div>
+        </div>
       )}
 
       {addUserOpen && (
@@ -1192,7 +1762,7 @@ function UserDetailModal({
               <dt style={{ color: textColors.secondary }}>{t("phone")}</dt>
               <dd style={{ color: textColors.primary }}>{user.phone || "—"}</dd>
               <dt style={{ color: textColors.secondary }}>{t("city")}</dt>
-              <dd style={{ color: textColors.primary }}>{user.address || "—"}</dd>
+              <dd style={{ color: textColors.primary }}>{mapCity(user.address, t) || "—"}</dd>
               <dt style={{ color: textColors.secondary }}>{t("date")}</dt>
               <dd style={{ color: textColors.primary }}>{user.birth_date || "—"}</dd>
             </dl>
@@ -1209,7 +1779,7 @@ function UserDetailModal({
                 <dt style={{ color: textColors.secondary }}>{t("phone")}</dt>
                 <dd style={{ color: textColors.primary }}>{parent.phone || "—"}</dd>
                 <dt style={{ color: textColors.secondary }}>{t("city")}</dt>
-                <dd style={{ color: textColors.primary }}>{parent.address || "—"}</dd>
+                <dd style={{ color: textColors.primary }}>{mapCity(parent.address, t) || "—"}</dd>
               </dl>
             </section>
           )}
@@ -1237,7 +1807,7 @@ function UserDetailModal({
                       <dt style={{ color: textColors.secondary }}>{t("phone")}</dt>
                       <dd style={{ color: textColors.primary }}>{app.phone || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("city")}</dt>
-                      <dd style={{ color: textColors.primary }}>{app.city || "—"}</dd>
+                      <dd style={{ color: textColors.primary }}>{mapCity(app.city, t) || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("parentEmail")}</dt>
                       <dd style={{ color: textColors.primary }}>{app.parent_email || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("parentFullName")}</dt>
@@ -1245,7 +1815,7 @@ function UserDetailModal({
                       <dt style={{ color: textColors.secondary }}>{t("parentPhone")}</dt>
                       <dd style={{ color: textColors.primary }}>{app.parent_phone || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("parentCity")}</dt>
-                      <dd style={{ color: textColors.primary }}>{app.parent_city || "—"}</dd>
+                      <dd style={{ color: textColors.primary }}>{mapCity(app.parent_city, t) || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("date")}</dt>
                       <dd style={{ color: textColors.primary }}>{app.created_at ? formatDateLocalized(app.created_at, lang) : "—"}</dd>
                     </dl>

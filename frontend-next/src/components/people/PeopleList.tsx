@@ -9,6 +9,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { Search, User, Mail, Phone, ArrowRight, GraduationCap, Users, BookOpen, UserCircle, CheckCircle2 } from "lucide-react";
 import { getGlassCardStyle, getInputStyle, getTextColors } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { mapCity, mapRole } from "@/lib/profileFieldLabels";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 
 type CourseInfo = {
@@ -268,7 +269,7 @@ export function PeopleList({ role }: PeopleListProps) {
                             {user.city && (
                               <div className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: textColors.secondary }}>
                                 <UserCircle className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                                <span>{user.city}</span>
+                                <span>{mapCity(user.city, t)}</span>
                               </div>
                             )}
                             {user.description && (
@@ -336,10 +337,10 @@ export function PeopleList({ role }: PeopleListProps) {
                               </span>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {user.teachers_curators.map((t, tIdx) => (
-                                <div key={`teacher-${t.id}-${tIdx}`} className="text-xs flex items-center justify-between p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.03]" style={{ color: textColors.secondary }}>
-                                  <span className="font-bold truncate pr-2">{t.full_name}</span>
-                                  <span className="opacity-50 text-[10px] shrink-0">{t.role}</span>
+                              {user.teachers_curators.map((teacher, tIdx) => (
+                                <div key={`teacher-${teacher.id}-${tIdx}`} className="text-xs flex items-center justify-between p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.03]" style={{ color: textColors.secondary }}>
+                                  <span className="font-bold truncate pr-2">{teacher.full_name}</span>
+                                  <span className="opacity-50 text-[10px] shrink-0">{mapRole(teacher.role, t)}</span>
                                 </div>
                               ))}
                             </div>

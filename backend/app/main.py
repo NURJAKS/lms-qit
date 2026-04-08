@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,9 +15,11 @@ from app.core.database import engine, Base
 from app.core.migrations import run_migrations
 from app.core.config import settings
 from app.models import *  # noqa: F401 - register all models
-from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community, private_comments
+from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community, private_comments, support
 from app.api.routes import analytics_student as analytics_student_insights
 from app.jobs.daily_rewards import run_daily_leaderboard_rewards
+
+logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -23,7 +27,48 @@ docs_kwargs = {}
 if not settings.DEBUG:
     docs_kwargs = {"docs_url": None, "redoc_url": None}
 
-app = FastAPI(title="Education Platform API", version="1.0.0", **docs_kwargs)
+# Планировщик: ежедневные награды топ-5 (тот же TZ, что в daily_rewards.REWARD_TZ)
+_scheduler = BackgroundScheduler(timezone="Asia/Almaty")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Старт/стоп APScheduler; при старте — догоняем награды за сегодня, если пропустили окно 00:05."""
+    try:
+        n = run_daily_leaderboard_rewards()
+        if n:
+            logger.info("Daily leaderboard rewards on startup: %s users awarded", n)
+    except Exception:
+        logger.exception("Daily leaderboard rewards on startup failed")
+
+    _scheduler.add_job(
+        run_daily_leaderboard_rewards,
+        "cron",
+        hour=0,
+        minute=5,
+        id="daily_leaderboard_cron",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    # Резерв: раз в час проверка (идемпотентно; после первого успеха остальные — no-op)
+    _scheduler.add_job(
+        run_daily_leaderboard_rewards,
+        "interval",
+        hours=1,
+        id="daily_leaderboard_hourly_catchup",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.start()
+
+    yield
+
+    _scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="Education Platform API", version="1.0.0", lifespan=lifespan, **docs_kwargs)
 app.state.limiter = limiter
 
 
@@ -49,11 +94,6 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 run_migrations()
 
-# Daily leaderboard rewards at 00:05 (Asia/Almaty)
-scheduler = BackgroundScheduler(timezone="Asia/Almaty")
-scheduler.add_job(run_daily_leaderboard_rewards, "cron", hour=0, minute=5)
-scheduler.start()
-
 # Static files for uploads
 uploads_path = Path(__file__).resolve().parent.parent / "uploads"
 uploads_path.mkdir(parents=True, exist_ok=True)
@@ -61,6 +101,7 @@ uploads_path.mkdir(parents=True, exist_ok=True)
 (uploads_path / "certificates").mkdir(exist_ok=True)
 (uploads_path / "avatars").mkdir(exist_ok=True)
 (uploads_path / "submissions").mkdir(exist_ok=True)
+(uploads_path / "topic-synopsis").mkdir(exist_ok=True)
 (uploads_path / "assignments").mkdir(exist_ok=True)
 (uploads_path / "assignments" / "temp").mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
@@ -91,6 +132,7 @@ app.include_router(premium.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(community.router, prefix="/api")
 app.include_router(analytics_student_insights.router, prefix="/api")
+app.include_router(support.router, prefix="/api")
 
 
 @app.get("/")

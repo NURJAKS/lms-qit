@@ -91,6 +91,20 @@ export function AppDashboardSidebar() {
     return () => document.removeEventListener("click", close);
   }, [langOpen]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [mobileOpen, setMobileOpen]);
+
   const unread = notifications.filter((n) => !n.is_read);
 
   const markRead = (notificationId: number, link?: string) => {
@@ -143,7 +157,10 @@ export function AppDashboardSidebar() {
           { href: "/app/parent-rating", icon: Trophy, label: t("rating") },
         ]
       : isStudentWithoutGroup
-        ? [{ href: "/app", icon: LayoutDashboard, label: t("dashboard") }]
+        ? [
+          { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
+          { href: "/app/support", icon: MessageCircle, label: t("studentSupportTitle") },
+        ]
         : [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
           ...(isTeacher() ? [] : [
@@ -154,6 +171,7 @@ export function AppDashboardSidebar() {
           { href: "/app/shop", icon: ShoppingBag, label: t("shop") },
           { href: "/app/leaderboard", icon: Trophy, label: t("rating") },
           { href: "/app/community", icon: MessageCircle, label: t("communitySidebarLink") },
+          ...(user?.role === "student" ? [{ href: "/app/support", icon: MessageCircle, label: t("studentSupportTitle") }] : []),
         ]
     : [{ href: "/app", icon: LayoutDashboard, label: t("dashboard") }];
 
@@ -161,16 +179,19 @@ export function AppDashboardSidebar() {
     ? isStudentWithoutGroup
       ? [
         { href: "/app/premium", icon: Sparkles, label: t("premiumTab"), isPremium: true },
+        { href: "/app/profile", icon: Settings, label: t("settings") },
       ]
       : [
         // Premium показывается только для студентов (не для учителей, директора, админа, куратора, родителя)
         ...(user?.role === "student" ? [{ href: "/app/premium", icon: Sparkles, label: t("premiumTab"), isPremium: true }] : []),
-        ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacher") }] : []),
+        ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacherDashboardSidebar") }] : []),
         ...(isParent ? [] : isAdmin() ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
         ...(isAdmin() || isTeacher() || user?.role === "curator" ? [{ href: "/app/people", icon: Users, label: t("peopleList") }] : []),
+        { href: "/app/profile", icon: Settings, label: t("settings") },
         ...(user?.role === "curator" ? [
           { href: "/app/admin/courses", icon: BookOpen, label: t("adminNavCourses") },
           { href: "/app/admin/analytics", icon: BarChart3, label: t("adminNavAnalytics") },
+          { href: "/app/admin/support", icon: MessageCircle, label: t("adminNavSupport") },
         ] : []),
       ]
     : [];
@@ -186,6 +207,7 @@ export function AppDashboardSidebar() {
     { href: "/app/admin/analytics", icon: BarChart3, label: t("adminNavAnalytics") },
     { href: "/app/admin/reviews", icon: Star, label: t("adminNavReviews") },
     { href: "/app/admin/shop", icon: ShoppingBag, label: t("adminShopPurchases") },
+    { href: "/app/admin/support", icon: MessageCircle, label: t("adminNavSupport") },
   ] : [];
 
   const NavContent = ({ compact = false }: { compact?: boolean }) => {
@@ -464,7 +486,9 @@ export function AppDashboardSidebar() {
           type="button"
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 -ml-2 rounded-xl active-tap text-gray-700 dark:text-white bg-white/50 dark:bg-white/10"
-          aria-label="Menu"
+          aria-label={t("openMenu")}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-main-menu"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -476,7 +500,7 @@ export function AppDashboardSidebar() {
           >
             Q
           </div>
-          <span className="font-bold text-gray-900 dark:text-white tracking-tight">
+          <span className="max-w-[42vw] truncate font-bold text-gray-900 dark:text-white tracking-tight">
             {t("platformName")}
           </span>
         </Link>
@@ -503,7 +527,7 @@ export function AppDashboardSidebar() {
                   <h3 className="font-bold text-sm">{t("notifications")}</h3>
                   {unread.length > 0 && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase">
-                      New
+                      {t("newBadge")}
                     </span>
                   )}
                 </div>
@@ -547,6 +571,7 @@ export function AppDashboardSidebar() {
         />
       )}
       <aside
+        id="mobile-main-menu"
         className={`lg:hidden fixed top-0 left-0 z-50 h-full w-[min(18rem,85vw)] flex flex-col transition-transform duration-300 shadow-xl ${mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         style={{ 

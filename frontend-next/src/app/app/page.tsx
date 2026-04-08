@@ -218,30 +218,16 @@ export default function DashboardPage() {
         <LeaderboardMotivationWidget />
       </BlurFade>
 
-      {/* Row 4: AI Challenge, Daily Quest */}
+      {/* Row 4: Daily Quest, Upcoming Deadlines */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-        <BlurFade direction="down" delay={0.35} offset={30} inView={true} duration={0.6} blur="8px">
-          <div className="xl:col-span-1 h-full">
-            <AiChallengeCard />
-          </div>
-        </BlurFade>
         <BlurFade direction="right" delay={0.4} offset={30} inView={true} duration={0.6} blur="8px">
           <div className="xl:col-span-1 h-full">
-            <DailyQuestWidget />
+            <DailyQuestWidget quests={[]} />
           </div>
         </BlurFade>
-      </div>
-
-      {/* Row 5: Upcoming Deadlines, Community */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
         <BlurFade direction="down" delay={0.5} offset={30} inView={true} duration={0.6} blur="8px">
           <div className="xl:col-span-1 h-full">
             <UpcomingDeadlinesWidget />
-          </div>
-        </BlurFade>
-        <BlurFade direction="right" delay={0.55} offset={30} inView={true} duration={0.6} blur="8px">
-          <div className="xl:col-span-1 h-full">
-            <CommunityWidget />
           </div>
         </BlurFade>
       </div>

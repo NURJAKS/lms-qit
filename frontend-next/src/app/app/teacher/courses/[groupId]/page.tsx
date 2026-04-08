@@ -11,8 +11,12 @@ import type { Lang } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { CourseFeedPanel } from "@/components/courses/CourseFeedPanel";
 import { CreateAssignmentFullPageModal } from "@/components/teacher/CreateAssignmentFullPageModal";
 import { TeacherGradebook } from "@/components/teacher/TeacherGradebook";
+import InviteTeacherModal from "@/components/teacher/InviteTeacherModal";
+import { cn } from "@/lib/utils";
+import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Filter,
   GripVertical,
   Loader2,
   MessageCircle,
@@ -109,7 +114,14 @@ type GroupStudent = { id: number; full_name: string; email: string };
 
 type StudentWithoutGroup = { id: number; full_name: string; email: string };
 
-type TabId = "classwork" | "people" | "grades";
+type GroupTeacher = {
+  id: number;
+  full_name: string;
+  email: string;
+  role: "primary" | "secondary";
+};
+
+type TabId = "classwork" | "people" | "grades" | "feed";
 
 /** Стабильные ссылки — иначе `data ?? []` в деструктуризации useQuery даёт новый [] каждый рендер и useEffect([assignments]) уходит в бесконечный цикл. */
 const EMPTY_ASSIGNMENT_LIST: Assignment[] = [];
@@ -203,6 +215,7 @@ export default function TeacherCourseGroupPage() {
 
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     if (tabParam === "people" || tabParam === "grades") return tabParam;
+    if (tabParam === "feed") return "feed";
     if (tabParam === "classwork" || tabParam === "stream") return "classwork";
     return "classwork";
   });
@@ -211,8 +224,10 @@ export default function TeacherCourseGroupPage() {
   const [topicFilter, setTopicFilter] = useState<"all" | number>("all");
   const [collapsedTopics, setCollapsedTopics] = useState<Record<string, boolean>>({});
   const [addStudentOpen, setAddStudentOpen] = useState(false);
+  const [inviteTeacherOpen, setInviteTeacherOpen] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Record<number, boolean>>({});
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [synopsisModalTopic, setSynopsisModalTopic] = useState<{ id: number; title: string } | null>(null);
 
   const [assignmentModalMode, setAssignmentModalMode] = useState<
     "assignment" | "assignmentWithTest" | "question" | "material"
@@ -255,6 +270,7 @@ export default function TeacherCourseGroupPage() {
     if (!tabParam) return;
     if (tabParam === "people") setActiveTab("people");
     else if (tabParam === "grades") setActiveTab("grades");
+    else if (tabParam === "feed") setActiveTab("feed");
     else if (tabParam === "classwork" || tabParam === "stream") setActiveTab("classwork");
   }, [tabParam]);
 
@@ -276,6 +292,25 @@ export default function TeacherCourseGroupPage() {
     },
     enabled: Number.isFinite(groupId) && !!group,
   });
+
+  const { data: groupTeachers = [] } = useQuery<GroupTeacher[]>({
+    queryKey: ["group-teachers", groupId],
+    queryFn: async () => {
+      const { data } = await api.get(`/teacher/groups/${groupId}/teachers`);
+      return data;
+    },
+    enabled: Number.isFinite(groupId) && !!group,
+  });
+
+  const removeTeacherMutation = useMutation({
+    mutationFn: async (teacherId: number) => {
+      await api.delete(`/teacher/groups/${groupId}/teachers/${teacherId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["group-teachers", groupId] });
+    },
+  });
+
   const assignments = assignmentsData ?? EMPTY_ASSIGNMENT_LIST;
 
   const { data: submissionsInbox = [] } = useQuery({
@@ -285,6 +320,40 @@ export default function TeacherCourseGroupPage() {
       return data;
     },
     enabled: Number.isFinite(groupId) && !!group,
+  });
+
+  const { data: topicsMissingAssignments = [] } = useQuery({
+    queryKey: ["teacher-topics-missing-assignments", groupId],
+    queryFn: async () => {
+      const { data } = await api.get<Array<{ id: number; title: string }>>(
+        `/teacher/groups/${groupId}/topics-missing-assignments`
+      );
+      return data;
+    },
+    enabled: Number.isFinite(groupId) && !!group,
+  });
+
+  const { data: topicSynopsesList = [], isFetching: topicSynopsesLoading } = useQuery({
+    queryKey: ["teacher-topic-synopses", groupId, synopsisModalTopic?.id],
+    queryFn: async () => {
+      const tid = synopsisModalTopic!.id;
+      const { data } = await api.get<
+        Array<{
+          student_id: number;
+          full_name: string;
+          email: string;
+          note_text: string | null;
+          submitted_at: string | null;
+          files: Array<{
+            id: number;
+            file_url: string;
+            submitted_at: string | null;
+          }>;
+        }>
+      >(`/teacher/groups/${groupId}/topic-synopses/${tid}`);
+      return data;
+    },
+    enabled: Number.isFinite(groupId) && !!synopsisModalTopic,
   });
 
   const { data: questionsList = [] } = useQuery({
@@ -536,6 +605,13 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
+  const openCreateAssignmentForTopic = (topicId: number) => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ topic_id: topicId });
+    setAssignmentModalOpen(true);
+  };
+
   const openTeacherCreateAssignmentWithTest = () => {
     setCreateOpen(false);
     setAssignmentModalMode("assignmentWithTest");
@@ -624,41 +700,85 @@ export default function TeacherCourseGroupPage() {
   const y = yearFromCreated(group.created_at);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="mx-auto w-full max-w-5xl min-w-0 space-y-6 overflow-x-hidden">
       <BlurFade>
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <Link
               href="/app/teacher/courses"
-              className="text-xs font-medium mb-2 inline-block text-blue-500 hover:underline"
+              className="mb-2 inline-block text-xs font-medium text-blue-500 hover:underline"
             >
               {t("teacherBackToCourses")}
             </Link>
-            <h1 className="text-2xl sm:text-3xl font-bold font-geologica" style={{ color: textColors.primary }}>
+            <h1 className="break-words font-geologica text-xl font-bold sm:text-2xl md:text-3xl" style={{ color: textColors.primary }}>
               {group.group_name}
-              {y ? <span className="text-lg font-semibold opacity-80"> · {y}</span> : null}
+              {y ? <span className="text-base font-semibold opacity-80 sm:text-lg"> · {y}</span> : null}
             </h1>
-            <p className="text-sm mt-1" style={{ color: textColors.secondary }}>
-              {group.course_title}
+            <p className="mt-1 break-words text-sm" style={{ color: textColors.secondary }}>
+              {getLocalizedCourseTitle({ title: group.course_title } as any, t)}
             </p>
           </div>
         </div>
       </BlurFade>
 
-      <div className="flex flex-wrap gap-6 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
-        <button type="button" className={tabClass("classwork")} style={{ color: activeTab === "classwork" ? undefined : textColors.primary }} onClick={() => setActiveTab("classwork")}>
+      <nav
+        className="-mx-1 mb-0 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-b px-1 [-webkit-overflow-scrolling:touch] sm:mx-0 sm:gap-6 sm:px-0"
+        style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+        aria-label="Group sections"
+      >
+        <button type="button" className={`${tabClass("classwork")} shrink-0 whitespace-nowrap`} style={{ color: activeTab === "classwork" ? undefined : textColors.primary }} onClick={() => setActiveTab("classwork")}>
           {t("courseClasswork")}
         </button>
-        <button type="button" className={tabClass("people")} style={{ color: activeTab === "people" ? undefined : textColors.primary }} onClick={() => setActiveTab("people")}>
+        <button type="button" className={`${tabClass("people")} shrink-0 whitespace-nowrap`} style={{ color: activeTab === "people" ? undefined : textColors.primary }} onClick={() => setActiveTab("people")}>
           {t("coursePeople")}
         </button>
-        <button type="button" className={tabClass("grades")} style={{ color: activeTab === "grades" ? undefined : textColors.primary }} onClick={() => setActiveTab("grades")}>
+        <button type="button" className={`${tabClass("grades")} shrink-0 whitespace-nowrap`} style={{ color: activeTab === "grades" ? undefined : textColors.primary }} onClick={() => setActiveTab("grades")}>
           {t("courseGrades")}
         </button>
-      </div>
+        <button type="button" className={`${tabClass("feed")} shrink-0 whitespace-nowrap`} style={{ color: activeTab === "feed" ? undefined : textColors.primary }} onClick={() => setActiveTab("feed")}>
+          {t("courseFeedTab")}
+        </button>
+      </nav>
 
       {activeTab === "classwork" && (
         <div className="space-y-4">
+          {topicsMissingAssignments.length > 0 && (
+            <div
+              className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/25 flex gap-3"
+              style={{ borderColor: isDark ? "rgba(251,191,36,0.35)" : undefined }}
+            >
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{t("teacherTopicsMissingAssignmentsTitle")}</p>
+                <p className="text-xs text-amber-800/90 dark:text-amber-200/90 mt-1">{t("teacherTopicsMissingAssignmentsBody")}</p>
+                <ul className="mt-3 space-y-2">
+                  {topicsMissingAssignments.map((tp) => (
+                    <li
+                      key={tp.id}
+                      className="flex flex-wrap items-center gap-2 text-sm"
+                      style={{ color: textColors.primary }}
+                    >
+                      <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{tp.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => openCreateAssignmentForTopic(tp.id)}
+                        className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                      >
+                        {t("teacherCreateAssignmentForTopic")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSynopsisModalTopic({ id: tp.id, title: tp.title })}
+                        className="text-xs font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
+                      >
+                        {t("teacherViewTopicSynopses")}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative" ref={createRef}>
               <button
@@ -718,21 +838,27 @@ export default function TeacherCourseGroupPage() {
                 type="button"
                 aria-label={t("teacherTopicFilterAria")}
                 onClick={() => setTopicFilterOpen((o) => !o)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm border"
+                className="group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-all hover:border-blue-300 dark:hover:border-blue-500 min-w-0 sm:min-w-[260px] sm:w-auto"
                 style={{ ...glassStyle, color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)" }}
               >
-                {t("topicFilter")}
-                <ChevronDown className="w-4 h-4 opacity-70" />
+                <Filter className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                {topicFilter === "all" ? t("allTopics") : topics.find((tp) => tp.id === topicFilter)?.title ?? t("allTopics")}
+                <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform duration-200", topicFilterOpen && "rotate-180")} />
               </button>
               {topicFilterOpen ? (
                 <div
-                  className="absolute left-0 top-full mt-2 z-40 min-w-[200px] max-h-64 overflow-y-auto rounded-xl py-1 shadow-xl border"
+                  className="absolute left-0 top-full mt-2 z-40 min-w-[240px] max-h-72 overflow-y-auto rounded-2xl p-1.5 shadow-xl border animate-in fade-in zoom-in duration-100"
                   style={{ ...glassStyle, borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
                 >
                   <button
                     type="button"
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                    style={{ color: textColors.primary }}
+                    className={cn(
+                      "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
+                      topicFilter === "all" 
+                        ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                        : "hover:bg-black/5 dark:hover:bg-white/10"
+                    )}
+                    style={{ color: topicFilter === "all" ? undefined : textColors.primary }}
                     onClick={() => {
                       setTopicFilter("all");
                       setTopicFilterOpen(false);
@@ -740,12 +866,18 @@ export default function TeacherCourseGroupPage() {
                   >
                     {t("allTopics")}
                   </button>
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                   {topics.map((tp) => (
                     <button
                       key={tp.id}
                       type="button"
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                      style={{ color: textColors.primary }}
+                      className={cn(
+                        "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
+                        topicFilter === tp.id 
+                          ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                          : "hover:bg-black/5 dark:hover:bg-white/10"
+                      )}
+                      style={{ color: topicFilter === tp.id ? undefined : textColors.primary }}
                       onClick={() => {
                         setTopicFilter(tp.id);
                         setTopicFilterOpen(false);
@@ -846,7 +978,7 @@ export default function TeacherCourseGroupPage() {
                                             setActiveTopicMenu(null);
                                           }}
                                         >
-                                          Переименовать
+                                          {t("teacherRenameCourse")}
                                         </button>
                                         <button 
                                           className="w-full text-left px-4 py-2 text-xs hover:bg-red-500/10 text-red-500" 
@@ -855,7 +987,7 @@ export default function TeacherCourseGroupPage() {
                                             setActiveTopicMenu(null);
                                           }}
                                         >
-                                          Удалить
+                                          {t("remove")}
                                         </button>
                                       </div>
                                     )}
@@ -917,7 +1049,7 @@ export default function TeacherCourseGroupPage() {
                                                     <div className="flex items-center gap-2">
                                                       {item.type === "assignment" ? (
                                                         <Link
-                                                          href={`/app/teacher/view-answers/${item.id}`}
+                                                          href={`/app/teacher/courses/${groupId}/assignment/${item.id}`}
                                                           onClick={(e) => {
                                                             e.stopPropagation();
                                                           }}
@@ -1024,9 +1156,9 @@ export default function TeacherCourseGroupPage() {
 
                                                         const instructionsHref =
                                                           item.type === "assignment"
-                                                            ? `/app/teacher/view-answers/${item.id}?tab=instructions`
+                                                            ? `/app/teacher/courses/${groupId}/assignment/${item.id}`
                                                             : item.type === "question"
-                                                            ? `/app/teacher/view-questions/${item.id}?tab=instructions`
+                                                            ? `/app/teacher/view-questions/${item.id}`
                                                             : null;
 
                                                         return (
@@ -1068,14 +1200,21 @@ export default function TeacherCourseGroupPage() {
 
                                                             {hasRubric ? (
                                                               <div className="text-sm font-medium" style={{ color: textColors.primary }}>
-                                                                Критерий оценки: {rubric.length} условие · {rubricMaxTotal % 1 === 0 ? String(rubricMaxTotal.toFixed(0)) : rubricMaxTotal.toFixed(1)} баллов
+                                                                {t("teacherRubricPill")
+                                                                  .replace("{criteria}", String(rubric.length))
+                                                                  .replace(
+                                                                    "{points}",
+                                                                    rubricMaxTotal % 1 === 0
+                                                                      ? String(rubricMaxTotal.toFixed(0))
+                                                                      : rubricMaxTotal.toFixed(1),
+                                                                  )}
                                                               </div>
                                                             ) : null}
 
                                                             {hasAttachments ? (
                                                               <div className="space-y-2">
                                                                 <div className="text-xs font-semibold" style={{ color: textColors.secondary }}>
-                                                                  Вложения
+                                                                  {t("teacherAttachments")}
                                                                 </div>
 
                                                                 {isAssignment ? (
@@ -1083,7 +1222,7 @@ export default function TeacherCourseGroupPage() {
                                                                     {attachment_urls.length > 0 ? (
                                                                       <div className="space-y-2">
                                                                         {attachment_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherGradingFileFallback").replace("{n}", String(idx + 1));
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1132,7 +1271,7 @@ export default function TeacherCourseGroupPage() {
                                                                     {video_urls.length > 0 ? (
                                                                       <div className="space-y-2">
                                                                         {video_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || `Video ${idx + 1}`;
+                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherVideoFallback").replace("{n}", String(idx + 1));
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1155,7 +1294,7 @@ export default function TeacherCourseGroupPage() {
                                                                     {m_attachment_urls.length > 0 ? (
                                                                       <div className="space-y-2">
                                                                         {m_attachment_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherGradingFileFallback").replace("{n}", String(idx + 1));
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1212,7 +1351,7 @@ export default function TeacherCourseGroupPage() {
                                                                   onClick={(e) => e.stopPropagation()}
                                                                   className="text-sm font-medium text-blue-500 hover:underline"
                                                                 >
-                                                                  Инструкции
+                                                                  {t("teacherViewAnswersInstructions")}
                                                                 </Link>
                                                               </div>
                                                             ) : null}
@@ -1255,30 +1394,58 @@ export default function TeacherCourseGroupPage() {
               </h2>
               <button
                 type="button"
-                onClick={() => {}}
-                disabled
-                className="text-sm font-medium px-3 py-2 rounded-xl border opacity-50 cursor-not-allowed"
+                onClick={() => setInviteTeacherOpen(true)}
+                className="text-sm font-medium px-3 py-2 rounded-xl border transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.05]"
                 style={{ borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)", color: textColors.primary }}
-                title={t("courseSoon")}
               >
                 {t("inviteTeacher")}
               </button>
             </div>
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                style={{ background: "linear-gradient(135deg, #3B82F6, #8B5CF6)" }}
-              >
-                {(user?.full_name || user?.email || "?").charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium truncate" style={{ color: textColors.primary }}>
-                  {user?.full_name || user?.email || "—"}
-                </p>
-                <p className="text-xs truncate" style={{ color: textColors.secondary }}>
-                  {user?.email}
-                </p>
-              </div>
+            <div className="space-y-3">
+              {groupTeachers.map((teacher) => (
+                <div key={teacher.id} className="flex items-center justify-between group">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                      style={{ 
+                        background: teacher.role === "primary" 
+                          ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" 
+                          : "linear-gradient(135deg, #6366F1, #A855F7)" 
+                      }}
+                    >
+                      {(teacher.full_name || teacher.email || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate flex items-center gap-2" style={{ color: textColors.primary }}>
+                        {teacher.full_name || teacher.email || "—"}
+                        {teacher.role === "primary" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">
+                            {t("primary")}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: textColors.secondary }}>
+                        {teacher.email}
+                      </p>
+                    </div>
+                  </div>
+                  {teacher.role === "secondary" && (user?.id === group?.teacher_id || user?.role === "admin") && (
+                    <button
+                      type="button"
+                      onClick={() => removeTeacherMutation.mutate(teacher.id)}
+                      disabled={removeTeacherMutation.isPending}
+                      className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-30"
+                      title={t("remove")}
+                    >
+                      {removeTeacherMutation.isPending && removeTeacherMutation.variables === teacher.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
 
@@ -1360,6 +1527,15 @@ export default function TeacherCourseGroupPage() {
             {t("courseGrades")}
           </h2>
           <TeacherGradebook groupId={groupId} />
+        </div>
+      ) : null}
+
+      {activeTab === "feed" && Number.isFinite(groupId) && group ? (
+        <div className="rounded-2xl p-4 sm:p-6" style={{ ...glassStyle }}>
+          <h2 className="mb-4 font-geologica text-lg font-bold sm:text-xl" style={{ color: textColors.primary }}>
+            {t("courseFeedHeading")}
+          </h2>
+          <CourseFeedPanel variant="teacher" courseId={group.course_id} groupId={groupId} />
         </div>
       ) : null}
 
@@ -1448,9 +1624,86 @@ export default function TeacherCourseGroupPage() {
         </div>
       ) : null}
 
+      {synopsisModalTopic ? (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setSynopsisModalTopic(null)}
+        >
+          <div
+            className="rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col"
+            style={modalStyle}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
+              <h3 className="font-semibold font-geologica pr-2" style={{ color: textColors.primary }}>
+                {t("teacherTopicSynopsesTitle")}: {synopsisModalTopic.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSynopsisModalTopic(null)}
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
+              >
+                <X className="w-5 h-5" style={{ color: textColors.secondary }} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {topicSynopsesLoading ? (
+                <div className="flex items-center gap-2 text-sm" style={{ color: textColors.secondary }}>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t("loading")}
+                </div>
+              ) : topicSynopsesList.length === 0 ? (
+                <p className="text-sm" style={{ color: textColors.secondary }}>
+                  {t("teacherTopicSynopsesEmpty")}
+                </p>
+              ) : (
+                <ul className="space-y-4">
+                  {topicSynopsesList.map((row) => (
+                    <li
+                      key={`${row.student_id}-${row.submitted_at}`}
+                      className="p-3 rounded-xl border text-sm"
+                      style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+                    >
+                      <p className="font-medium" style={{ color: textColors.primary }}>
+                        {row.full_name || row.email}
+                      </p>
+                      {row.submitted_at && (
+                        <p className="text-xs mt-0.5 opacity-70">{row.submitted_at}</p>
+                      )}
+                      <div className="mt-2 space-y-1.5">
+                        {row.files.map((file) => (
+                          <a
+                            key={file.id}
+                            href={file.file_url.startsWith("/") ? file.file_url : `/uploads/${file.file_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-xs font-medium mr-3"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {t("teacherTopicSynopsisOpenFile")}: {file.file_url.split("/").pop()?.split("?")[0] || t("teacherFileFallback").replace("{n}", "1")}
+                          </a>
+                        ))}
+                      </div>
+                      {row.note_text ? (
+                        <p className="mt-2 text-xs whitespace-pre-wrap opacity-90" style={{ color: textColors.secondary }}>
+                          {row.note_text}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <CreateAssignmentFullPageModal
         isOpen={assignmentModalOpen}
-        onClose={() => setAssignmentModalOpen(false)}
+        onClose={() => {
+          setAssignmentModalOpen(false);
+          setClonedItemData(null);
+        }}
         currentGroup={group}
         teacherGroups={groups}
         topics={topics}
@@ -1708,6 +1961,14 @@ export default function TeacherCourseGroupPage() {
           teacherGroups={groups}
         />
       )}
+
+      {inviteTeacherOpen && Number.isFinite(groupId) && (
+        <InviteTeacherModal
+          isOpen={inviteTeacherOpen}
+          onClose={() => setInviteTeacherOpen(false)}
+          groupId={groupId}
+        />
+      )}
     </div>
   );
 }
@@ -1801,7 +2062,7 @@ function ReuseItemDialog({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate" style={{ color: textColors.primary }}>{g.group_name}</p>
-                    <p className="text-xs truncate" style={{ color: textColors.secondary }}>{g.course_title}</p>
+                    <p className="text-xs truncate" style={{ color: textColors.secondary }}>{getLocalizedCourseTitle({ title: g.course_title } as any, t)}</p>
                     <p className="text-[10px] mt-1 opacity-60" style={{ color: textColors.secondary }}>
                       {t("createdLabel")}: {formatPostedAt(g.created_at, lang)}
                     </p>

@@ -47,6 +47,9 @@ export function LeaderboardHeader({ lastReward }: LeaderboardHeaderProps) {
           </div>
 
           <div className="space-y-2">
+            <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 leading-relaxed max-w-3xl">
+              {t("leaderboardRankingHint")}
+            </p>
             <AnimatedShinyText
               className="text-sm md:text-base text-gray-700 dark:text-gray-300 max-w-none"
               shimmerWidth={150}
