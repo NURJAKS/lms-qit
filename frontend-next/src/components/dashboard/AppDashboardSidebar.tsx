@@ -17,7 +17,6 @@ import {
   ShoppingBag,
   Users,
   MessageCircle,
-  Baby,
   Globe,
   Sun,
   Moon,
@@ -33,7 +32,7 @@ import {
   ArrowRight,
   Zap,
   X,
-  ListTodo,
+  LifeBuoy,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
@@ -115,6 +114,12 @@ export function AppDashboardSidebar() {
     });
   };
 
+  const markAllRead = () => {
+    api.post("/notifications/read-all").then(() => {
+      refetch();
+    });
+  };
+
   const navLinkClass = (href: string) => {
     const isActive =
       href === "/app"
@@ -159,7 +164,7 @@ export function AppDashboardSidebar() {
       : isStudentWithoutGroup
         ? [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
-          { href: "/app/support", icon: MessageCircle, label: t("studentSupportTitle") },
+          { href: "/app/support", icon: LifeBuoy, label: t("studentSupportTitle") },
         ]
         : [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
@@ -171,7 +176,7 @@ export function AppDashboardSidebar() {
           { href: "/app/shop", icon: ShoppingBag, label: t("shop") },
           { href: "/app/leaderboard", icon: Trophy, label: t("rating") },
           { href: "/app/community", icon: MessageCircle, label: t("communitySidebarLink") },
-          ...(user?.role === "student" ? [{ href: "/app/support", icon: MessageCircle, label: t("studentSupportTitle") }] : []),
+          ...(user?.role === "student" ? [{ href: "/app/support", icon: LifeBuoy, label: t("studentSupportTitle") }] : []),
         ]
     : [{ href: "/app", icon: LayoutDashboard, label: t("dashboard") }];
 
@@ -185,13 +190,12 @@ export function AppDashboardSidebar() {
         // Premium показывается только для студентов (не для учителей, директора, админа, куратора, родителя)
         ...(user?.role === "student" ? [{ href: "/app/premium", icon: Sparkles, label: t("premiumTab"), isPremium: true }] : []),
         ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacherDashboardSidebar") }] : []),
-        ...(isParent ? [] : isAdmin() ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
         ...(isAdmin() || isTeacher() || user?.role === "curator" ? [{ href: "/app/people", icon: Users, label: t("peopleList") }] : []),
         { href: "/app/profile", icon: Settings, label: t("settings") },
         ...(user?.role === "curator" ? [
           { href: "/app/admin/courses", icon: BookOpen, label: t("adminNavCourses") },
           { href: "/app/admin/analytics", icon: BarChart3, label: t("adminNavAnalytics") },
-          { href: "/app/admin/support", icon: MessageCircle, label: t("adminNavSupport") },
+          { href: "/app/admin/support", icon: LifeBuoy, label: t("adminNavSupport") },
         ] : []),
       ]
     : [];
@@ -207,7 +211,7 @@ export function AppDashboardSidebar() {
     { href: "/app/admin/analytics", icon: BarChart3, label: t("adminNavAnalytics") },
     { href: "/app/admin/reviews", icon: Star, label: t("adminNavReviews") },
     { href: "/app/admin/shop", icon: ShoppingBag, label: t("adminShopPurchases") },
-    { href: "/app/admin/support", icon: MessageCircle, label: t("adminNavSupport") },
+    { href: "/app/admin/support", icon: LifeBuoy, label: t("adminNavSupport") },
   ] : [];
 
   const NavContent = ({ compact = false }: { compact?: boolean }) => {
@@ -522,13 +526,27 @@ export function AppDashboardSidebar() {
               </div>
             </button>
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl z-50 max-h-96 overflow-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-inherit z-10">
-                  <h3 className="font-bold text-sm">{t("notifications")}</h3>
+              <div className="absolute right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl z-50 max-h-96 overflow-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sticky top-0 bg-inherit z-10">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-bold text-sm shrink-0">{t("notifications")}</h3>
+                    {unread.length > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase shrink-0">
+                        {t("newBadge")}
+                      </span>
+                    )}
+                  </div>
                   {unread.length > 0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase">
-                      {t("newBadge")}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAllRead();
+                      }}
+                      className="text-[10px] sm:text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline text-left sm:text-right leading-snug whitespace-normal w-full sm:w-auto sm:max-w-[12.5rem]"
+                    >
+                      {t("markAllAsRead")}
+                    </button>
                   )}
                 </div>
                 {notifications.length === 0 ? (

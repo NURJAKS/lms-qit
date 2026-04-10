@@ -46,6 +46,15 @@ if ! "$VENV_PY" -c "import uvicorn" 2>/dev/null; then
   "$VENV_PIP" install -r "$SCRIPT_DIR/backend/requirements.txt"
 fi
 
+if [ ! -f "$SCRIPT_DIR/backend/.env" ]; then
+  if [ -f "$SCRIPT_DIR/backend/.env.example" ]; then
+    echo -e "${YELLOW}Нет backend/.env — копирую из .env.example (секреты не в git).${NC}"
+    cp "$SCRIPT_DIR/backend/.env.example" "$SCRIPT_DIR/backend/.env"
+  else
+    echo -e "${YELLOW}Нет backend/.env и .env.example — создайте backend/.env вручную.${NC}"
+  fi
+fi
+
 echo -e "${GREEN}✅ Backend: http://127.0.0.1:8000${NC}"
 (
   cd "$SCRIPT_DIR/backend"

@@ -59,6 +59,29 @@ export function getLocalizedNotificationText<K extends string>(
         title: T("notificationAssignmentGradedTitle"),
         message: T("notificationAssignmentGradedBody"),
       };
+    case "assignment_returned": {
+      try {
+        const p = JSON.parse(n.message) as { grade?: number | null; comment?: string };
+        const gradeStr =
+          p.grade != null && Number.isFinite(Number(p.grade))
+            ? String(p.grade)
+            : T("notificationAssignmentNoGrade");
+        const comment = (p.comment || "").trim();
+        const base = T("notificationAssignmentReturnedBody").replace("{grade}", gradeStr);
+        const message = comment
+          ? `${base} ${T("notificationAssignmentReturnedComment").replace("{comment}", comment)}`
+          : base;
+        return {
+          title: T("notificationAssignmentReturnedTitle"),
+          message,
+        };
+      } catch {
+        return {
+          title: T("notificationAssignmentReturnedTitle"),
+          message: n.message,
+        };
+      }
+    }
     case "material_created":
       return {
         title: T("notificationMaterialCreatedTitle"),
@@ -88,6 +111,16 @@ export function getLocalizedNotificationText<K extends string>(
       return {
         title: T("notificationAiChallengeResultTitle"),
         message: T("notificationAiChallengeResultBody"),
+      };
+    case "test_passed":
+      return {
+        title: T("notificationTestPassedTitle"),
+        message: T("notificationTestPassedBody"),
+      };
+    case "test_failed":
+      return {
+        title: T("notificationTestFailedTitle"),
+        message: T("notificationTestFailedBody"),
       };
     default:
       return {

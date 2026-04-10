@@ -1,0 +1,26 @@
+enable
+configure terminal
+spanning-tree mode rapid-pvst
+
+для свичей 3 и 4
+
+
+
+тема треуголников: Как проверить статус через текст?
+
+На любом коммутаторе введи:
+show spanning tree
+
+2. Перейди на Rapid STP (RSTP)
+
+Чтобы не ждать эти 30 секунд, нужно переключить режим на всех коммутаторах (0, 1 и 2):
+
+    Зайди в глобальный конфиг: configure terminal.
+
+    Введи: spanning-tree mode rapid-pvst.
+
+    Повтори эксперимент: Снова сделай shutdown, а потом no shutdown. Ты увидишь, что порты станут зелеными мгновенно.
+    
+   
+   
+goal: check that they can work and use additional cabel to continue work without depending

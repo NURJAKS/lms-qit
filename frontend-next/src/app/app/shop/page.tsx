@@ -9,6 +9,7 @@ import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
+import { toast } from "@/store/notificationStore";
 import {
   BookOpen,
   Gift,
@@ -52,7 +53,7 @@ import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types";
 import { getLocalizedShopItemTitle, getLocalizedShopItemDesc, CATEGORY_KEYS } from "@/lib/shopUtils";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BookOpen,
@@ -314,7 +315,7 @@ export default function ShopPage() {
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("shopCheckoutError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     },
   });
 
@@ -346,7 +347,7 @@ export default function ShopPage() {
       setPurchasingId(null);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("shopPurchaseError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     },
   });
 
@@ -366,12 +367,12 @@ export default function ShopPage() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ["me"] });
-      alert(data.message);
+      toast.success(data.message);
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("shopCancelOrderError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     },
   });
 
@@ -385,7 +386,7 @@ export default function ShopPage() {
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("shopDeletePurchaseError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     },
   });
 
@@ -535,7 +536,7 @@ export default function ShopPage() {
                         <h3 className="font-medium truncate" style={{ color: textColors.primary }}>{getLocalizedShopItemTitle(p as any, lang, t)}</h3>
                         {p.purchased_at && (
                           <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>
-                            {formatDateTimeLocalized(p.purchased_at, lang, { hour: undefined, minute: undefined })}
+                            {p.purchased_at ? formatLocalizedDate(p.purchased_at, lang as any, t) : ""}
                           </p>
                         )}
                       </div>
@@ -561,7 +562,7 @@ export default function ShopPage() {
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-1 text-xs" style={{ color: "#10B981" }}>
                               <CheckCircle className="w-3 h-3" />
-                              <span>{t("shopDeliveredOn")} {formatDateTimeLocalized(p.delivered_at, lang, { hour: undefined, minute: undefined })}</span>
+                              <span>{t("shopDeliveredOn")} {formatLocalizedDate(p.delivered_at, lang as any, t)}</span>
                             </div>
                             <button
                               onClick={() => setViewingPurchase(p)}
@@ -576,7 +577,7 @@ export default function ShopPage() {
                         {p.delivery_status !== "delivered" && p.estimated_delivery_date && (
                           <div className="flex items-center gap-1 text-xs" style={{ color: textColors.secondary }}>
                             <Truck className="w-3 h-3" />
-                            <span>{t("shopExpectedOn")} {formatDateTimeLocalized(p.estimated_delivery_date, lang, { hour: undefined, minute: undefined })}</span>
+                            <span>{t("shopExpectedOn")} {formatLocalizedDate(p.estimated_delivery_date, lang as any, t)}</span>
                           </div>
                         )}
                       </div>
@@ -870,7 +871,7 @@ export default function ShopPage() {
                     <div className="flex items-center justify-between gap-4">
                       <span style={{ color: textColors.secondary }}>{t("adminShopPurchaseDate")}</span>
                       <span style={{ color: textColors.primary }}>
-                        {formatDateTimeLocalized(viewingPurchase.purchased_at, lang, { hour: undefined, minute: undefined })}
+                        {viewingPurchase.purchased_at ? formatLocalizedDate(viewingPurchase.purchased_at, lang as any, t) : ""}
                       </span>
                     </div>
                   )}
@@ -878,7 +879,7 @@ export default function ShopPage() {
                     <div className="flex items-center justify-between gap-4">
                       <span style={{ color: textColors.secondary }}>{t("shopDeliveredOn")}</span>
                       <span style={{ color: "#10B981" }}>
-                        {formatDateTimeLocalized(viewingPurchase.delivered_at, lang, { hour: undefined, minute: undefined })}
+                        {viewingPurchase.delivered_at ? formatLocalizedDate(viewingPurchase.delivered_at, lang as any, t) : ""}
                       </span>
                     </div>
                   )}
@@ -892,11 +893,7 @@ export default function ShopPage() {
                     color: isDark ? "#6EE7B7" : "#047857",
                   }}
                 >
-                  {lang === "ru"
-                    ? "Этот товар уже закреплен за вами."
-                    : lang === "kk"
-                      ? "Бұл тауар енді сізге тиесілі."
-                      : "This item is now assigned to your account."}
+                  {t("shopItemAssigned")}
                 </div>
 
                 {viewingPurchase.description && (

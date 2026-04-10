@@ -201,7 +201,7 @@ function LoginContent() {
                   {...register("password")}
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder={t("placeholderPassword")}
                   className="w-full px-4 py-2.5 pr-10 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                 />
                 <button
@@ -260,7 +260,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f5f7ff] dark:bg-gray-900">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f5f7ff] dark:bg-gray-900">...</div>}>
       <LoginContent />
     </Suspense>
   );

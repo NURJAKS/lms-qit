@@ -5,6 +5,8 @@ import { useState } from "react";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
+import { ToastContainer } from "@/components/ui/ToastContainer";
+import { GlobalConfirmModal } from "@/components/ui/GlobalConfirmModal";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -27,7 +29,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <LanguageProvider>
-          <SidebarProvider>{children}</SidebarProvider>
+          <SidebarProvider>
+            {children}
+            <ToastContainer />
+            <GlobalConfirmModal />
+          </SidebarProvider>
         </LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -36,7 +36,7 @@ function Toolbar({ editor, t }: { editor: Editor | null; t: (key: TranslationKey
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => editor.chain().focus().toggleList("bulletList", "listItem").run()}
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
         className={`p-2 rounded ${editor.isActive("bulletList") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
         title={t("richTextBulletList")}
       >
@@ -45,7 +45,7 @@ function Toolbar({ editor, t }: { editor: Editor | null; t: (key: TranslationKey
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => editor.chain().focus().toggleList("orderedList", "listItem").run()}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
         className={`p-2 rounded ${editor.isActive("orderedList") ? "bg-gray-300 dark:bg-gray-600" : "hover:bg-gray-200 dark:hover:bg-gray-600"}`}
         title={t("richTextNumberedList")}
       >

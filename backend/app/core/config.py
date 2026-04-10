@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 24 * 60  # 24 hours
     PREMIUM_PRICE_TENGE: int = 199999  # цена Premium в тенге
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
+    # Публичный URL фронта (ссылки в письмах: подтверждение покупки, вход)
+    FRONTEND_PUBLIC_URL: str = "http://localhost:3000"
     DEBUG: bool = True  # Set to False in production
     # Явный course_id для AI Challenge (трек Web), если название в БД не совпадает с seed
     AI_CHALLENGE_WEB_COURSE_ID: int | None = None

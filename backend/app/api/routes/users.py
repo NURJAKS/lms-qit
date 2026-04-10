@@ -1035,6 +1035,7 @@ def _build_profile_public_summary(db: Session, user: User) -> dict:
         "photo_url": profile.get("photo_url"),
         "description": profile.get("description"),
         "phone": profile.get("phone"),
+        "birth_date": profile.get("birth_date"),
         "city": profile.get("city"),
         "created_at": profile.get("created_at"),
         "points": profile.get("points", 0),
@@ -1045,6 +1046,14 @@ def _build_profile_public_summary(db: Session, user: User) -> dict:
         safe.update(
             {
                 "status": sp.status,
+                "gender": sp.gender,
+                "nationality": sp.nationality,
+                "iin": sp.iin,
+                "identity_card": sp.identity_card,
+                "phone_alternative": sp.phone_alternative,
+                "postal_code": sp.postal_code,
+                "country": sp.country,
+                "student_id_card_number": sp.student_id_card_number,
                 "specialty": sp.specialty,
                 "course": sp.course,
                 "group": sp.group,

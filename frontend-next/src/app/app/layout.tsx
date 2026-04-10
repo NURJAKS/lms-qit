@@ -7,7 +7,6 @@ import { api } from "@/api/client";
 import { useSidebar } from "@/context/SidebarContext";
 import { AppDashboardSidebar } from "@/components/dashboard/AppDashboardSidebar";
 import { AppDashboardHeader } from "@/components/dashboard/AppDashboardHeader";
-import { LandingChatWidget } from "@/components/landing/LandingChatWidget";
 import { MobileBottomNav } from "@/components/dashboard/MobileBottomNav";
 
 export default function AppLayout({
@@ -49,13 +48,12 @@ export default function AppLayout({
       >
         <AppDashboardHeader />
         <main className="flex-1 min-w-0 pt-0 bg-gray-100 dark:bg-[var(--qit-bg-deep)]">
-          <div className="pt-2 pb-24 lg:pb-6 px-3 sm:px-4 md:px-6">
+          <div className="pt-2 pb-28 lg:pb-6 px-3 sm:px-4 md:px-6">
             <div className="max-w-7xl mx-auto w-full min-w-0">{children}</div>
           </div>
         </main>
       </div>
       <MobileBottomNav />
-      <LandingChatWidget />
     </div>
   );
 }

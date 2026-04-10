@@ -209,7 +209,7 @@ docker compose up -d --build
 | Файл                 | Назначение                                                                 |
 |----------------------|----------------------------------------------------------------------------|
 | `backend/.env`       | DATABASE_URL, SECRET_KEY, API-ключи, CORS (ALLOWED_ORIGINS), SMTP и т.д.  |
-| `backend/.env.example` | Шаблон; в нём по умолчанию PostgreSQL — для локальной разработки замените на SQLite. |
+| `backend/.env.example` | Шаблон; по умолчанию SQLite для демо. PostgreSQL — см. закомментированную строку в файле. |
 | `frontend-next/.env.local` | NEXT_PUBLIC_BASE_URL (и при необходимости EMAIL_*) |
 | `frontend-next/next.config.ts` | BACKEND_URL для прокси (по умолчанию http://localhost:8000)            |
 

@@ -26,6 +26,7 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import { getLocalizedNotificationText } from "@/lib/notificationText";
 import { cn } from "@/lib/utils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 export function AppTopNav() {
   const { user, logout, isAdmin, isTeacher } = useAuthStore();
@@ -133,7 +134,7 @@ export function AppTopNav() {
                 {t("teacherDashboardSidebar")}
               </Link>
             )}
-            {(user?.role === "parent" || isAdmin()) && (
+            {user?.role === "parent" && (
               <Link
                 href="/app/parent-dashboard"
                 className={navLinkClass("/app/parent-dashboard")}
@@ -168,16 +169,16 @@ export function AppTopNav() {
                 </div>
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-[32rem] flex flex-col">
-                  <div className="p-3 border-b dark:border-gray-600 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{t("notifications")}</span>
+                <div className="absolute right-0 top-full mt-1 w-[min(20rem,calc(100vw-1.5rem))] max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-[32rem] flex flex-col">
+                  <div className="p-3 border-b dark:border-gray-600 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-gray-50/50 dark:bg-gray-800/50">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">{t("notifications")}</span>
                     {unread.length > 0 && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           markAllRead();
                         }}
-                        className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline"
+                        className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline text-left sm:text-right leading-snug whitespace-normal"
                       >
                         {t("markAllAsRead")}
                       </button>
@@ -203,12 +204,7 @@ export function AppTopNav() {
                             <p className={cn("text-sm", !n.is_read ? "font-bold" : "font-medium text-gray-700 dark:text-gray-200")}>{title}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{message}</p>
                             <p className="text-[10px] text-gray-400 mt-1">
-                              {new Date(n.created_at).toLocaleString(lang === "en" ? "en-US" : lang === "kk" ? "kk-KZ" : "ru-RU", {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
+                              {formatLocalizedDate(n.created_at, lang, t, { includeTime: true, shortMonth: true })}
                             </p>
                           </button>
                         );
@@ -314,7 +310,7 @@ function MobileNavMenu({
     { href: "/app", icon: Zap, label: t("aiVsStudent") },
     { href: "/app/shop", icon: ShoppingBag, label: t("shop") },
     ...(isTeacher() ? [{ href: "/app/teacher", icon: Users, label: t("teacherDashboardSidebar") }] : []),
-    ...(userRole === "parent" || isAdmin() ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
+    ...(userRole === "parent" ? [{ href: "/app/parent-dashboard", icon: Baby, label: t("parent") }] : []),
     ...(isAdmin() ? [{ href: "/app/admin", icon: LayoutDashboard, label: t("admin") }] : []),
   ];
 
@@ -324,7 +320,7 @@ function MobileNavMenu({
         type="button"
         onClick={() => setOpen(!open)}
         className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        aria-label="Menu"
+        aria-label={t("openMenu")}
       >
         <Menu className="w-6 h-6" />
       </button>

@@ -4,16 +4,17 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import { toast } from "@/store/notificationStore";
 import { 
   ChevronLeft, Paperclip, CheckCircle, Clock, XCircle, Search, Save, 
   Download, FileText, Check, Users, ChevronRight, PanelLeftClose, 
   PanelLeftOpen, MoreVertical, ExternalLink,
-  History, SortAsc
+  SortAsc
 } from "lucide-react";
 import { useState, useMemo, useEffect, Children, cloneElement, isValidElement } from "react";
 import { MagicCard } from "@/components/ui/magic-card";
 import { cn } from "@/lib/utils";
-import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 
 // Custom UI Components to replace missing shadcn/ui
@@ -72,7 +73,10 @@ const DropdownMenu = ({ children }: any) => {
 const DropdownMenuTrigger = ({ children, setIsOpen }: any) =>
   isValidElement(children) ? cloneElement(children, { onClick: () => setIsOpen((prev: boolean) => !prev) } as any) : null;
 const DropdownMenuContent = ({ children, isOpen, align = "end" }: any) => isOpen ? (
-  <div className={cn("absolute z-50 mt-2 min-w-[8rem] overflow-hidden rounded-md border border-gray-200 bg-white p-1 shadow-md dark:border-gray-800 dark:bg-gray-900", align === "end" ? "right-0" : "left-0")}>
+  <div className={cn(
+    "absolute z-50 top-full mt-2 min-w-[8rem] overflow-hidden rounded-md border border-gray-200 bg-white p-1 shadow-md dark:border-gray-800 dark:bg-gray-900",
+    align === "end" ? "right-0" : "left-0"
+  )}>
     {children}
   </div>
 ) : null;
@@ -323,7 +327,7 @@ export default function AssignmentDetailPage() {
     },
     onError: (error) => {
       console.error("Failed to save grade:", error);
-      alert(t("errorSavingGrade"));
+      toast.error(t("errorSavingGrade"));
     },
   });
 
@@ -429,48 +433,46 @@ export default function AssignmentDetailPage() {
   if (activeTab === "instructions") {
     return (
       <div className="flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 sm:px-6 flex items-center justify-between shrink-0">
-          <div>
-            <button
-              onClick={() => router.push("/app/teacher?tab=assignments")}
-              className="inline-flex items-center gap-2 mb-2 text-sm text-gray-500 dark:text-gray-400 hover:text-[var(--qit-primary)] dark:hover:text-[#00b0ff] transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              {t("teacherBack")}
-            </button>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-3 truncate max-w-3xl">
-              {assignment.title}
-              <span className="text-xs font-medium px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                {assignment.group_name}
+        <div className="shrink-0 border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+          <button
+            onClick={() => router.push("/app/teacher?tab=assignments")}
+            className="mb-2 inline-flex items-center gap-2 text-sm text-gray-500 transition-colors hover:text-[var(--qit-primary)] dark:text-gray-400 dark:hover:text-[#00b0ff]"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            {t("teacherBack")}
+          </button>
+          <h1 className="flex flex-col gap-2 text-lg font-bold text-gray-800 sm:flex-row sm:items-center sm:text-2xl dark:text-white">
+            <span className="min-w-0 break-words">{assignment.title}</span>
+            <span className="w-fit shrink-0 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+              {assignment.group_name}
+            </span>
+          </h1>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+            {assignment.deadline && (
+              <span className="min-w-0">
+                {t("teacherDeadline")}: {formatLocalizedDate(assignment.deadline, lang as any, t, { includeTime: true })}
               </span>
-            </h1>
-            <div className="mt-1 text-sm text-gray-500 flex gap-4 flex-wrap">
-              {assignment.deadline && (
-                <span>
-                  {t("teacherDeadline")}: {formatDateTimeLocalized(assignment.deadline, lang)}
-                </span>
-              )}
-              <span>
-                {t("teacherScore")}: {t("teacherGradingScoreMaxLine").replace("{max}", String(assignment.max_points))}
-              </span>
-            </div>
+            )}
+            <span>
+              {t("teacherScore")}: {t("teacherGradingScoreMaxLine").replace("{max}", String(assignment.max_points))}
+            </span>
+          </div>
 
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => router.push(`/app/teacher/view-answers/${id}?tab=instructions`)}
-                className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors bg-[var(--qit-primary)] text-white shadow-sm"
-              >
-                {t("teacherViewAnswersInstructions")}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push(`/app/teacher/view-answers/${id}?tab=submissions`)}
-                className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                {t("teacherViewAnswersSubmissions")}
-              </button>
-            </div>
+          <div className="mt-4 flex w-full gap-1 rounded-2xl border border-gray-200 bg-gray-50/80 p-1 dark:border-gray-600 dark:bg-gray-900/50 sm:inline-flex sm:w-auto sm:rounded-full">
+            <button
+              type="button"
+              onClick={() => router.push(`/app/teacher/view-answers/${id}?tab=instructions`)}
+              className="min-h-[44px] flex-1 rounded-xl bg-[var(--qit-primary)] px-3 py-2 text-center text-sm font-medium text-white shadow-sm sm:min-h-0 sm:flex-initial sm:rounded-full sm:py-1.5"
+            >
+              {t("teacherViewAnswersInstructions")}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(`/app/teacher/view-answers/${id}?tab=submissions`)}
+              className="min-h-[44px] flex-1 rounded-xl bg-gray-100 px-3 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-600 sm:min-h-0 sm:flex-initial sm:rounded-full sm:bg-gray-200 sm:py-1.5 dark:sm:bg-gray-700"
+            >
+              <span className="line-clamp-2 text-balance sm:line-clamp-none">{t("teacherViewAnswersSubmissions")}</span>
+            </button>
           </div>
         </div>
 
@@ -564,7 +566,7 @@ export default function AssignmentDetailPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row min-h-0">
         {/* Left Sidebar: Student List */}
         <div className={cn(
           "border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col shrink-0 h-full overflow-hidden transition-all duration-300",
@@ -839,24 +841,20 @@ export default function AssignmentDetailPage() {
         </div>
 
         {/* Right Sidebar: Grading & Comments */}
-        <div className="w-80 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col shrink-0 overflow-hidden">
+        <div className="w-full max-w-full lg:w-80 lg:max-w-[20rem] border-t lg:border-t-0 border-gray-200 dark:border-gray-800 lg:border-l bg-white dark:bg-gray-900 flex flex-col shrink-0 overflow-hidden min-h-0">
           {selectedSubmission ? (
             <div className="flex flex-col h-full overflow-y-auto">
               {/* Submission Info */}
               <div className="p-4 border-b border-gray-100 dark:border-gray-800">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("teacherGradingFiles")}</h3>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
-                    <History className="w-3 h-3" />
-                    {t("teacherGradingHistory")}
-                  </Button>
                 </div>
                 <div className="space-y-2">
                   {allFiles.map((file, idx) => (
                     <div key={idx} className="flex items-center justify-between text-xs p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700">
                       <span className="truncate font-medium text-gray-600 dark:text-gray-300 pr-2">{file.split('/').pop()}</span>
                       <span className="shrink-0 text-[10px] text-gray-400">
-                        {selectedSubmission.submitted_at ? new Date(selectedSubmission.submitted_at).toLocaleDateString() : ''}
+                        {selectedSubmission.submitted_at ? formatLocalizedDate(selectedSubmission.submitted_at, lang, t, { includeTime: true, shortMonth: true }) : ''}
                       </span>
                     </div>
                   ))}

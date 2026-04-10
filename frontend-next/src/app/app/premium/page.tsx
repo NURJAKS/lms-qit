@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/store/notificationStore";
 import { api } from "@/api/client";
 import type { TranslationKey } from "@/i18n/translations";
 import type { Course } from "@/types";
@@ -170,7 +171,7 @@ export default function PremiumPage() {
       if (!msg && err?.response?.status === 500) msg = t("serverError");
       if (!msg && (err?.message?.includes("Network") || err?.message?.includes("timeout")))
         msg = t("backendUnavailable");
-      alert(msg ?? t("courseError"));
+      toast.error(msg ?? t("courseError"));
     } finally {
       setPaying(false);
     }
@@ -386,28 +387,28 @@ export default function PremiumPage() {
                       value={cardNumber}
                       onChange={(e) => setCardNumber(e.target.value)}
                       className="w-full border dark:border-gray-600 rounded-lg px-3 py-2.5 dark:bg-gray-700 dark:text-white"
-                      placeholder="4111 1111 1111 1111"
+                      placeholder={t("placeholderCardNumber")}
                     />
                   </div>
                   <div className="flex gap-3">
                     <div className="flex-1">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">MM/YY</label>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">{t("paymentExpiry")}</label>
                       <input
                         type="text"
                         value={cardExpiry}
                         onChange={(e) => setCardExpiry(e.target.value)}
                         className="w-full border dark:border-gray-600 rounded-lg px-3 py-2.5 dark:bg-gray-700 dark:text-white"
-                        placeholder="MM/YY"
+                        placeholder={t("placeholderExpiry")}
                       />
                     </div>
                     <div className="w-24">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">CVV</label>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">{t("paymentCvvLabel")}</label>
                       <input
                         type="text"
                         value={cardCvv}
                         onChange={(e) => setCardCvv(e.target.value)}
                         className="w-full border dark:border-gray-600 rounded-lg px-3 py-2.5 dark:bg-gray-700 dark:text-white"
-                        placeholder="123"
+                        placeholder={t("placeholderCvv")}
                       />
                     </div>
                   </div>

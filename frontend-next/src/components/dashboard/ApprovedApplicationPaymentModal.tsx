@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import { toast } from "@/store/notificationStore";
 import { useTheme } from "@/context/ThemeContext";
 import { CreditCard, Smartphone, Loader2 } from "lucide-react";
 import { getModalStyle, getTextColors } from "@/utils/themeStyles";
@@ -44,7 +45,7 @@ export function ApprovedApplicationPaymentModal({
 
   const handlePay = async () => {
     if (!cardNumber || !cardExpiry || !cardCvv) {
-      alert(t("paymentFillAllFields"));
+      toast.error(t("paymentFillAllFields"));
       return;
     }
     setPaying(true);
@@ -66,7 +67,7 @@ export function ApprovedApplicationPaymentModal({
       setStep("card");
       setPaying(false);
       const err = e as { response?: { data?: { detail?: string } } };
-      alert(err.response?.data?.detail ?? t("error"));
+      toast.error(err.response?.data?.detail ?? t("error"));
     }
   };
 

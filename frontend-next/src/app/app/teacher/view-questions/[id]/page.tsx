@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { 
   ChevronLeft, CheckCircle, XCircle, Search, Users, 
   ChevronRight, PanelLeftClose, PanelLeftOpen, MessageCircle,
@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { MagicCard } from "@/components/ui/magic-card";
+import { QuestionClassCommentsSection } from "@/components/courses/QuestionClassCommentsSection";
 import { cn } from "@/lib/utils";
+import { toast, useNotificationStore } from "@/store/notificationStore";
 
 type Answer = {
   id: number | null;
@@ -33,7 +35,14 @@ type QuestionDetails = {
   options: string[];
   correct_option: string | null;
   group_name: string;
+  allow_student_class_comments?: boolean;
 };
+
+/** Backend may store `open` while options are present; 2+ options ⇒ single-choice UI. */
+function isSingleChoiceQuestion(q: Pick<QuestionDetails, "type" | "options">): boolean {
+  if (q.type === "single_choice") return true;
+  return (q.options?.length ?? 0) >= 2;
+}
 
 export default function ViewQuestionsPage() {
   const { t, lang } = useLanguage();
@@ -43,6 +52,7 @@ export default function ViewQuestionsPage() {
   const { user, isTeacher } = useAuthStore();
   const id = Number(params.id);
   const queryClient = useQueryClient();
+  const showConfirm = useNotificationStore((s) => s.showConfirm);
 
   const teacherMode = isTeacher();
 
@@ -61,6 +71,7 @@ export default function ViewQuestionsPage() {
   // Student-specific state
   const [studentAnswer, setStudentAnswer] = useState("");
   const [studentSelectedOption, setStudentSelectedOption] = useState<string | null>(null);
+  const [teacherPreviewOption, setTeacherPreviewOption] = useState<string | null>(null);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ["question-answers", id, teacherMode],
@@ -86,6 +97,10 @@ export default function ViewQuestionsPage() {
 
   const answers = data?.answers ?? [];
   const question = data?.question;
+
+  useEffect(() => {
+    setTeacherPreviewOption(null);
+  }, [id]);
 
   const filteredAnswers = useMemo(() => {
     return answers.filter((a) => {
@@ -155,7 +170,7 @@ export default function ViewQuestionsPage() {
     },
     onError: (error) => {
       console.error("Failed to save grade:", error);
-      alert(t("errorSavingGrade") || "Failed to save grade. Please try again.");
+      toast.error(t("errorSavingGrade"));
     },
   });
 
@@ -170,13 +185,14 @@ export default function ViewQuestionsPage() {
     },
     onError: (error) => {
       console.error("Failed to return answer:", error);
-      alert(t("errorReturningAnswer") || "Failed to return answer. Please try again.");
+      toast.error(t("errorReturningAnswer"));
     },
   });
 
   const submitAnswerMutation = useMutation({
     mutationFn: async () => {
-      const text = question?.type === "single_choice" ? studentSelectedOption : studentAnswer;
+      if (!question) return;
+      const text = isSingleChoiceQuestion(question) ? studentSelectedOption : studentAnswer;
       if (!text) return;
       await api.post(`/questions/${id}/submit`, { answer_text: text });
     },
@@ -185,7 +201,7 @@ export default function ViewQuestionsPage() {
     },
     onError: (error) => {
       console.error("Failed to submit answer:", error);
-      alert(t("errorSubmittingAnswer") || "Failed to submit answer. Please try again.");
+      toast.error(t("errorSubmittingAnswer"));
     }
   });
 
@@ -193,7 +209,7 @@ export default function ViewQuestionsPage() {
     if (!selectedAnswer || !selectedAnswer.id) return;
     const numericGrade = grade ? Number(grade) : undefined;
     if (numericGrade === undefined) {
-      alert(t("teacherEnterGrade") || "Please enter a grade");
+      toast.error(t("teacherEnterGrade"));
       return;
     }
     gradeMutation.mutate({
@@ -205,22 +221,25 @@ export default function ViewQuestionsPage() {
 
   const handleReturn = () => {
     if (!selectedAnswer || !selectedAnswer.id) return;
-    if (confirm(t("returnQuestionConfirm"))) {
-      returnMutation.mutate(selectedAnswer.id);
-    }
+    showConfirm({
+      title: t("returnLabel"),
+      message: t("returnQuestionConfirm"),
+      variant: "danger",
+      onConfirm: () => returnMutation.mutate(selectedAnswer.id!),
+    });
   };
 
   const currentStudentAnswer = !teacherMode ? answers[0] : selectedAnswer;
 
   useEffect(() => {
-    if (!teacherMode && answers[0]) {
-      if (question?.type === "single_choice") {
+    if (!teacherMode && answers[0] && question) {
+      if (isSingleChoiceQuestion(question)) {
         setStudentSelectedOption(answers[0].answer_text);
       } else {
         setStudentAnswer(answers[0].answer_text || "");
       }
     }
-  }, [teacherMode, answers, question?.type]);
+  }, [teacherMode, answers, question?.id, question?.type, question?.options?.length]);
 
   if (isPending) {
     return (
@@ -259,13 +278,14 @@ export default function ViewQuestionsPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col -m-4 sm:-m-6 lg:-m-8 pb-4 sm:pb-6 lg:pb-8 text-gray-800 dark:text-gray-100">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 sm:px-6 flex items-center justify-between shrink-0 transition-colors">
-        <div>
+    <div className="min-h-0 flex flex-col -mx-3 sm:-mx-4 md:-mx-6 pb-4 sm:pb-6 lg:pb-8 text-gray-800 dark:text-gray-100">
+      {/* Header — avoid negative top margin so fixed mobile nav (h-16) does not clip "Back" */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 sm:px-6 flex items-center justify-between shrink-0 transition-colors lg:rounded-t-xl">
+        <div className="min-w-0">
           <button
+            type="button"
             onClick={() => router.back()}
-            className="inline-flex items-center gap-2 mb-2 text-sm text-gray-500 dark:text-gray-400 hover:text-[var(--qit-primary)] transition-colors"
+            className="inline-flex items-center gap-2 mb-2 text-sm text-gray-500 dark:text-gray-400 hover:text-[var(--qit-primary)] transition-colors pt-0.5"
           >
             <ChevronLeft className="w-4 h-4" />
             {teacherMode ? t("teacherBack") : t("back")}
@@ -317,26 +337,59 @@ export default function ViewQuestionsPage() {
                 
                 <div className="space-y-4">
                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {t("questionTypeLabel")}: <span className="font-medium">{question.type === "single_choice" ? t("questionSingleChoice") : t("questionOpenAnswer")}</span>
+                    {t("questionTypeLabel")}:{" "}
+                    <span className="font-medium">
+                      {isSingleChoiceQuestion(question) ? t("questionSingleChoice") : t("questionOpenAnswer")}
+                    </span>
                   </p>
-                  
-                  {question.options?.length > 0 && (
+
+                  {isSingleChoiceQuestion(question) && question.options?.length > 0 && (
                     <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{t("questionOptionsLabel")}</h3>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                        {t("questionOptionsLabel")}
+                      </h3>
                       <div className="grid gap-2">
                         {question.options.map((opt, i) => (
-                          <div key={i} className={`p-4 rounded-xl border ${question.correct_option === opt ? "border-green-500 bg-green-50 dark:bg-green-900/10" : "border-gray-200 dark:border-gray-700"}`}>
-                            <div className="flex items-center gap-3">
-                              <div className={`w-4 h-4 rounded-full border ${question.correct_option === opt ? "border-green-500 bg-green-500" : "border-gray-300"}`} />
-                              <span>{opt}</span>
-                              {question.correct_option === opt && <span className="text-xs font-medium text-green-600 ml-auto">{t("correctLabel")}</span>}
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setTeacherPreviewOption(opt)}
+                            className={`w-full text-left p-4 rounded-xl border transition-colors ${
+                              teacherPreviewOption === opt
+                                ? "border-[var(--qit-primary)] bg-[var(--qit-primary)]/5"
+                                : question.correct_option === opt
+                                  ? "border-green-500 bg-green-50 dark:bg-green-900/10"
+                                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded-full border shrink-0 flex items-center justify-center ${
+                                  teacherPreviewOption === opt
+                                    ? "border-[var(--qit-primary)]"
+                                    : question.correct_option === opt
+                                      ? "border-green-500 bg-green-500"
+                                      : "border-gray-300"
+                                }`}
+                              >
+                                {teacherPreviewOption === opt ? (
+                                  <div className="w-2 h-2 rounded-full bg-[var(--qit-primary)]" />
+                                ) : null}
+                              </div>
+                              <span className="flex-1 min-w-0 break-words">{opt}</span>
+                              {question.correct_option === opt && (
+                                <span className="text-xs font-medium text-green-600 shrink-0">{t("correctLabel")}</span>
+                              )}
                             </div>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
+              </MagicCard>
+              <MagicCard className="mt-6 p-6 sm:p-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-lg">
+                <QuestionClassCommentsSection questionId={id} canPost />
               </MagicCard>
             </div>
           </div>
@@ -446,7 +499,7 @@ export default function ViewQuestionsPage() {
                           </div>
                           <div>
                             <h2 className="text-2xl font-bold">{selectedAnswer.student_name}</h2>
-                            <p className="text-sm text-gray-500">{selectedAnswer.submitted_at ? formatDateTimeLocalized(selectedAnswer.submitted_at, lang) : t("teacherSubmissionStatusNotSubmitted")}</p>
+                            <p className="text-sm text-gray-500">{selectedAnswer.submitted_at ? formatLocalizedDate(selectedAnswer.submitted_at, lang as any, t, { includeTime: true }) : t("teacherSubmissionStatusNotSubmitted")}</p>
                           </div>
                         </div>
 
@@ -459,7 +512,7 @@ export default function ViewQuestionsPage() {
                                   {selectedAnswer.answer_text}
                                 </div>
 
-                                {question.type === "single_choice" && (
+                                {isSingleChoiceQuestion(question) && (
                                   <div>
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">{t("questionOptionsLabel")}</h3>
                                     <div className="grid gap-2">
@@ -589,7 +642,7 @@ export default function ViewQuestionsPage() {
               </div>
 
               <div className="space-y-6">
-                {question.type === "single_choice" ? (
+                {isSingleChoiceQuestion(question) ? (
                   <div className="grid gap-3">
                     {question.options.map((opt, i) => {
                       const isSelected = studentSelectedOption === opt;
@@ -633,7 +686,7 @@ export default function ViewQuestionsPage() {
                       value={studentAnswer}
                       onChange={(e) => setStudentAnswer(e.target.value)}
                       rows={6}
-                      placeholder={t("studentAnswerPlaceholder") || "Type your answer here..."}
+                      placeholder={t("studentAnswerPlaceholder")}
                       className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 focus:ring-[var(--qit-primary)] transition-all resize-none font-geologica"
                     />
                   </div>
@@ -642,7 +695,10 @@ export default function ViewQuestionsPage() {
                 {currentStudentAnswer?.status !== "submitted" ? (
                   <button
                     onClick={() => submitAnswerMutation.mutate()}
-                    disabled={submitAnswerMutation.isPending || (question.type === "single_choice" ? !studentSelectedOption : !studentAnswer.trim())}
+                    disabled={
+                      submitAnswerMutation.isPending ||
+                      (isSingleChoiceQuestion(question) ? !studentSelectedOption : !studentAnswer.trim())
+                    }
                     className="w-full py-4 rounded-2xl bg-gradient-to-br from-[var(--qit-primary)] to-blue-600 text-white font-bold shadow-xl shadow-[var(--qit-primary)]/20 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                   >
                     {submitAnswerMutation.isPending ? (
@@ -650,7 +706,7 @@ export default function ViewQuestionsPage() {
                     ) : (
                       <>
                         <Send className="w-5 h-5" />
-                        {t("submitAnswer") || "Submit Answer"}
+                        {t("submitAnswer")}
                       </>
                     )}
                   </button>
@@ -661,16 +717,16 @@ export default function ViewQuestionsPage() {
                     </div>
                     <div>
                       <h4 className="font-bold text-blue-900 dark:text-blue-100">
-                        {t("answerSubmittedTitle") || "Answer Submitted"}
+                        {t("answerSubmittedTitle")}
                       </h4>
                       <p className="text-sm text-blue-700/80 dark:text-blue-300/80 mt-1">
-                        {t("answerSubmittedPendingReview") || "Your answer has been sent to the teacher for review."}
+                        {t("answerSubmittedPendingReview")}
                       </p>
                     </div>
                   </div>
                 )}
 
-                {currentStudentAnswer?.grade !== null && (
+                {currentStudentAnswer != null && currentStudentAnswer.grade != null && (
                   <div className="p-6 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 font-bold text-green-900 dark:text-green-100 text-lg">
@@ -681,19 +737,25 @@ export default function ViewQuestionsPage() {
                         {currentStudentAnswer.grade}/100
                       </div>
                     </div>
-                    {currentStudentAnswer.teacher_comment && (
+                    {currentStudentAnswer.teacher_comment ? (
                       <div className="p-4 bg-white/50 dark:bg-black/20 rounded-xl border border-green-200/50 dark:border-green-700/30">
                         <p className="text-xs font-bold text-green-800/60 dark:text-green-200/60 uppercase tracking-widest mb-1">
                           {t("teacherComment")}
                         </p>
                         <p className="text-green-900 dark:text-green-100 italic">
-                          "{currentStudentAnswer.teacher_comment}"
+                          “{currentStudentAnswer.teacher_comment}”
                         </p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>
+            </MagicCard>
+            <MagicCard className="p-6 sm:p-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-lg">
+              <QuestionClassCommentsSection
+                questionId={id}
+                canPost={question.allow_student_class_comments !== false}
+              />
             </MagicCard>
           </div>
         </div>

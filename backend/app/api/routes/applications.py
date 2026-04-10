@@ -11,15 +11,20 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import get_current_admin_user, get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_password_hash
+from app.i18n.translations import get_email_translation, resolve_email_lang
 from app.models.user import User
 from app.models.course import Course
 from app.models.course_application import CourseApplication
 from app.models.enrollment import CourseEnrollment
 from app.models.notification import Notification
 from app.models.payment import Payment
-from app.services.email_sender import send_course_purchase_email
+from app.services.email_sender import (
+    send_course_purchase_email,
+    send_purchase_pending_confirmation_email,
+)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 limiter = Limiter(key_func=get_remote_address)
@@ -135,6 +140,8 @@ def pay_application(
         if body.student_birth_date:
             user.birth_date = body.student_birth_date
         user.is_approved = True
+        if not (user.interface_language and str(user.interface_language).strip()):
+            user.interface_language = "Казахский"
         existing_paid = db.query(CourseApplication).filter(
             CourseApplication.user_id == user.id,
             CourseApplication.course_id == body.course_id,
@@ -153,6 +160,7 @@ def pay_application(
             address=body.city or None,
             birth_date=body.student_birth_date,
             is_approved=True,
+            interface_language="Казахский",
         )
         db.add(user)
         db.flush()
@@ -180,11 +188,13 @@ def pay_application(
                 parent_user = User(
                     email=body.parent_email,
                     password_hash=get_password_hash(parent_temp_password),
-                    full_name=body.parent_full_name or "Родитель",
+                    full_name=body.parent_full_name
+                    or get_email_translation("default_parent_display_name", "kk"),
                     role="parent",
                     phone=body.parent_phone or None,
                     address=body.parent_city or None,
                     is_approved=True,
+                    interface_language="Казахский",
                 )
                 db.add(parent_user)
                 db.flush()
@@ -265,21 +275,22 @@ def pay_application(
             type="new_application",
             title="Студент оплатил курс (ожидает подтверждения)",
             message=f"{body.full_name} ({body.email}) оплатил курс «{course.title}». Ожидает подтверждения по email.",
-            link="/app/admin/applications",
+            link="/app/admin/users?tab=group-queue",
         )
         db.add(n)
 
     db.commit()
     try:
-        user_lang = getattr(user, "language", "ru") or "ru"
-        if user_lang not in ["ru", "kk", "en"]:
-            user_lang = "ru"
-        send_course_purchase_email(
+        user_lang = resolve_email_lang(user)
+        base = (settings.FRONTEND_PUBLIC_URL or "http://localhost:3000").rstrip("/")
+        confirm_url = f"{base}/confirm-purchase/{confirmation_token}"
+        send_purchase_pending_confirmation_email(
             to_email=user.email,
             student_name=user.full_name,
             course_title=course.title,
             temp_login=user.email,
             temp_password=temp_password,
+            confirm_url=confirm_url,
             parent_temp_login=parent_temp_login,
             parent_temp_password=parent_temp_password,
             lang=user_lang,
@@ -375,17 +386,15 @@ def confirm_purchase(
     db.commit()
 
     try:
-        # Get user language preference (default to 'ru' if not set)
-        user_lang = getattr(user, "language", "ru") or "ru"
-        if user_lang not in ["ru", "kk", "en"]:
-            user_lang = "ru"
         send_course_purchase_email(
             to_email=user.email,
             student_name=user.full_name,
             course_title=course.title,
             temp_login=user.email,
             temp_password=temp_password,
-            lang=user_lang,
+            parent_temp_login=parent_temp_login,
+            parent_temp_password=parent_temp_password,
+            lang=resolve_email_lang(user),
         )
     except Exception:
         pass
@@ -451,6 +460,7 @@ def submit_application(
             phone=body.phone or None,
             address=body.city or None,
             is_approved=False,
+            interface_language="Казахский",
         )
         db.add(user)
         db.flush()
@@ -481,11 +491,13 @@ def submit_application(
                 parent_user = User(
                     email=body.parent_email,
                     password_hash=get_password_hash(parent_temp_password),
-                    full_name=body.parent_full_name or "Родитель",
+                    full_name=body.parent_full_name
+                    or get_email_translation("default_parent_display_name", "kk"),
                     role="parent",
                     phone=body.parent_phone or None,
                     address=body.parent_city or None,
                     is_approved=True,
+                    interface_language="Казахский",
                 )
                 db.add(parent_user)
                 db.flush()

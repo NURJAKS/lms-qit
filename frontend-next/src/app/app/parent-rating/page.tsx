@@ -8,6 +8,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
 import type { TranslationKey } from "@/i18n/translations";
 import { Trophy, Download, Medal, Award, X, BookOpen, Search, Filter } from "lucide-react";
+import { toast } from "@/store/notificationStore";
 import { LeaderboardHeader } from "@/components/leaderboard/LeaderboardHeader";
 import { StatCard } from "@/components/leaderboard/StatCard";
 import { LeaderboardRow } from "@/components/leaderboard/LeaderboardRow";
@@ -162,7 +163,7 @@ export default function ParentRatingPage() {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -275,7 +276,7 @@ export default function ParentRatingPage() {
                   type="button"
                   onClick={() => setCoursesModal(null)}
                   className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors"
-                  aria-label="Close"
+                  aria-label={t("close")}
                 >
                   <X className="w-5 h-5" />
                 </button>

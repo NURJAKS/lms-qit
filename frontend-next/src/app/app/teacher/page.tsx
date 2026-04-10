@@ -9,11 +9,13 @@ import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
+import { toast } from "@/store/notificationStore";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
+import { mapApiErrorToUserMessage } from "@/lib/mapApiError";
 import {
   Users, BookOpen, Plus, Download, ChevronDown, ChevronRight, ListTodo,
   Check, Paperclip, Link as LinkIcon, Trash2, ClipboardList, MessageCircle,
@@ -63,6 +65,7 @@ type AddStudentTask = {
   status: string;
   created_at: string | null;
   completed_at: string | null;
+  student_in_group?: boolean;
 };
 
 type BankQuestion = {
@@ -269,7 +272,7 @@ export default function TeacherPage() {
       const { data } = await api.get<AddStudentTask[]>("/teacher/add-student-tasks?status=pending");
       return data;
     },
-    enabled: activeTab === "students",
+    enabled: activeTab === "students" || activeTab === "requests",
   });
 
   const [isEditingGroup, setIsEditingGroup] = useState(false);
@@ -342,14 +345,30 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
     },
     onError: (e: any) => {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+    },
+  });
+
+  const addStudentToGroupOnlyMutation = useMutation({
+    mutationFn: async (task: AddStudentTask) => {
+      await api.post(`/teacher/groups/${task.group_id}/students`, { student_id: task.student_id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-add-student-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
+    },
+    onError: (e: any) => {
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     },
   });
 
   const addAndCompleteTaskMutation = useMutation({
     mutationFn: async (task: AddStudentTask) => {
       setProcessingTaskId(task.id);
-      await api.post(`/teacher/groups/${task.group_id}/students`, { student_id: task.student_id });
+      if (task.student_in_group !== true) {
+        await api.post(`/teacher/groups/${task.group_id}/students`, { student_id: task.student_id });
+      }
       await api.post(`/teacher/add-student-tasks/${task.id}/complete`);
     },
     onSuccess: () => {
@@ -358,7 +377,7 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
     },
     onError: (e: any) => {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     },
     onSettled: () => {
       setProcessingTaskId(null);
@@ -390,7 +409,8 @@ export default function TeacherPage() {
       resetNewAssignment();
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorCreatingAssignment"));
+      const detail = err.response?.data?.detail;
+      toast.error(mapApiErrorToUserMessage(detail ?? err?.message, t, "errorCreatingAssignment"));
     },
   });
 
@@ -405,7 +425,7 @@ export default function TeacherPage() {
       setEditingDeadline("");
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorUpdatingDeadline"));
+      toast.error(err.response?.data?.detail || t("errorUpdatingDeadline"));
     },
   });
 
@@ -420,7 +440,7 @@ export default function TeacherPage() {
       setClosingAssignment(null);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorUpdatingDeadline"));
+      toast.error(err.response?.data?.detail || t("errorUpdatingDeadline"));
     },
   });
 
@@ -433,7 +453,7 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["upcoming-deadlines"] });
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorUpdatingDeadline"));
+      toast.error(err.response?.data?.detail || t("errorUpdatingDeadline"));
     },
   });
 
@@ -465,7 +485,7 @@ export default function TeacherPage() {
       resetNewAssignment();
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorUpdatingDeadline"));
+      toast.error(err.response?.data?.detail || t("errorUpdatingDeadline"));
     },
   });
 
@@ -479,10 +499,10 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
       setCreateModalType(null);
       setNewQuestion({ group_id: "" as number | "", course_id: "" as number | "", question_text: "", question_type: "single_choice", options: ["", ""], correct_option: "" });
-      alert(t("teacherWorkCreated"));
+      toast.success(t("teacherWorkCreated"));
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorCreatingQuestion"));
+      toast.error(err.response?.data?.detail || t("errorCreatingQuestion"));
     },
   });
 
@@ -496,10 +516,10 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
       setCreateModalType(null);
       setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [] });
-      alert(t("teacherMaterialCreated"));
+      toast.success(t("teacherMaterialCreated"));
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorCreatingMaterial"));
+      toast.error(err.response?.data?.detail || t("errorCreatingMaterial"));
     },
   });
 
@@ -515,7 +535,7 @@ export default function TeacherPage() {
       setNewTopic({ course_id: "" as number | "", title: "", description: "" });
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || t("errorCreatingTopic"));
+      toast.error(err.response?.data?.detail || t("errorCreatingTopic"));
     },
   });
 
@@ -618,7 +638,7 @@ export default function TeacherPage() {
       });
       setCreateModalType("assignment");
     } catch (err: any) {
-      alert(err.response?.data?.detail || t("errorUpdatingDeadline"));
+      toast.error(err.response?.data?.detail || t("errorUpdatingDeadline"));
       setEditingAssignmentId(null);
     }
   };
@@ -641,7 +661,7 @@ export default function TeacherPage() {
       });
       setCreateModalType("material");
     } catch (err: any) {
-      alert(err.response?.data?.detail || "Error loading material");
+      toast.error(err.response?.data?.detail || "Error loading material");
       setEditingMaterialId(null);
     }
   };
@@ -661,7 +681,7 @@ export default function TeacherPage() {
       });
       setCreateModalType("question");
     } catch (err: any) {
-      alert(err.response?.data?.detail || "Error loading question");
+      toast.error(err.response?.data?.detail || "Error loading question");
       setEditingQuestionId(null);
     }
   };
@@ -765,7 +785,7 @@ export default function TeacherPage() {
       setNewAssignment((prev) => ({ ...prev, attachment_urls: [...prev.attachment_urls, data.url] }));
     } catch (err: any) {
       console.error(err);
-      alert(t("error") || "Error uploading file");
+      toast.error(t("error"));
     } finally {
       setUploadingFile(false);
       e.target.value = "";
@@ -882,7 +902,7 @@ export default function TeacherPage() {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -1345,17 +1365,43 @@ export default function TeacherPage() {
                           {task.group_name}
                         </td>
                         <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => addStudentToGroupOnlyMutation.mutate(task)}
+                              disabled={
+                                addStudentToGroupOnlyMutation.isPending ||
+                                task.student_in_group === true
+                              }
+                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] disabled:opacity-50"
+                              style={{ background: "linear-gradient(135deg, #3B82F6, #8B5CF6)" }}
+                              title={
+                                task.student_in_group
+                                  ? t("teacherAlreadyInGroupHint")
+                                  : t("teacherAddStudentToGroupOnlyHint")
+                              }
+                            >
+                              {addStudentToGroupOnlyMutation.isPending ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Plus className="w-3.5 h-3.5" />
+                              )}
+                              {t("teacherAddStudentToGroupOnly")}
+                            </button>
                             <button
                               type="button"
                               onClick={() => {
                                 setActiveTab("groups");
                                 setExpandedGroupId(task.group_id);
                               }}
-                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02]"
-                              style={{ background: "linear-gradient(135deg, #3B82F6, #8B5CF6)" }}
+                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all border"
+                              style={{
+                                borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+                                color: textColors.secondary,
+                              }}
+                              title={t("teacherOpenGroupHint")}
                             >
-                              <Plus className="w-3.5 h-3.5" /> {t("teacherAddToGroup")}
+                              {t("teacherOpenGroup")}
                             </button>
                             <button
                               type="button"
@@ -1371,13 +1417,17 @@ export default function TeacherPage() {
                             <button
                               type="button"
                               onClick={() => completeTaskMutation.mutate(task.id)}
-                              disabled={completeTaskMutation.isPending}
+                              disabled={completeTaskMutation.isPending || task.student_in_group === false}
                               className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
                               style={{
                                 background: isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)",
                                 color: isDark ? "#34D399" : "#059669",
                               }}
-                              title={t("teacherMarkDone")}
+                              title={
+                                task.student_in_group === false
+                                  ? t("teacherCompleteTaskNeedsGroupHint")
+                                  : t("teacherMarkDone")
+                              }
                             >
                               <Check className="w-3.5 h-3.5" /> {t("teacherMarkDone")}
                             </button>
@@ -2182,9 +2232,7 @@ export default function TeacherPage() {
                                   }}
                                 >
                                   {a.deadline
-                                    ? formatDateTimeLocalized(a.deadline, lang, {
-                                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-                                    })
+                                    ? formatLocalizedDate(a.deadline, lang as any, t, { includeTime: true })
                                     : t("teacherNoDeadline")}
                                 </span>
                                 <button
@@ -2909,7 +2957,7 @@ export default function TeacherPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-500 text-white">
                   <Edit2 className="w-4 h-4" />
                 </div>
-                <h3 className="font-semibold font-geologica" style={{ color: textColors.primary }}>{t("teacherEditGroup") || "Edit Group"}</h3>
+                <h3 className="font-semibold font-geologica" style={{ color: textColors.primary }}>{t("teacherEditGroup")}</h3>
               </div>
               <button type="button" onClick={() => setIsEditingGroup(false)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                 <X className="w-5 h-5" style={{ color: textColors.secondary }} />

@@ -82,7 +82,7 @@ export function LandingChatWidget() {
                 <h3 className="font-bold text-lg">{t("chatbotTitle")}</h3>
                 <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{t("chatbotBadge")}</span>
               </div>
-              <button type="button" onClick={() => setOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label={t("ariaClose")}>
+              <button type="button" onClick={() => setOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label={t("close")}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -119,7 +119,7 @@ export function LandingChatWidget() {
               <h3 className="font-bold text-lg">{t("chatbotTitle")}</h3>
               <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{t("chatbotBadge")}</span>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label={t("ariaClose")}>
+            <button type="button" onClick={() => setOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label={t("close")}>
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -145,7 +145,7 @@ export function LandingChatWidget() {
           onClick={() => setOpen(!open)}
           className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg hover:scale-105 transition-transform relative"
           style={{ background: "var(--qit-gradient-2)" }}
-          aria-label="AI Assistant"
+          aria-label={t("aiAssistant")}
         >
           <Bot className="w-8 h-8" />
           {messages.length > 0 && !open && (

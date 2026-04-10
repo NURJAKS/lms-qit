@@ -5,6 +5,7 @@ import { X, Search, UserPlus, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import { toast } from "@/store/notificationStore";
 
 interface Teacher {
   id: number;
@@ -49,7 +50,7 @@ const InviteTeacherModal: React.FC<InviteTeacherModalProps> = ({
       // We don't automatically close so they can add multiple teachers if they want
     },
     onError: (error: any) => {
-      alert(error.response?.data?.detail || t("errorInviteTeacher"));
+      toast.error(error.response?.data?.detail || t("errorInviteTeacher"));
     },
   });
 

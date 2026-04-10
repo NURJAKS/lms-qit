@@ -29,6 +29,8 @@ from app.api.assignment_access import (
     is_assignment_submission_closed,
     submission_closed_http_detail,
 )
+from app.services.topic_flow import video_requirement_met
+from app.models.course_topic import CourseTopic
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -181,6 +183,12 @@ def list_my_assignments(
     teacher_ids = list({a.teacher_id for a in assignments})
     teachers = {u.id: u for u in db.query(User).filter(User.id.in_(teacher_ids)).all()} if teacher_ids else {}
 
+    # Performance optimization: pre-fetch topic objects to check gating
+    topic_objs = {}
+    if topic_ids:
+        for t in db.query(CourseTopic).filter(CourseTopic.id.in_(topic_ids)).all():
+            topic_objs[t.id] = t
+
     rubrics_by_assignment: dict[int, list[dict]] = {}
     if aid_list:
         for row in db.query(TeacherAssignmentRubric).filter(TeacherAssignmentRubric.assignment_id.in_(aid_list)).all():
@@ -246,6 +254,14 @@ def list_my_assignments(
             "submission_text": (sub.submission_text if sub else None),
             "submission_file_urls": _submission_file_urls(sub),
             "class_comments_count": cc_counts.get(a.id, 0),
+            "allow_student_class_comments": bool(getattr(a, "allow_student_class_comments", True)),
+            "is_synopsis": bool(getattr(a, "is_synopsis", False)),
+            "is_locked": (
+                a.topic_id is not None 
+                and a.topic_id in topic_objs 
+                and not video_requirement_met(db, current_user.id, topic_objs[a.topic_id])
+            ) if getattr(a, "topic_id", None) is not None else False,
+
         })
     return out
 
@@ -290,6 +306,13 @@ def list_my_materials(
     materials = db.query(TeacherMaterial).filter(TeacherMaterial.group_id.in_(group_ids)).order_by(TeacherMaterial.id.desc()).all()
     course_ids = list({m.course_id for m in materials})
     courses = {c.id: c for c in db.query(Course).filter(Course.id.in_(course_ids)).all()}
+
+    topic_ids = [m.topic_id for m in materials if m.topic_id]
+    topic_objs = {}
+    if topic_ids:
+        for t in db.query(CourseTopic).filter(CourseTopic.id.in_(topic_ids)).all():
+            topic_objs[t.id] = t
+
     return [
         {
             "id": m.id,
@@ -303,6 +326,7 @@ def list_my_materials(
             "attachment_urls": _assignment_json_list(getattr(m, "attachment_urls", None)),
             "attachment_links": _assignment_json_list(getattr(m, "attachment_links", None)),
             "created_at": m.created_at.isoformat() if m.created_at else None,
+            "is_locked": False,
         }
         for m in materials
     ]
@@ -352,6 +376,8 @@ def post_assignment_class_comment(
         raise HTTPException(status_code=404, detail="Задание не найдено")
     if not _can_access_assignment_class_comments(db, current_user, a):
         raise HTTPException(status_code=403, detail="Нет доступа")
+    if current_user.role == "student" and not bool(getattr(a, "allow_student_class_comments", True)):
+        raise HTTPException(status_code=403, detail={"code": "assignment_class_comments_disabled"})
 
     row = AssignmentClassComment(assignment_id=assignment_id, author_id=current_user.id, text=body.text.strip())
     db.add(row)

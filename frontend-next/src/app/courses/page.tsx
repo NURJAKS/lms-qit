@@ -346,81 +346,9 @@ function CatalogPageContent() {
         });
 
         if (response && response.data) {
-          const {
-            confirmation_token,
-            course_title,
-            student_name,
-            student_email,
-            temp_login,
-            temp_password,
-            parent_temp_login,
-            parent_temp_password,
-          } = response.data;
+          const { confirmation_token } = response.data;
           setConfirmationToken(confirmation_token);
-          const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-          const confirmUrl = `${baseUrl}/confirm-purchase/${confirmation_token}`;
-
-          try {
-            setEmailError(null);
-            const emailResponse = await fetch("/api/send-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                to: student_email,
-                subject: t("emailConfirmPurchaseSubject").replace("{course}", course_title),
-                html: `
-                  <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0F172A; border-radius: 16px; overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #FF4181, #1a237e); padding: 32px; text-align: center;">
-                      <h1 style="color: white; margin: 0; font-size: 24px;">Qazaq IT Academy</h1>
-                    </div>
-                    <div style="padding: 32px; color: #E2E8F0;">
-                      <h2 style="color: #60A5FA; margin-top: 0;">${t("emailConfirmPurchaseGreeting").replace("{name}", student_name)}</h2>
-                      <p style="font-size: 16px; line-height: 1.6;">
-                        ${t("emailConfirmPurchaseBody1")} <strong style="color: #10B981;">«${course_title}»</strong>.
-                      </p>
-                      <p style="font-size: 16px; line-height: 1.6;">
-                        ${t("emailConfirmPurchaseBody2")}
-                      </p>
-                      <div style="background: #1E293B; border-radius: 12px; padding: 20px; margin: 24px 0; border: 1px solid #334155;">
-                        <p style="margin: 0 0 12px 0; font-weight: bold; color: white;">${t("emailLoginCredentials")}</p>
-                        <p style="margin: 4px 0; color: #94A3B8;">${t("emailLogin")} <strong style="color: #60A5FA;">${temp_login}</strong></p>
-                        <p style="margin: 4px 0; color: #94A3B8;">${t("emailPassword")} <strong style="color: #60A5FA;">${temp_password}</strong></p>
-                      </div>
-                      ${
-                        parent_temp_login && parent_temp_password
-                          ? `<div style="background: #1E293B; border-radius: 12px; padding: 20px; margin: 24px 0; border: 1px solid #334155;">
-                               <p style="margin: 0 0 12px 0; font-weight: bold; color: white;">${t("parentCredentials")}</p>
-                               <p style="margin: 4px 0; color: #94A3B8;">${t("emailLogin")} <strong style="color: #60A5FA;">${parent_temp_login}</strong></p>
-                               <p style="margin: 4px 0; color: #94A3B8;">${t("emailPassword")} <strong style="color: #60A5FA;">${parent_temp_password}</strong></p>
-                             </div>`
-                          : ""
-                      }
-                      <div style="text-align: center; margin: 32px 0;">
-                        <a href="${confirmUrl}" style="background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 16px 40px; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 16px; display: inline-block;">${t("emailConfirmPurchaseButton")}</a>
-                      </div>
-                      <p style="color: #94A3B8; font-size: 13px;">
-                        ${t("emailConfirmPurchaseLinkHint")}<br/>
-                        <a href="${confirmUrl}" style="color: #60A5FA; word-break: break-all;">${confirmUrl}</a>
-                      </p>
-                      <p style="color: #64748B; font-size: 13px; margin-top: 32px; text-align: center;">
-                        ${t("emailPlatformTagline")}
-                      </p>
-                    </div>
-                  </div>
-                `,
-              }),
-            });
-            
-            if (!emailResponse.ok) {
-              const errorData = await emailResponse.json();
-              console.error("Ошибка отправки email:", errorData);
-              setEmailError(errorData.details || errorData.error || t("emailSendError"));
-            }
-          } catch (emailError: any) {
-            console.error("Ошибка при отправке письма:", emailError);
-            setEmailError(emailError?.message || t("emailServerError"));
-          }
-
+          setEmailError(null);
           setSubmitStep("done");
         }
       }
@@ -500,7 +428,7 @@ function CatalogPageContent() {
                 Q
               </div>
               <span className="hidden lg:inline text-xl font-bold text-gray-900 dark:text-white font-montserrat truncate">
-                Qazaq IT Academy
+                {t("platformName")}
               </span>
             </Link>
             <nav className="hidden sm:flex items-center gap-2 md:gap-3 xl:gap-6 flex-1 justify-center min-w-0">
@@ -687,7 +615,7 @@ function CatalogPageContent() {
                       </p>
                       <div className="space-y-2">
                         <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Email *</label>
+                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("paymentMethodEmailLabel")}</label>
                           <input
                             type="email"
                             value={formData.email}
@@ -727,7 +655,7 @@ function CatalogPageContent() {
                               value={formData.student_age}
                               onChange={(e) => setFormData((p) => ({ ...p, student_age: e.target.value }))}
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                              placeholder="15"
+                              placeholder={t("placeholderAgeStudent")}
                             />
                           </div>
                         </div>
@@ -739,7 +667,7 @@ function CatalogPageContent() {
                             value={formData.student_iin}
                             onChange={(e) => setFormData((p) => ({ ...p, student_iin: e.target.value }))}
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="000000000000"
+                            placeholder={t("placeholderIin")}
                           />
                         </div>
                         <div>
@@ -749,7 +677,7 @@ function CatalogPageContent() {
                             value={formData.phone}
                             onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="+7 777 123 4567"
+                            placeholder={t("placeholderPhone")}
                           />
                         </div>
                         <div>
@@ -776,7 +704,7 @@ function CatalogPageContent() {
                             value={formData.parent_email}
                             onChange={(e) => setFormData((p) => ({ ...p, parent_email: e.target.value }))}
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="parent@example.com"
+                            placeholder={t("emailPlaceholder")}
                             required
                           />
                         </div>
@@ -810,7 +738,7 @@ function CatalogPageContent() {
                               value={formData.parent_age}
                               onChange={(e) => setFormData((p) => ({ ...p, parent_age: e.target.value }))}
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                              placeholder="35"
+                              placeholder={t("placeholderAgeParent")}
                             />
                           </div>
                         </div>
@@ -822,7 +750,7 @@ function CatalogPageContent() {
                             value={formData.parent_iin}
                             onChange={(e) => setFormData((p) => ({ ...p, parent_iin: e.target.value }))}
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="000000000000"
+                            placeholder={t("placeholderIin")}
                           />
                         </div>
                         <div>
@@ -832,7 +760,7 @@ function CatalogPageContent() {
                             value={formData.parent_phone}
                             onChange={(e) => setFormData((p) => ({ ...p, parent_phone: e.target.value }))}
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder="+7 777 123 4567"
+                            placeholder={t("placeholderPhone")}
                           />
                         </div>
                         <div>
@@ -904,7 +832,7 @@ function CatalogPageContent() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 dark:text-white">{t("paymentCard")}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Visa, Mastercard, MIR</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentMethodCardPlaceholder")}</p>
                     </div>
                   </button>
 
@@ -921,7 +849,7 @@ function CatalogPageContent() {
                       <Smartphone className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900 dark:text-white">Kaspi.kz</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{t("paymentMethodKaspi")}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentKaspiConfirm")}</p>
                     </div>
                   </button>
@@ -939,7 +867,7 @@ function CatalogPageContent() {
                       <Smartphone className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900 dark:text-white">Halyk Bank</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{t("paymentMethodHalyk")}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{t("paymentHalykFast")}</p>
                     </div>
                   </button>

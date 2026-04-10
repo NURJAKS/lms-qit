@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import type { Lang } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
+import { formatLocalizedDate, formatRelativeDate } from "@/utils/dateUtils";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { CourseFeedPanel } from "@/components/courses/CourseFeedPanel";
 import { CreateAssignmentFullPageModal } from "@/components/teacher/CreateAssignmentFullPageModal";
@@ -21,6 +23,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -34,6 +37,7 @@ import {
   UserPlus,
   Users,
   X,
+  StickyNote,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 
@@ -61,6 +65,7 @@ type Assignment = {
   closed_at: string | null;
   is_closed: boolean;
   created_at: string | null;
+  is_synopsis?: boolean;
 };
 
 type SubmissionInboxRow = {
@@ -136,52 +141,18 @@ function yearFromCreated(s: string | null | undefined): string {
   }
 }
 
-function formatDueClasswork(iso: string, lang: Lang): string {
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(d);
-}
 
-function formatPostedAt(iso: string | null, lang: Lang): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(d);
-}
 
-/** Короткий формат для списка заданий (как в Classroom: «Опубликовано 08:33»). */
-function formatPostedClassworkLine(iso: string | null, lang: Lang): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  const now = new Date();
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(d);
-  }
-  return new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
-function TypeIcon({ type }: { type: Assignment["type"] }) {
-  if (type === "question") return <MessageCircle className="w-5 h-5 shrink-0 text-violet-500" />;
-  if (type === "material") return <BookOpen className="w-5 h-5 shrink-0 text-emerald-500" />;
-  return <FileText className="w-5 h-5 shrink-0 text-blue-500" />;
+function TypeIcon({ type, isCompleted, isSynopsis }: { type: Assignment["type"]; isCompleted?: boolean; isSynopsis?: boolean }) {
+  const color = isCompleted ? "text-slate-400" : (
+    type === "question" ? "text-violet-500" :
+    type === "material" ? "text-emerald-500" :
+    isSynopsis ? "text-amber-500" : "text-blue-500"
+  );
+  if (type === "question") return <MessageCircle className={cn("w-5 h-5 shrink-0", color)} />;
+  if (type === "material") return <BookOpen className={cn("w-5 h-5 shrink-0", color)} />;
+  if (isSynopsis) return <StickyNote className={cn("w-5 h-5 shrink-0", color)} />;
+  return <FileText className={cn("w-5 h-5 shrink-0", color)} />;
 }
 
 function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -248,6 +219,15 @@ export default function TeacherCourseGroupPage() {
   const [topicIdPendingDelete, setTopicIdPendingDelete] = useState<number | null>(null);
   const topicMenuRef = useRef<HTMLDivElement>(null);
   useClickOutside(topicMenuRef, () => setActiveTopicMenu(null));
+
+  const [classworkItemMenu, setClassworkItemMenu] = useState<{ type: Assignment["type"]; id: number } | null>(null);
+  const classworkItemMenuRef = useRef<HTMLDivElement>(null);
+  useClickOutside(classworkItemMenuRef, () => setClassworkItemMenu(null));
+  const [deleteAssignmentConfirmId, setDeleteAssignmentConfirmId] = useState<number | null>(null);
+  const [confirmMounted, setConfirmMounted] = useState(false);
+  useEffect(() => {
+    setConfirmMounted(true);
+  }, []);
 
   const [localAssignments, setLocalAssignments] = useState<Assignment[]>([]);
   const [localTopics, setLocalTopics] = useState<CourseTopic[]>([]);
@@ -333,17 +313,30 @@ export default function TeacherCourseGroupPage() {
     enabled: Number.isFinite(groupId) && !!group,
   });
 
+  const incompleteTopics = useMemo(() => {
+    return localTopics.map(tp => {
+      const topicAssignments = localAssignments.filter(a => a.topic_id === tp.id);
+      const hasSynopsis = topicAssignments.some(a => a.is_synopsis);
+      const hasTask = topicAssignments.some(a => !a.is_synopsis);
+      return { ...tp, hasSynopsis, hasTask };
+    }).filter(tp => !tp.hasSynopsis || !tp.hasTask);
+  }, [localTopics, localAssignments]);
+
   const { data: topicSynopsesList = [], isFetching: topicSynopsesLoading } = useQuery({
     queryKey: ["teacher-topic-synopses", groupId, synopsisModalTopic?.id],
     queryFn: async () => {
       const tid = synopsisModalTopic!.id;
       const { data } = await api.get<
         Array<{
+          synopsis_id: number;
           student_id: number;
           full_name: string;
           email: string;
           note_text: string | null;
           submitted_at: string | null;
+          grade: number | null;
+          teacher_comment: string | null;
+          graded_at: string | null;
           files: Array<{
             id: number;
             file_url: string;
@@ -497,6 +490,30 @@ export default function TeacherCourseGroupPage() {
     },
   });
 
+  const gradeSynopsisMutation = useMutation({
+    mutationFn: async ({ synopsisId, grade, comment }: { synopsisId: number; grade: number; comment: string }) => {
+      await api.put(`/teacher/synopses/${synopsisId}/grade`, { grade, teacher_comment: comment });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-topic-synopses", groupId, synopsisModalTopic?.id] });
+    },
+  });
+
+  const deleteClassworkAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: number) => {
+      await api.delete(`/teacher/assignments/${assignmentId}`);
+    },
+    onSuccess: (_, assignmentId) => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-assignments", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-topics-missing-assignments", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-gradebook", groupId] });
+      setClassworkItemMenu(null);
+      setDeleteAssignmentConfirmId(null);
+      setExpandedItem((prev) => (prev?.type === "assignment" && prev.id === assignmentId ? null : prev));
+    },
+  });
+
   const topicSections = useMemo(() => {
     const filtered = (arr: Assignment[]) =>
       topicFilter === "all" ? arr : arr.filter((a) => a.topic_id === topicFilter);
@@ -552,11 +569,11 @@ export default function TeacherCourseGroupPage() {
 
     const [movedAssignment] = newAssignments.splice(assignmentIndex, 1);
     movedAssignment.topic_id = destTopicId;
-    
+
     // Find where to insert in the destination list
     const destItems = newAssignments.filter(a => a.topic_id === destTopicId);
     destItems.splice(destination.index, 0, movedAssignment);
-    
+
     // Rebuild the whole list
     const otherItems = newAssignments.filter(a => a.topic_id !== destTopicId);
     setLocalAssignments([...otherItems, ...destItems]);
@@ -619,6 +636,13 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
+  const openCreateAssignmentWithCompanionSynopsisForTopic = (topicId: number) => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ topic_id: topicId, openCompanionSynopsis: true });
+    setAssignmentModalOpen(true);
+  };
+
   const openTeacherCreateMaterial = () => {
     setCreateOpen(false);
     setAssignmentModalMode("material");
@@ -653,8 +677,7 @@ export default function TeacherCourseGroupPage() {
   };
 
   const tabClass = (id: TabId) =>
-    `pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-      activeTab === id ? "border-blue-600 text-blue-600" : "border-transparent opacity-80 hover:opacity-100"
+    `pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-blue-600 text-blue-600" : "border-transparent opacity-80 hover:opacity-100"
     }`;
 
   const borderSubtle = isDark ? "border-white/10" : "border-black/10";
@@ -665,10 +688,16 @@ export default function TeacherCourseGroupPage() {
 
   if (!Number.isFinite(groupId)) {
     return (
-      <div className="max-w-3xl mx-auto">
-        <p className="text-sm" style={{ color: textColors.secondary }}>
-          {t("courseGroupNotFound")}
+      <div className="max-w-3xl mx-auto space-y-4">
+        <p className="text-sm" style={{ color: textColors.primary }}>
+          {t("teacherGroupInvalidId")}
         </p>
+        <Link
+          href="/app/teacher/courses"
+          className="text-sm font-medium text-blue-500 hover:underline"
+        >
+          {t("teacherBackToCourses")}
+        </Link>
       </div>
     );
   }
@@ -722,9 +751,9 @@ export default function TeacherCourseGroupPage() {
       </BlurFade>
 
       <nav
-        className="-mx-1 mb-0 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-b px-1 [-webkit-overflow-scrolling:touch] sm:mx-0 sm:gap-6 sm:px-0"
+        className="mb-0 flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain border-b px-3 pb-0.5 [-webkit-overflow-scrolling:touch] sm:gap-6 sm:px-0 scroll-px-3 sm:scroll-px-0"
         style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
-        aria-label="Group sections"
+        aria-label={t("groupSections")}
       >
         <button type="button" className={`${tabClass("classwork")} shrink-0 whitespace-nowrap`} style={{ color: activeTab === "classwork" ? undefined : textColors.primary }} onClick={() => setActiveTab("classwork")}>
           {t("courseClasswork")}
@@ -742,7 +771,7 @@ export default function TeacherCourseGroupPage() {
 
       {activeTab === "classwork" && (
         <div className="space-y-4">
-          {topicsMissingAssignments.length > 0 && (
+          {incompleteTopics.length > 0 && (
             <div
               className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/25 flex gap-3"
               style={{ borderColor: isDark ? "rgba(251,191,36,0.35)" : undefined }}
@@ -752,27 +781,31 @@ export default function TeacherCourseGroupPage() {
                 <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{t("teacherTopicsMissingAssignmentsTitle")}</p>
                 <p className="text-xs text-amber-800/90 dark:text-amber-200/90 mt-1">{t("teacherTopicsMissingAssignmentsBody")}</p>
                 <ul className="mt-3 space-y-2">
-                  {topicsMissingAssignments.map((tp) => (
+                  {incompleteTopics.map((tp) => (
                     <li
                       key={tp.id}
                       className="flex flex-wrap items-center gap-2 text-sm"
                       style={{ color: textColors.primary }}
                     >
                       <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{tp.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => openCreateAssignmentForTopic(tp.id)}
-                        className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
-                      >
-                        {t("teacherCreateAssignmentForTopic")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSynopsisModalTopic({ id: tp.id, title: tp.title })}
-                        className="text-xs font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
-                      >
-                        {t("teacherViewTopicSynopses")}
-                      </button>
+                      {!tp.hasTask && tp.hasSynopsis && (
+                        <button
+                          type="button"
+                          onClick={() => openCreateAssignmentForTopic(tp.id)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                        >
+                          {t("teacherCreateAssignmentForTopic")}
+                        </button>
+                      )}
+                      {!tp.hasSynopsis && (
+                        <button
+                          type="button"
+                          onClick={() => openCreateAssignmentWithCompanionSynopsisForTopic(tp.id)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
+                        >
+                          {t("teacherCreateSynopsisPair")}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -854,8 +887,8 @@ export default function TeacherCourseGroupPage() {
                     type="button"
                     className={cn(
                       "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
-                      topicFilter === "all" 
-                        ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                      topicFilter === "all"
+                        ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400"
                         : "hover:bg-black/5 dark:hover:bg-white/10"
                     )}
                     style={{ color: topicFilter === "all" ? undefined : textColors.primary }}
@@ -873,8 +906,8 @@ export default function TeacherCourseGroupPage() {
                       type="button"
                       className={cn(
                         "w-full text-left px-3.5 py-2.5 text-sm rounded-xl transition-colors",
-                        topicFilter === tp.id 
-                          ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400" 
+                        topicFilter === tp.id
+                          ? "bg-blue-50 text-blue-600 font-bold dark:bg-blue-900/20 dark:text-blue-400"
                           : "hover:bg-black/5 dark:hover:bg-white/10"
                       )}
                       style={{ color: topicFilter === tp.id ? undefined : textColors.primary }}
@@ -961,12 +994,12 @@ export default function TeacherCourseGroupPage() {
                                       <MoreVertical className="w-5 h-5" style={{ color: textColors.secondary }} />
                                     </button>
                                     {section.topicId && activeTopicMenu === section.topicId && (
-                                      <div 
-                                        className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-xl py-1 shadow-xl border animate-in fade-in zoom-in duration-100" 
+                                      <div
+                                        className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-xl py-1 shadow-xl border animate-in fade-in zoom-in duration-100"
                                         style={{ ...glassStyle }}
                                       >
-                                        <button 
-                                          className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10" 
+                                        <button
+                                          className="w-full text-left px-4 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/10"
                                           style={{ color: textColors.primary }}
                                           onClick={() => {
                                             const tp = localTopics.find(t => t.id === section.topicId);
@@ -980,8 +1013,8 @@ export default function TeacherCourseGroupPage() {
                                         >
                                           {t("teacherRenameCourse")}
                                         </button>
-                                        <button 
-                                          className="w-full text-left px-4 py-2 text-xs hover:bg-red-500/10 text-red-500" 
+                                        <button
+                                          className="w-full text-left px-4 py-2 text-xs hover:bg-red-500/10 text-red-500"
                                           onClick={() => {
                                             setTopicIdPendingDelete(section.topicId!);
                                             setActiveTopicMenu(null);
@@ -1043,7 +1076,17 @@ export default function TeacherCourseGroupPage() {
                                                     <GripVertical className="w-4 h-4 opacity-40" style={{ color: textColors.secondary }} />
                                                   </div>
 
-                                                  <TypeIcon type={item.type} />
+                                                  {(() => {
+                                                    let isCompleted = false;
+                                                    if (item.type === "assignment") {
+                                                      const stats = submittedAssignmentMap.get(item.id);
+                                                      isCompleted = !!stats && stats.submitted >= stats.assigned && stats.assigned > 0;
+                                                    } else if (item.type === "question") {
+                                                      const answersCount = submittedQuestionMap.get(item.id) ?? 0;
+                                                      isCompleted = answersCount >= assignedCountForGroup && assignedCountForGroup > 0;
+                                                    }
+                                                    return <TypeIcon type={item.type} isCompleted={isCompleted} isSynopsis={item.is_synopsis} />;
+                                                  })()}
 
                                                   <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-2">
@@ -1077,28 +1120,66 @@ export default function TeacherCourseGroupPage() {
                                                     </div>
 
                                                     <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                                                      {t("teacherPostedAt").replace("{when}", formatPostedClassworkLine(item.created_at, lang))}
+                                                      {t("teacherPostedAt").replace("{when}", formatLocalizedDate(item.created_at, lang, t, { includeTime: true, shortMonth: true }))}
                                                     </p>
 
                                                     {item.type !== "material" ? (
                                                       <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
                                                         {item.deadline
-                                                          ? `${t("teacherDueDateRowLabel")}: ${formatDueClasswork(item.deadline, lang)}`
+                                                          ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
                                                           : t("noDueDate")}
                                                       </p>
                                                     ) : null}
                                                   </div>
 
-                                                  <button
-                                                    type="button"
-                                                    className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 mt-1"
-                                                    aria-label={t("teacherMoreOptions")}
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                    }}
+                                                  <div
+                                                    className="relative shrink-0 mt-1"
+                                                    ref={
+                                                      classworkItemMenu?.id === item.id && classworkItemMenu?.type === item.type
+                                                        ? classworkItemMenuRef
+                                                        : null
+                                                    }
                                                   >
-                                                    <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
-                                                  </button>
+                                                    <button
+                                                      type="button"
+                                                      className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                                                      aria-label={t("teacherMoreOptions")}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setClassworkItemMenu((prev) =>
+                                                          prev?.id === item.id && prev?.type === item.type
+                                                            ? null
+                                                            : { type: item.type, id: item.id }
+                                                        );
+                                                      }}
+                                                    >
+                                                      <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
+                                                    </button>
+                                                    {classworkItemMenu?.id === item.id &&
+                                                    classworkItemMenu?.type === item.type &&
+                                                    item.type === "assignment" ? (
+                                                      <div
+                                                        className="absolute left-0 top-full mt-1 z-[60] min-w-[180px] max-h-64 overflow-y-auto rounded-xl py-1 shadow-xl border animate-in fade-in zoom-in duration-100"
+                                                        style={{ ...glassStyle, borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+                                                        role="menu"
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          role="menuitem"
+                                                          className="w-full text-left px-4 py-2 text-xs hover:bg-red-500/10 text-red-500 flex items-center gap-2"
+                                                          disabled={deleteClassworkAssignmentMutation.isPending}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setClassworkItemMenu(null);
+                                                            setDeleteAssignmentConfirmId(item.id);
+                                                          }}
+                                                        >
+                                                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                                          {t("delete")}
+                                                        </button>
+                                                      </div>
+                                                    ) : null}
+                                                  </div>
                                                 </div>
 
                                                 {expandedItem?.type === item.type && expandedItem.id === item.id ? (
@@ -1112,7 +1193,7 @@ export default function TeacherCourseGroupPage() {
                                                     >
                                                       {(() => {
                                                         const dueLabel = item.deadline
-                                                          ? `${t("teacherDueDateRowLabel")}: ${formatDueClasswork(item.deadline, lang)}`
+                                                          ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
                                                           : t("noDueDate");
 
                                                         const isAssignment = item.type === "assignment";
@@ -1121,14 +1202,14 @@ export default function TeacherCourseGroupPage() {
                                                         const submittedCount = isAssignment
                                                           ? submittedAssignmentMap.get(item.id)?.submitted ?? 0
                                                           : isQuestion
-                                                          ? submittedQuestionMap.get(item.id) ?? 0
-                                                          : 0;
+                                                            ? submittedQuestionMap.get(item.id) ?? 0
+                                                            : 0;
 
                                                         const assignedCount = isAssignment
                                                           ? submittedAssignmentMap.get(item.id)?.assigned ?? assignedCountForGroup
                                                           : isQuestion
-                                                          ? assignedCountForGroup
-                                                          : 0;
+                                                            ? assignedCountForGroup
+                                                            : 0;
 
                                                         const showSubmissionStats = isAssignment;
 
@@ -1136,8 +1217,8 @@ export default function TeacherCourseGroupPage() {
                                                           isAssignment
                                                             ? expandedAssignmentDetails?.description ?? item.description
                                                             : item.type === "material"
-                                                            ? expandedMaterialDetails?.description ?? item.description
-                                                            : item.description;
+                                                              ? expandedMaterialDetails?.description ?? item.description
+                                                              : item.description;
 
                                                         const rubric = expandedAssignmentDetails?.rubric ?? [];
                                                         const hasRubric = isAssignment && rubric.length > 0;
@@ -1158,8 +1239,8 @@ export default function TeacherCourseGroupPage() {
                                                           item.type === "assignment"
                                                             ? `/app/teacher/courses/${groupId}/assignment/${item.id}`
                                                             : item.type === "question"
-                                                            ? `/app/teacher/view-questions/${item.id}`
-                                                            : null;
+                                                              ? `/app/teacher/view-questions/${item.id}`
+                                                              : null;
 
                                                         return (
                                                           <div className="space-y-3">
@@ -1407,10 +1488,10 @@ export default function TeacherCourseGroupPage() {
                   <div className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                      style={{ 
-                        background: teacher.role === "primary" 
-                          ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" 
-                          : "linear-gradient(135deg, #6366F1, #A855F7)" 
+                      style={{
+                        background: teacher.role === "primary"
+                          ? "linear-gradient(135deg, #3B82F6, #8B5CF6)"
+                          : "linear-gradient(135deg, #6366F1, #A855F7)"
                       }}
                     >
                       {(teacher.full_name || teacher.email || "?").charAt(0).toUpperCase()}
@@ -1475,7 +1556,7 @@ export default function TeacherCourseGroupPage() {
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <button
                 type="button"
-                onClick={() => {}}
+                onClick={() => { }}
                 disabled
                 className="px-3 py-1.5 rounded-lg text-sm border opacity-50 cursor-not-allowed"
                 style={{ borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)", color: textColors.primary }}
@@ -1511,7 +1592,7 @@ export default function TeacherCourseGroupPage() {
                       {s.email}
                     </p>
                   </div>
-                  <button type="button" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 opacity-50" aria-label={t("teacherMoreOptions")} onClick={() => {}} disabled title={t("courseSoon")}>
+                  <button type="button" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 opacity-50" aria-label={t("teacherMoreOptions")} onClick={() => { }} disabled title={t("courseSoon")}>
                     <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
                   </button>
                 </li>
@@ -1522,11 +1603,11 @@ export default function TeacherCourseGroupPage() {
       )}
 
       {activeTab === "grades" && Number.isFinite(groupId) && group ? (
-        <div className="rounded-2xl p-4 sm:p-6" style={{ ...glassStyle }}>
-          <h2 className="mb-4 font-geologica text-lg font-bold sm:text-xl" style={{ color: textColors.primary }}>
+        <div className="rounded-2xl px-2 py-4 sm:p-6" style={{ ...glassStyle }}>
+          <h2 className="mb-4 px-2 font-geologica text-lg font-bold sm:px-0 sm:text-xl" style={{ color: textColors.primary }}>
             {t("courseGrades")}
           </h2>
-          <TeacherGradebook groupId={groupId} />
+          <TeacherGradebook groupId={groupId} topics={topics} />
         </div>
       ) : null}
 
@@ -1689,6 +1770,46 @@ export default function TeacherCourseGroupPage() {
                           {row.note_text}
                         </p>
                       ) : null}
+
+                      <div className="mt-4 pt-3 border-t" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
+                        {row.graded_at ? (
+                          <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-semibold text-xs">
+                            <CheckCircle2 className="w-4 h-4" />
+                            {t("teacherAssignmentListStatusGraded")}
+                            {row.teacher_comment && <span className="font-normal opacity-80 ml-1">({row.teacher_comment})</span>}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <textarea
+                              placeholder={t("teacherComment")}
+                              className="w-full text-xs p-2 rounded-lg border outline-none focus:ring-1 focus:ring-teal-500"
+                              style={inputStyle}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  const text = (e.target as HTMLTextAreaElement).value;
+                                  gradeSynopsisMutation.mutate({ synopsisId: row.synopsis_id, grade: 100, comment: text });
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const textarea = document.querySelector(`textarea[placeholder="${t("teacherComment")}"]`) as HTMLTextAreaElement;
+                                gradeSynopsisMutation.mutate({
+                                  synopsisId: row.synopsis_id,
+                                  grade: 100,
+                                  comment: textarea?.value || ""
+                                });
+                              }}
+                              disabled={gradeSynopsisMutation.isPending}
+                              className="w-full py-1.5 rounded-lg text-xs font-semibold bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                            >
+                              {gradeSynopsisMutation.isPending ? t("loading") : t("teacherMarkDone")}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1744,9 +1865,8 @@ export default function TeacherCourseGroupPage() {
                     maxLength={100}
                     onChange={(e) => setTopicTitle(e.target.value)}
                     onBlur={() => setTopicTitleTouched(true)}
-                    className={`w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/40 ${
-                      topicTitleTouched && !topicTitle.trim() ? "border-red-500" : ""
-                    }`}
+                    className={`w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/40 ${topicTitleTouched && !topicTitle.trim() ? "border-red-500" : ""
+                      }`}
                     style={{ ...inputStyle, color: textColors.primary }}
                   />
                   <div
@@ -1781,7 +1901,7 @@ export default function TeacherCourseGroupPage() {
                       type="button"
                       onClick={() => setTopicTitle(suggestion)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-blue-500 hover:text-white hover:border-blue-500"
-                      style={{ 
+                      style={{
                         borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
                         color: textColors.primary,
                         background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)"
@@ -1969,6 +2089,65 @@ export default function TeacherCourseGroupPage() {
           groupId={groupId}
         />
       )}
+
+      {confirmMounted &&
+        deleteAssignmentConfirmId != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              aria-label={t("back")}
+              onClick={() => setDeleteAssignmentConfirmId(null)}
+            />
+            <div
+              className="relative w-full max-w-md rounded-2xl border p-6 shadow-2xl"
+              style={{
+                ...getModalStyle(theme),
+                borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+              }}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-7 h-7 text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-center mb-2" style={{ color: textColors.primary }}>
+                {t("confirmDelete")}
+              </h3>
+              <p className="text-sm text-center mb-6 leading-relaxed" style={{ color: textColors.secondary }}>
+                {t("teacherDeleteAssignmentConfirm")}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteAssignmentConfirmId(null)}
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+                    color: textColors.primary,
+                  }}
+                >
+                  {t("teacherCancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteClassworkAssignmentMutation.isPending}
+                  onClick={() => deleteClassworkAssignmentMutation.mutate(deleteAssignmentConfirmId)}
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleteClassworkAssignmentMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {t("delete")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -2014,7 +2193,7 @@ function ReuseItemDialog({
           ? `/teacher/materials/${item.id}/clone`
           : `/teacher/assignments/${item.id}/clone`
       );
-      
+
       const clonedData = { ...data, type: item.type };
       if (!copyAttachments) {
         clonedData.attachment_urls = [];
@@ -2022,7 +2201,7 @@ function ReuseItemDialog({
         clonedData.video_urls = [];
         clonedData.image_urls = [];
       }
-      
+
       onReuse(clonedData);
     } catch (e) {
       console.error("Error cloning item", e);
@@ -2064,7 +2243,7 @@ function ReuseItemDialog({
                     <p className="font-semibold truncate" style={{ color: textColors.primary }}>{g.group_name}</p>
                     <p className="text-xs truncate" style={{ color: textColors.secondary }}>{getLocalizedCourseTitle({ title: g.course_title } as any, t)}</p>
                     <p className="text-[10px] mt-1 opacity-60" style={{ color: textColors.secondary }}>
-                      {t("createdLabel")}: {formatPostedAt(g.created_at, lang)}
+                      {t("createdLabel")}: {formatLocalizedDate(g.created_at, lang, t, { includeTime: true, shortMonth: true })}
                     </p>
                   </div>
                 </button>
@@ -2078,7 +2257,7 @@ function ReuseItemDialog({
               >
                 ← {t("reuseBackToSelection")}
               </button>
-              
+
               {itemsLoading ? (
                 <p className="text-center py-10" style={{ color: textColors.secondary }}>{t("loading")}</p>
               ) : items.length === 0 ? (
@@ -2094,7 +2273,7 @@ function ReuseItemDialog({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate" style={{ color: textColors.primary }}>{item.title}</p>
                       <p className="text-xs opacity-60" style={{ color: textColors.secondary }}>
-                        {formatPostedAt(item.created_at, lang)}
+                        {formatLocalizedDate(item.created_at, lang, t, { includeTime: true, shortMonth: true })}
                       </p>
                     </div>
                   </button>

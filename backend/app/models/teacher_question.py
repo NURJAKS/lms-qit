@@ -33,6 +33,11 @@ class TeacherQuestion(Base):
     course = relationship("Course", back_populates="teacher_questions")
     topic = relationship("CourseTopic", back_populates="teacher_questions")
     answers = relationship("TeacherQuestionAnswer", back_populates="question", cascade="all, delete-orphan")
+    class_comments = relationship(
+        "TeacherQuestionClassComment",
+        back_populates="question",
+        cascade="all, delete-orphan",
+    )
 
 
 class TeacherQuestionAnswer(Base):

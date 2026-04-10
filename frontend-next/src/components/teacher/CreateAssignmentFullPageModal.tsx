@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, Plus, ChevronDown, Paperclip, Upload, Link as LinkIcon, CalendarDays, Users, Loader2 } from "lucide-react";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import { mapApiErrorToUserMessage } from "@/lib/mapApiError";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getInputStyle, getModalStyle, getTextColors } from "@/utils/themeStyles";
 import { RichTextEditor } from "@/components/teacher/RichTextEditor";
@@ -202,7 +203,6 @@ export function CreateAssignmentFullPageModal({
 
   const [studentSelectorOpen, setStudentSelectorOpen] = useState(false);
   const [studentSelectorGroupId, setStudentSelectorGroupId] = useState<number | null>(null);
-  const [selectedStudentIds, setSelectedStudentIds] = useState<Record<number, boolean>>({});
 
   const studentSelectorStudentsQuery = useQuery({
     queryKey: ["teacher-group-students", studentSelectorGroupId],
@@ -223,11 +223,17 @@ export function CreateAssignmentFullPageModal({
 
   const [pointsMode, setPointsMode] = useState<"graded" | "no_grade">("graded");
   const [maxPoints, setMaxPoints] = useState<number>(100);
+  /** When true, max points track the rubric sum; false = teacher set total manually. */
+  const [maxPointsFollowsRubric, setMaxPointsFollowsRubric] = useState(true);
 
   const [topicId, setTopicId] = useState<number | null>(null);
   const [topicCreateOpen, setTopicCreateOpen] = useState(false);
   const [topicCreateTitle, setTopicCreateTitle] = useState("");
   const [topicCreateDesc, setTopicCreateDesc] = useState("");
+  const [isSynopsis, setIsSynopsis] = useState(false);
+  const [companionSynopsisEnabled, setCompanionSynopsisEnabled] = useState(false);
+  const [companionSynopsisTitle, setCompanionSynopsisTitle] = useState("");
+  const [companionSynopsisMaxPoints, setCompanionSynopsisMaxPoints] = useState(100);
 
   const [rubricDropdownOpen, setRubricDropdownOpen] = useState(false);
   const [rubricCreatorOpen, setRubricCreatorOpen] = useState(false);
@@ -292,7 +298,29 @@ export function CreateAssignmentFullPageModal({
 
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  /** Raw API error payload; mapped with current `t` on render so language switches apply. */
+  const [submitErrorDetail, setSubmitErrorDetail] = useState<unknown>(null);
+  const submitErrorMessage = useMemo(
+    () =>
+      submitErrorDetail == null
+        ? null
+        : mapApiErrorToUserMessage(submitErrorDetail, t, "assignmentErrorCreate"),
+    [submitErrorDetail, t]
+  );
+
+  const rubricAutoTotal = useMemo(() => {
+    if (pointsMode === "no_grade") return null;
+    if (!rubricUsePoints || rubricPayload.length === 0) return null;
+    return rubricPayload.reduce((s, r) => s + (Number(r.max_points) || 0), 0);
+  }, [pointsMode, rubricUsePoints, rubricPayload]);
+
+  useEffect(() => {
+    if (pointsMode === "no_grade") return;
+    if (!maxPointsFollowsRubric) return;
+    if (rubricAutoTotal != null) {
+      setMaxPoints(rubricAutoTotal);
+    }
+  }, [rubricAutoTotal, pointsMode, maxPointsFollowsRubric]);
 
   const reusableRubricsQuery = useQuery({
     queryKey: ["teacher-reusable-rubrics", rubricReuseCourseId],
@@ -301,9 +329,10 @@ export function CreateAssignmentFullPageModal({
       if (rubricReuseCourseId !== "all") params.set("course_id", String(rubricReuseCourseId));
       const q = params.toString();
       const { data } = await api.get<ReusableRubricItem[]>(q ? `/teacher/rubrics/reusable?${q}` : "/teacher/rubrics/reusable");
-      return data;
+      return Array.isArray(data) ? data : [];
     },
     enabled: rubricReuseOpen,
+    staleTime: 0,
   });
 
   const applyReusedRubricRows = (rows: ReusableRubricItem["rubric"]) => {
@@ -397,7 +426,6 @@ export function CreateAssignmentFullPageModal({
     setForWhomOpen(false);
     setStudentSelectorOpen(false);
     setStudentSelectorGroupId(null);
-    setSelectedStudentIds({});
     if (!initialData) {
       setDueMode("none");
       setDueDateYMD("");
@@ -430,8 +458,13 @@ export function CreateAssignmentFullPageModal({
     setCreateAttachmentDialogOpen(false);
     setCreateAttachmentType(null);
     setCreateAttachmentUrl("");
-    setSubmitError(null);
+    setSubmitErrorDetail(null);
     setSubmitting(false);
+    setMaxPointsFollowsRubric(!initialData);
+    setIsSynopsis(initialData?.is_synopsis || false);
+    setCompanionSynopsisEnabled(!!initialData?.openCompanionSynopsis && !initialData?.is_synopsis);
+    setCompanionSynopsisTitle("");
+    setCompanionSynopsisMaxPoints(100);
   }, [isOpen, currentGroup.id, initialData, mode, t]);
 
   const uploadFile = async (file: File) => {
@@ -466,17 +499,21 @@ export function CreateAssignmentFullPageModal({
     setStudentSelectorOpen(true);
   };
 
-  const resolveTopicIdForSubmit = async () => {
-    if (topicId) return topicId;
-    // "No topic" - create once (if missing) and reuse existing in the list.
+  const resolveTopicIdForSubmit = async (courseId: number) => {
+    if (topicId != null && courseId === currentGroup.course_id) {
+      const selected = topics.find((tpc) => tpc.id === topicId);
+      if (selected) return topicId;
+    }
     const noTopicTitle = t("assignmentNoTopic");
-    const existing = topics.find((t) => t.title === noTopicTitle);
-    if (existing) return existing.id;
-    const { data } = await api.post<{ id: number; title: string }>(`/teacher/courses/${currentGroup.course_id}/topics`, {
+    if (courseId === currentGroup.course_id) {
+      const existing = topics.find((tpc) => tpc.title === noTopicTitle);
+      if (existing) return existing.id;
+    }
+    const { data } = await api.post<{ id: number; title: string }>(`/teacher/courses/${courseId}/topics`, {
       title: noTopicTitle,
       description: undefined,
     });
-    queryClient.invalidateQueries({ queryKey: ["course-topics", currentGroup.course_id] });
+    queryClient.invalidateQueries({ queryKey: ["course-topics", courseId] });
     return data.id;
   };
 
@@ -495,6 +532,7 @@ export function CreateAssignmentFullPageModal({
       rubric: RubricCriterionPayload[];
       testQuestions?: TestQuestionApi[];
       rejectSubmissionsAfterDeadline?: boolean;
+      isSynopsis?: boolean;
     }) => {
       await api.post("/teacher/assignments", {
         group_id: payload.groupId,
@@ -509,9 +547,8 @@ export function CreateAssignmentFullPageModal({
         video_urls: payload.videoUrls.length ? payload.videoUrls : undefined,
         rubric: payload.rubric.length ? payload.rubric : undefined,
         test_questions: payload.testQuestions?.length ? payload.testQuestions : undefined,
-        ...(payload.rejectSubmissionsAfterDeadline !== undefined
-          ? { reject_submissions_after_deadline: payload.rejectSubmissionsAfterDeadline }
-          : {}),
+        reject_submissions_after_deadline: payload.rejectSubmissionsAfterDeadline,
+        is_synopsis: payload.isSynopsis,
       });
     },
   });
@@ -578,7 +615,7 @@ export function CreateAssignmentFullPageModal({
 
   const handleCreateAssignment = async () => {
     if (submittingRef.current) return;
-    setSubmitError(null);
+    setSubmitErrorDetail(null);
     setTitleTouched(true);
     const cleanedTitle = title.trim();
     if (!cleanedTitle) return;
@@ -587,7 +624,6 @@ export function CreateAssignmentFullPageModal({
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      const resolvedTopic = await resolveTopicIdForSubmit();
       const deadlineIso =
         dueMode === "date" && dueDateYMD ? localDateTimeToIso(dueDateYMD, dueTimeHM) : undefined;
       const payloadMaxPoints = pointsMode === "no_grade" ? 0 : Math.max(0, maxPoints);
@@ -601,6 +637,7 @@ export function CreateAssignmentFullPageModal({
       for (const gid of targetGroupIds) {
         const g = groupById.get(gid);
         if (!g) continue;
+        const resolvedTopic = await resolveTopicIdForSubmit(g.course_id);
 
         if (mode === "material") {
           await createMaterialMutation.mutateAsync({
@@ -634,6 +671,7 @@ export function CreateAssignmentFullPageModal({
           const includeTest =
             mode === "assignmentWithTest" || (mode === "assignment" && hasQuiz);
           const apiTestQuestions = includeTest ? quizQuestionsToApiFormat(quizQuestions) : [];
+          const mainIsSynopsis = !!isSynopsis;
           await createAssignmentMutation.mutateAsync({
             groupId: gid,
             courseId: g.course_id,
@@ -648,7 +686,29 @@ export function CreateAssignmentFullPageModal({
             rubric: rubricToSend,
             testQuestions: apiTestQuestions.length ? apiTestQuestions : undefined,
             rejectSubmissionsAfterDeadline: rejectPayload,
+            isSynopsis: mainIsSynopsis,
           });
+          if (companionSynopsisEnabled && !mainIsSynopsis) {
+            const synTitle =
+              companionSynopsisTitle.trim() ||
+              `${cleanedTitle} — ${t("teacherSynopsisPairSuffix")}`;
+            await createAssignmentMutation.mutateAsync({
+              groupId: gid,
+              courseId: g.course_id,
+              topicId: resolvedTopic,
+              title: synTitle,
+              description: undefined,
+              deadlineIso,
+              maxPoints: Math.max(0, companionSynopsisMaxPoints),
+              attachmentUrls: [],
+              attachmentLinks: [],
+              videoUrls: [],
+              rubric: [],
+              testQuestions: undefined,
+              rejectSubmissionsAfterDeadline: rejectPayload,
+              isSynopsis: true,
+            });
+          }
         }
       }
 
@@ -657,9 +717,11 @@ export function CreateAssignmentFullPageModal({
       queryClient.invalidateQueries({ queryKey: ["teacher-questions", currentGroup.id] });
       queryClient.invalidateQueries({ queryKey: ["teacher-topics-missing-assignments", currentGroup.id] });
       queryClient.invalidateQueries({ queryKey: ["teacher-group-feed", currentGroup.id] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-reusable-rubrics"] });
       onClose();
     } catch (e: any) {
-      setSubmitError(e?.response?.data?.detail ?? e?.message ?? t("assignmentErrorCreate"));
+      const detail = e?.response?.data?.detail;
+      setSubmitErrorDetail(detail ?? e?.message ?? null);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -716,8 +778,8 @@ export function CreateAssignmentFullPageModal({
                 type="button"
                 onClick={handleCreateAssignment}
                 disabled={submitting || !title.trim()}
-                className="px-6 py-2 rounded-xl text-white font-semibold transition-all hover:shadow-lg disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)" }}
+                className="px-6 py-2 rounded-xl text-white font-semibold transition-all hover:shadow-lg hover:brightness-110 disabled:opacity-50 ring-2 ring-white/25 dark:ring-white/15 shadow-md"
+                style={{ background: "linear-gradient(135deg,#2563EB,#7C3AED)" }}
               >
                 {submitting
                   ? mode === "material" ? t("publishing") : t("asking")
@@ -739,8 +801,8 @@ export function CreateAssignmentFullPageModal({
           {!rubricCreatorOpen ? (
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] gap-0 min-w-0">
               {/* Left Panel */}
-              <div className="min-w-0 p-6 lg:p-10 border-b lg:border-b-0 lg:border-r" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
-                <div className="max-w-4xl mx-auto space-y-8">
+              <div className="min-w-0 p-4 sm:p-6 lg:p-10 border-b lg:border-b-0 lg:border-r" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
+                <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
                   {/* Title */}
                   <div className="space-y-1">
                     <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
@@ -866,19 +928,19 @@ export function CreateAssignmentFullPageModal({
                     <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
                       {t("teacherAttachLabel")}
                     </label>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="grid grid-cols-2 gap-2 min-w-0 sm:flex sm:flex-wrap sm:gap-3">
                       <DriveButton />
                       <YoutubeButton />
                       <CreateDocsDropdown />
                       {mode !== "material" && (mode !== "assignmentWithTest" || !hasQuiz) && (
                         <button
                           type="button"
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10"
+                          className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
                           style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
                           onClick={() => setHasQuiz(true)}
                         >
-                          <Plus className="w-4 h-4" />
-                          {t("quiz")}
+                          <Plus className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{t("quiz")}</span>
                         </button>
                       )}
                       <UploadButton />
@@ -981,7 +1043,10 @@ export function CreateAssignmentFullPageModal({
 
                                   <div className="space-y-2">
                                     {q.options.map((opt, oIdx) => (
-                                      <div key={oIdx} className="flex items-center gap-3">
+                                      <label
+                                        key={oIdx}
+                                        className="flex items-center gap-3 cursor-pointer rounded-xl px-1 py-0.5 -mx-1 hover:bg-black/5 dark:hover:bg-white/5"
+                                      >
                                         <input
                                           type="radio"
                                           checked={q.correct_option_index === oIdx}
@@ -990,7 +1055,7 @@ export function CreateAssignmentFullPageModal({
                                             newQuestions[qIdx].correct_option_index = oIdx;
                                             setQuizQuestions(newQuestions);
                                           }}
-                                          className="w-4 h-4 accent-blue-500"
+                                          className="w-4 h-4 accent-blue-500 shrink-0 cursor-pointer"
                                         />
                                         <input
                                           value={opt}
@@ -1000,13 +1065,16 @@ export function CreateAssignmentFullPageModal({
                                             setQuizQuestions(newQuestions);
                                           }}
                                           placeholder={t("teacherOptionPlaceholder").replace("{n}", String(oIdx + 1))}
-                                          className="flex-1 bg-transparent border-b border-gray-200 dark:border-gray-800 py-1 outline-none text-sm"
+                                          className="flex-1 min-w-0 bg-transparent border-b border-gray-200 dark:border-gray-700 py-1 outline-none text-sm"
                                           style={{ color: textColors.primary }}
+                                          onClick={(e) => e.stopPropagation()}
                                         />
                                         {q.options.length > 2 && (
                                           <button
                                             type="button"
-                                            onClick={() => {
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
                                               const newQuestions = [...quizQuestions];
                                               newQuestions[qIdx].options = newQuestions[qIdx].options.filter((_, i) => i !== oIdx);
                                               if (q.correct_option_index >= newQuestions[qIdx].options.length) {
@@ -1014,12 +1082,12 @@ export function CreateAssignmentFullPageModal({
                                               }
                                               setQuizQuestions(newQuestions);
                                             }}
-                                            className="p-1 text-gray-400 hover:text-red-400"
+                                            className="p-1 text-gray-400 hover:text-red-400 shrink-0"
                                           >
                                             <X className="w-3 h-3" />
                                           </button>
                                         )}
-                                      </div>
+                                      </label>
                                     ))}
                                     <button
                                       type="button"
@@ -1056,6 +1124,80 @@ export function CreateAssignmentFullPageModal({
                     )}
                   </div>
 
+                  {isAssignmentLike && !initialData?.is_synopsis ? (
+                    <div
+                      className="rounded-2xl border p-4 space-y-3"
+                      style={{
+                        borderColor: companionSynopsisEnabled
+                          ? "#3B82F6"
+                          : isDark
+                            ? "rgba(255,255,255,0.12)"
+                            : "rgba(0,0,0,0.1)",
+                        background: companionSynopsisEnabled
+                          ? isDark
+                            ? "rgba(59,130,246,0.08)"
+                            : "rgba(219,234,254,0.25)"
+                          : "transparent",
+                      }}
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                            {t("assignmentCompanionSynopsisSection")}
+                          </p>
+                          <p className="text-xs mt-1 leading-relaxed" style={{ color: textColors.secondary }}>
+                            {t("assignmentCompanionSynopsisHint")}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCompanionSynopsisEnabled((v) => !v);
+                            if (!companionSynopsisEnabled && !companionSynopsisTitle.trim() && title.trim()) {
+                              setCompanionSynopsisTitle(`${title.trim()} — ${t("teacherSynopsisPairSuffix")}`);
+                            }
+                          }}
+                          className="w-full sm:w-auto shrink-0 rounded-xl px-3 py-2.5 text-xs font-semibold border transition-colors text-center sm:text-left"
+                          style={{
+                            borderColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)",
+                            color: textColors.primary,
+                          }}
+                        >
+                          {companionSynopsisEnabled ? t("assignmentRemoveCompanionSynopsis") : t("assignmentAddCompanionSynopsis")}
+                        </button>
+                      </div>
+                      {companionSynopsisEnabled ? (
+                        <div className="space-y-3 pt-1">
+                          <div className="space-y-1">
+                            <label className="block text-xs font-semibold" style={{ color: textColors.secondary }}>
+                              {t("assignmentCompanionSynopsisTitleLabel")}
+                            </label>
+                            <input
+                              value={companionSynopsisTitle}
+                              onChange={(e) => setCompanionSynopsisTitle(e.target.value)}
+                              placeholder={`${title.trim()} — ${t("teacherSynopsisPairSuffix")}`}
+                              className="w-full px-3 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+                              style={{ ...inputStyle, color: textColors.primary }}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-xs font-semibold" style={{ color: textColors.secondary }}>
+                              {t("assignmentCompanionSynopsisPointsLabel")}
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={companionSynopsisMaxPoints}
+                              onChange={(e) => setCompanionSynopsisMaxPoints(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                              className="w-full px-3 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+                              style={{ ...inputStyle, color: textColors.primary }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {/* Submit footer */}
                   {isAssignmentLike && (
                     <div className="flex gap-2 pt-2">
@@ -1074,9 +1216,9 @@ export function CreateAssignmentFullPageModal({
                       </button>
                     </div>
                   )}
-                  {submitError ? (
+                  {submitErrorMessage ? (
                     <p className="text-sm" style={{ color: "#F87171" }}>
-                      {submitError}
+                      {submitErrorMessage}
                     </p>
                   ) : null}
                 </div>
@@ -1157,6 +1299,41 @@ export function CreateAssignmentFullPageModal({
                     </div>
                   </div>
 
+                  {/* Standalone synopsis assignment (reuse / clone only) */}
+                  {mode === "assignment" && initialData?.is_synopsis ? (
+                    <div className="space-y-2">
+                      <label
+                        className="flex items-start gap-3 cursor-pointer p-4 rounded-2xl border transition-all hover:shadow-md"
+                        style={{
+                          borderColor: isSynopsis ? "#3B82F6" : isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+                          background: isSynopsis
+                            ? isDark
+                              ? "rgba(59,130,246,0.1)"
+                              : "rgba(219,234,254,0.3)"
+                            : "transparent",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSynopsis}
+                          onChange={(e) => {
+                            setIsSynopsis(e.target.checked);
+                            if (e.target.checked) setPointsMode("graded");
+                          }}
+                          className="mt-1 w-4 h-4 rounded accent-blue-500 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                            {t("assignmentIsSynopsisLabel")}
+                          </div>
+                          <div className="text-xs mt-0.5 leading-relaxed" style={{ color: textColors.secondary }}>
+                            {t("assignmentIsSynopsisHint")}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  ) : null}
+
                   {/* Assign */}
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
@@ -1195,10 +1372,17 @@ export function CreateAssignmentFullPageModal({
                             onChange={(e) => {
                               const v = e.target.value;
                               if (v === "") {
-                                setMaxPoints(0);
+                                setMaxPointsFollowsRubric(true);
+                                setMaxPoints(rubricAutoTotal != null ? rubricAutoTotal : 100);
                                 return;
                               }
-                              setMaxPoints(Math.max(0, parseInt(v, 10) || 0));
+                              const n = Math.max(0, parseInt(v, 10) || 0);
+                              setMaxPoints(n);
+                              if (rubricAutoTotal != null && n === rubricAutoTotal) {
+                                setMaxPointsFollowsRubric(true);
+                              } else {
+                                setMaxPointsFollowsRubric(false);
+                              }
                             }}
                             disabled={pointsMode === "no_grade"}
                             placeholder={pointsMode === "no_grade" ? "—" : "100"}
@@ -1210,6 +1394,11 @@ export function CreateAssignmentFullPageModal({
                             aria-label={t("points")}
                           />
                         </div>
+                        {pointsMode === "graded" && rubricAutoTotal != null ? (
+                          <p className="text-[11px] leading-snug px-0.5" style={{ color: textColors.secondary }}>
+                            {maxPointsFollowsRubric ? t("pointsAutoFromRubricHint") : t("pointsManualOverrideActiveHint")}
+                          </p>
+                        ) : null}
                         <div
                           className="w-full max-w-full min-w-0 rounded-2xl border focus-within:ring-2 focus-within:ring-blue-500/40"
                           style={{
@@ -1219,7 +1408,13 @@ export function CreateAssignmentFullPageModal({
                         >
                           <select
                             value={pointsMode}
-                            onChange={(e) => setPointsMode(e.target.value as "graded" | "no_grade")}
+                            onChange={(e) => {
+                              const m = e.target.value as "graded" | "no_grade";
+                              setPointsMode(m);
+                              if (m === "graded") {
+                                setMaxPointsFollowsRubric(true);
+                              }
+                            }}
                             className="w-full max-w-full min-w-0 min-h-[48px] border-0 bg-transparent px-3 py-3 text-sm font-semibold outline-none rounded-2xl cursor-pointer box-border"
                             style={{ color: textColors.primary }}
                             aria-label={t("graded")}
@@ -1386,7 +1581,7 @@ export function CreateAssignmentFullPageModal({
                           className="w-4 h-4 rounded accent-blue-500"
                         />
                         <span className="text-sm" style={{ color: textColors.primary }}>
-                          Учащиеся могут комментировать ответы друг друга
+                          {t("teacherQuestionStudentsMayCommentPeers")}
                         </span>
                       </label>
                       <label className="flex items-center gap-3 cursor-pointer">
@@ -1397,7 +1592,7 @@ export function CreateAssignmentFullPageModal({
                           className="w-4 h-4 rounded accent-blue-500"
                         />
                         <span className="text-sm" style={{ color: textColors.primary }}>
-                          Учащиеся могут редактировать ответы
+                          {t("teacherQuestionStudentsMayEditAnswers")}
                         </span>
                       </label>
                     </div>
@@ -1407,7 +1602,7 @@ export function CreateAssignmentFullPageModal({
                   {isAssignmentLike && rubricPayload.length > 0 ? (
                     <div className="rounded-2xl p-4" style={glassStyle}>
                       <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: textColors.secondary }}>
-                        Предварительный просмотр
+                        {t("rubricPreviewTitle")}
                       </p>
                       <ul className="mt-2 space-y-1">
                         {rubricPayload.slice(0, 4).map((r, i) => (
@@ -1434,8 +1629,11 @@ export function CreateAssignmentFullPageModal({
                   border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
                 }}
               >
-                <div className="flex items-center justify-between gap-4 px-5 py-4 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
-                  <div className="min-w-0">
+                <div
+                  className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-4 border-b"
+                  style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
+                >
+                  <div className="min-w-0 flex-1 order-2 sm:order-1">
                     <h2 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
                       {t("assignmentTypeAssignment")}
                     </h2>
@@ -1443,21 +1641,22 @@ export function CreateAssignmentFullPageModal({
                       {t("createRubric")}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-stretch sm:items-center gap-2 w-full sm:w-auto order-1 sm:order-2 shrink-0">
                     <button
                       type="button"
                       onClick={handleCreateAssignment}
                       disabled={submitting}
-                      className="flex items-center gap-2 px-5 py-3 rounded-2xl text-white font-semibold disabled:opacity-50 transition-all hover:shadow-lg"
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-2xl text-white text-sm font-semibold disabled:opacity-50 transition-all hover:shadow-lg min-w-0"
                       style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6)" }}
                     >
                       {t("createAssignment")}
-                      <ChevronDown className="w-4 h-4 opacity-90" />
+                      <ChevronDown className="w-4 h-4 opacity-90 shrink-0" />
                     </button>
                     <button
                       type="button"
                       onClick={() => setRubricCreatorOpen(false)}
-                      className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                      className="p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                      aria-label={t("teacherCancel")}
                     >
                       <X className="w-5 h-5" style={{ color: textColors.secondary }} />
                     </button>
@@ -1468,7 +1667,7 @@ export function CreateAssignmentFullPageModal({
                   <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                        Название
+                        {t("rubricSheetNameLabel")}
                       </label>
                       <input
                         value={rubricTitle}
@@ -1481,7 +1680,7 @@ export function CreateAssignmentFullPageModal({
                     <div className="space-y-3">
                       <label className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl" style={glassStyle}>
                         <span className="text-sm font-semibold" style={{ color: textColors.primary }}>
-                          Использовать систему баллов
+                          {t("teacherRubricUsePointSystem")}
                         </span>
                         <input
                           type="checkbox"
@@ -1491,7 +1690,7 @@ export function CreateAssignmentFullPageModal({
                       </label>
                       <div className="space-y-2">
                         <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                          Сортировка
+                          {t("rubricSortLabel")}
                         </label>
                         <select
                           value={rubricSortDesc ? "desc" : "asc"}
@@ -1510,7 +1709,7 @@ export function CreateAssignmentFullPageModal({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-semibold" style={{ color: textColors.primary }}>
-                        Условия
+                        {t("rubricConditionsHeading")}
                       </h3>
                       <button
                         type="button"
@@ -1588,7 +1787,7 @@ export function CreateAssignmentFullPageModal({
 
                             <div className="space-y-2">
                               {cond.levels.map((lvl, lidx) => (
-                                <div key={lidx} className="flex items-center gap-2">
+                                <div key={lidx} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 min-w-0">
                                   <input
                                     value={lvl.name}
                                     onChange={(e) =>
@@ -1604,63 +1803,65 @@ export function CreateAssignmentFullPageModal({
                                       )
                                     }
                                     placeholder={t("levelName")}
-                                    className="flex-1 px-4 py-3 rounded-2xl outline-none text-sm font-semibold"
+                                    className="flex-1 min-w-0 px-4 py-3 rounded-2xl outline-none text-sm font-semibold"
                                     style={{ ...inputStyle, color: textColors.primary, opacity: rubricUsePoints ? 1 : 0.75 }}
                                     disabled={!rubricUsePoints}
                                   />
-                                  <input
-                                    type="number"
-                                    value={lvl.points === 0 ? "" : lvl.points}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      if (raw === "") {
+                                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                                    <input
+                                      type="number"
+                                      value={lvl.points === 0 ? "" : lvl.points}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                          setRubricConditions((prev) =>
+                                            prev.map((c, j) =>
+                                              j === idx
+                                                ? {
+                                                    ...c,
+                                                    levels: c.levels.map((x, k) =>
+                                                      k === lidx ? { ...x, points: 0 } : x
+                                                    ),
+                                                  }
+                                                : c
+                                            )
+                                          );
+                                          return;
+                                        }
+                                        const v = parseFloat(raw);
                                         setRubricConditions((prev) =>
                                           prev.map((c, j) =>
                                             j === idx
                                               ? {
                                                   ...c,
                                                   levels: c.levels.map((x, k) =>
-                                                    k === lidx ? { ...x, points: 0 } : x
+                                                    k === lidx ? { ...x, points: Number.isFinite(v) ? v : 0 } : x
                                                   ),
                                                 }
                                               : c
                                           )
                                         );
-                                        return;
+                                      }}
+                                      placeholder={t("points")}
+                                      className="w-full sm:w-28 min-w-0 px-4 py-3 rounded-2xl outline-none text-sm font-semibold"
+                                      style={{ ...inputStyle, color: textColors.primary, opacity: rubricUsePoints ? 1 : 0.75 }}
+                                      disabled={!rubricUsePoints}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="p-3 rounded-2xl text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
+                                      onClick={() =>
+                                        setRubricConditions((prev) =>
+                                          prev.map((c, j) =>
+                                            j === idx ? { ...c, levels: c.levels.filter((_, k) => k !== lidx) } : c
+                                          )
+                                        )
                                       }
-                                      const v = parseFloat(raw);
-                                      setRubricConditions((prev) =>
-                                        prev.map((c, j) =>
-                                          j === idx
-                                            ? {
-                                                ...c,
-                                                levels: c.levels.map((x, k) =>
-                                                  k === lidx ? { ...x, points: Number.isFinite(v) ? v : 0 } : x
-                                                ),
-                                              }
-                                            : c
-                                        )
-                                      );
-                                    }}
-                                    placeholder=""
-                                    className="w-28 px-4 py-3 rounded-2xl outline-none text-sm font-semibold"
-                                    style={{ ...inputStyle, color: textColors.primary, opacity: rubricUsePoints ? 1 : 0.75 }}
-                                    disabled={!rubricUsePoints}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="p-3 rounded-2xl text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                                    onClick={() =>
-                                      setRubricConditions((prev) =>
-                                        prev.map((c, j) =>
-                                          j === idx ? { ...c, levels: c.levels.filter((_, k) => k !== lidx) } : c
-                                        )
-                                      )
-                                    }
-                                    aria-label={t("deleteLevel")}
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
+                                      aria-label={t("deleteLevel")}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -1677,7 +1878,7 @@ export function CreateAssignmentFullPageModal({
                       className="flex-1 py-3 rounded-2xl text-white font-semibold transition-all hover:shadow-lg"
                       style={{ background: "linear-gradient(135deg,#10B981,#06B6D4)" }}
                     >
-                      Сохранить
+                      {t("teacherSave")}
                     </button>
                   </div>
                 </div>
@@ -1716,10 +1917,12 @@ export function CreateAssignmentFullPageModal({
                 <select
                   value={rubricReuseCourseId === "all" ? "" : String(rubricReuseCourseId)}
                   onChange={(e) => {
+                    e.stopPropagation();
                     const v = e.target.value;
                     setRubricReuseCourseId(v === "" ? "all" : Number(v));
                   }}
-                  className="w-full px-4 py-3 rounded-2xl text-sm font-semibold outline-none"
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-3 rounded-2xl text-sm font-semibold outline-none cursor-pointer"
                   style={{ ...inputStyle, color: textColors.primary }}
                 >
                   <option value="">{t("assignmentReuseRubricAllCourses")}</option>
@@ -1847,8 +2050,8 @@ export function CreateAssignmentFullPageModal({
                   <h3 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
                     {t("assign")}
                   </h3>
-                  <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                    {t("selectStudentsDemo")}
+                  <p className="text-xs mt-1 leading-relaxed" style={{ color: textColors.secondary }}>
+                    {t("assignmentGroupAudienceHint")}
                   </p>
                 </div>
                 <button type="button" onClick={() => setStudentSelectorOpen(false)} className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10">
@@ -1881,67 +2084,24 @@ export function CreateAssignmentFullPageModal({
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
-                  <label
-                    className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
-                    style={{
-                      border: `1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)"}`,
-                      background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)",
-                    }}
-                  >
-                    <span className="text-sm font-semibold" style={{ color: textColors.primary }}>
-                      {t("selectAllStudents")}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={
-                        students.length > 0 && students.every((st) => selectedStudentIds[st.id])
-                      }
-                      ref={(el) => {
-                        if (!el) return;
-                        const some = students.some((st) => selectedStudentIds[st.id]);
-                        const all = students.length > 0 && students.every((st) => selectedStudentIds[st.id]);
-                        el.indeterminate = some && !all;
-                      }}
-                      onChange={() => {
-                        const ids = students.map((st) => st.id);
-                        const allOn = ids.length > 0 && ids.every((id) => selectedStudentIds[id]);
-                        if (allOn) {
-                          setSelectedStudentIds({});
-                        } else {
-                          const next: Record<number, boolean> = {};
-                          for (const id of ids) next[id] = true;
-                          setSelectedStudentIds(next);
-                        }
-                      }}
-                    />
-                  </label>
-                  {students.map((s) => {
-                    const checked = !!selectedStudentIds[s.id];
-                    return (
-                      <label
-                        key={s.id}
-                        className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
-                        style={{ border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold truncate" style={{ color: textColors.primary }}>
-                            {s.full_name || s.email}
-                          </span>
-                          <span className="block text-xs truncate" style={{ color: textColors.secondary }}>
-                            {s.email}
-                          </span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setSelectedStudentIds((prev) => ({ ...prev, [s.id]: !prev[s.id] }));
-                          }}
-                        />
-                      </label>
-                    );
-                  })}
+                <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: textColors.secondary }}>
+                    {t("assignmentGroupRosterTitle")}
+                  </p>
+                  {students.map((s) => (
+                    <div
+                      key={s.id}
+                      className="px-4 py-3 rounded-2xl"
+                      style={{ border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}
+                    >
+                      <span className="block text-sm font-semibold break-words" style={{ color: textColors.primary }}>
+                        {s.full_name || s.email}
+                      </span>
+                      <span className="block text-xs mt-0.5 break-all" style={{ color: textColors.secondary }}>
+                        {s.email}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -2194,15 +2354,15 @@ export function CreateAssignmentFullPageModal({
   function DriveButton() {
     return (
       <label
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10"
+        className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
         style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
         onClick={() => {
           const el = document.getElementById("teacher-assignment-disk") as HTMLInputElement | null;
           el?.click();
         }}
       >
-        <Paperclip className="w-4 h-4" style={{ color: textColors.primary }} />
-        {t("drive")}
+        <Paperclip className="w-4 h-4 shrink-0" style={{ color: textColors.primary }} />
+        <span className="truncate">{t("drive")}</span>
       </label>
     );
   }
@@ -2210,15 +2370,15 @@ export function CreateAssignmentFullPageModal({
   function UploadButton() {
     return (
       <label
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10"
+        className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
         style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
         onClick={() => {
           const el = document.getElementById("teacher-assignment-upload") as HTMLInputElement | null;
           el?.click();
         }}
       >
-        <Upload className="w-4 h-4" style={{ color: textColors.primary }} />
-        {t("upload")}
+        <Upload className="w-4 h-4 shrink-0" style={{ color: textColors.primary }} />
+        <span className="truncate">{t("upload")}</span>
       </label>
     );
   }
@@ -2227,14 +2387,16 @@ export function CreateAssignmentFullPageModal({
     return (
       <button
         type="button"
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10"
+        className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
         style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
         onClick={() => {
           setYoutubeUrlError(null);
           setYoutubeDialogOpen(true);
         }}
       >
-        <span style={{ fontWeight: 900 }}>{t("teacherYoutube")}</span>
+        <span className="truncate" style={{ fontWeight: 900 }}>
+          {t("teacherYoutube")}
+        </span>
       </button>
     );
   }
@@ -2243,15 +2405,15 @@ export function CreateAssignmentFullPageModal({
     return (
       <button
         type="button"
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10"
+        className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
         style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
         onClick={() => {
           setLinkUrlError(null);
           setLinkDialogOpen(true);
         }}
       >
-        <LinkIcon className="w-4 h-4" style={{ color: textColors.primary }} />
-        {t("linkOption")}
+        <LinkIcon className="w-4 h-4 shrink-0" style={{ color: textColors.primary }} />
+        <span className="truncate">{t("linkOption")}</span>
       </button>
     );
   }
@@ -2260,18 +2422,19 @@ export function CreateAssignmentFullPageModal({
     const [open, setOpen] = useState(false);
     const items = ["docs", "presentations", "spreadsheets"] as const;
     return (
-      <div className="relative">
+      <div className="relative col-span-2 min-w-0 sm:col-span-1 sm:w-auto">
         <button
           type="button"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10"
+          className="flex items-center justify-between gap-2 px-3 py-2.5 sm:px-4 sm:justify-start rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 text-left"
           style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
           onClick={() => setOpen((o) => !o)}
         >
-          {t("connectAssignment")} <ChevronDown className="w-4 h-4 opacity-70" />
+          <span className="truncate min-w-0">{t("connectAssignment")}</span>
+          <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
         </button>
         {open ? (
           <div
-            className="absolute left-0 mt-2 z-[90] w-56 rounded-2xl overflow-hidden"
+            className="absolute left-0 right-0 sm:right-auto mt-2 z-[90] w-full min-w-0 sm:w-56 rounded-2xl overflow-hidden"
             style={{
               background: isDark ? "rgba(26,34,56,0.95)" : "rgba(255,255,255,0.98)",
               border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}`,

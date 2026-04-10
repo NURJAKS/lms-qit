@@ -17,10 +17,12 @@ import {
   Laptop,
   Dog,
   ChevronDown,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 export type StudentAssignmentRow = {
   id: number;
@@ -33,6 +35,7 @@ export type StudentAssignmentRow = {
   closed?: boolean;
   submitted_at?: string | null;
   max_points?: number;
+  is_locked?: boolean;
 };
 
 type MainTabId = "appointed" | "missed" | "completed";
@@ -129,24 +132,33 @@ function AssignmentRowLink({
   const rightLabel =
     variant === "done"
       ? formatDoneGrade(a, t)
-      : a.deadline
-        ? `${t("dueDateShort")} ${formatDate(a.deadline)}`
-        : formatDate(a.deadline);
+      : a.is_locked
+        ? t("lockedWatchVideoFirst")
+        : a.deadline
+          ? `${t("dueDateShort")} ${formatDate(a.deadline)}`
+          : formatDate(a.deadline);
 
   return (
     <Link
-      href={`/app/courses/${a.course_id}?tab=classwork&assignmentId=${a.id}`}
+      href={a.is_locked ? "#" : `/app/courses/${a.course_id}?tab=classwork&assignmentId=${a.id}`}
+      onClick={(e) => a.is_locked && e.preventDefault()}
       className={cn(
         "group block rounded-2xl border border-gray-200 bg-white transition-all active:scale-[0.99] card-glow-hover hover:shadow-md dark:border-gray-700 dark:bg-gray-800",
-        compact ? "p-2.5" : "p-4"
+        compact ? "p-2.5" : "p-4",
+        a.is_locked && "opacity-60 cursor-not-allowed"
       )}
     >
       <div className={cn("flex items-start", compact ? "gap-2" : "gap-4")}>
         <div className={cn(
           "flex shrink-0 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-900/20 transition-colors group-hover:bg-amber-100",
-          compact ? "h-8 w-8" : "h-10 w-10"
+          compact ? "h-8 w-8" : "h-10 w-10",
+          a.is_locked && "bg-gray-100 dark:bg-gray-800"
         )}>
-          <GraduationCap className={cn("text-amber-600", compact ? "h-4 w-4" : "h-5 w-5")} />
+          {a.is_locked ? (
+            <Lock className={cn("text-gray-400", compact ? "h-4 w-4" : "h-5 w-5")} />
+          ) : (
+            <GraduationCap className={cn("text-amber-600", compact ? "h-4 w-4" : "h-5 w-5")} />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className={cn(
@@ -392,11 +404,10 @@ export function StudentAssignmentsListView({ fixedCourseId, embedded, compact }:
 
   const formatDate = (iso: string | null) => {
     if (!iso) return t("noDueDate");
-    const d = new Date(iso);
-    if (compact) {
-      return d.toLocaleDateString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU", { month: "short", day: "numeric" });
-    }
-    return d.toLocaleDateString(lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return formatLocalizedDate(iso, lang, t, {
+      shortMonth: true,
+      includeTime: !compact,
+    });
   };
 
   const tabBorder = theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";

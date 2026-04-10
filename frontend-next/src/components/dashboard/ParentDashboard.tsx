@@ -28,6 +28,7 @@ import {
 import { getGlassCardStyle, getTextColors, getDashboardCardStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 interface ReportCourse {
   course_id: number;
@@ -805,7 +806,7 @@ export function ParentDashboard() {
                                     <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
                                       {getLocalizedCourseTitle({ title: a.course_title } as any, t)}
                                       {deadlineDate &&
-                                        ` • ${t("assignmentDeadline")}: ${deadlineDate.toLocaleDateString(lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US")}`}
+                                        ` • ${t("assignmentDeadline")}: ${formatLocalizedDate(a.deadline, lang, t, { shortMonth: true })}`}
                                     </p>
                                     {isOverdue && (
                                       <span className="inline-block mt-2 text-xs font-medium" style={{ color: "#EF4444" }}>

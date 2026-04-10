@@ -15,13 +15,13 @@ from app.models.study_schedule import StudySchedule
 from app.models.student_goal import StudentGoal
 from app.models.teacher_group import TeacherGroup
 from app.models.group_teacher import GroupTeacher
+from app.models.ai_challenge_cache import AIChallengeCache
 
 from app.models.group_student import GroupStudent
 from app.models.teacher_assignment import TeacherAssignment
 from app.models.teacher_assignment_rubric import TeacherAssignmentRubric
 from app.models.assignment_submission import AssignmentSubmission
 from app.models.assignment_submission_grade import AssignmentSubmissionGrade
-from app.models.assignment_class_comment import AssignmentClassComment
 from app.models.assignment_class_comment import AssignmentClassComment
 from app.models.notification import Notification
 from app.models.ai_chat_history import AIChatHistory
@@ -37,6 +37,7 @@ from app.models.course_application import CourseApplication
 from app.models.add_student_task import AddStudentTask
 from app.models.teacher_material import TeacherMaterial
 from app.models.teacher_question import TeacherQuestion, TeacherQuestionAnswer
+from app.models.question_class_comment import TeacherQuestionClassComment
 from app.models.course_review import CourseReview
 from app.models.community_post import CommunityPost
 from app.models.community_post_like import CommunityPostLike
@@ -65,13 +66,13 @@ __all__ = [
     "StudentGoal",
     "TeacherGroup",
     "GroupTeacher",
+    "AIChallengeCache",
 
     "GroupStudent",
     "TeacherAssignment",
     "TeacherAssignmentRubric",
     "AssignmentSubmission",
     "AssignmentSubmissionGrade",
-    "AssignmentClassComment",
     "AssignmentClassComment",
     "Notification",
     "AIChatHistory",
@@ -88,6 +89,7 @@ __all__ = [
     "TeacherMaterial",
     "TeacherQuestion",
     "TeacherQuestionAnswer",
+    "TeacherQuestionClassComment",
     "CourseReview",
     "CommunityPost",
     "CommunityPostLike",

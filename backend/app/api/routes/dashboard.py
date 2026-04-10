@@ -78,40 +78,94 @@ def get_continue_watching(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Темы с просмотром видео (video_watched_seconds > 0), не завершённые."""
-    progress_rows = db.query(StudentProgress).filter(
-        StudentProgress.user_id == current_user.id,
-        StudentProgress.video_watched_seconds > 0,
-        StudentProgress.is_completed == False,
-    ).order_by(StudentProgress.created_at.desc()).limit(6).all()
-    topic_ids = [p.topic_id for p in progress_rows if p.topic_id]
-    if not topic_ids:
+    """
+    Умная логика выбора тем для продолжения обучения:
+    Для каждого курса студента находим 'активную' тему:
+    1. Показываем самую первую тему по порядку, которая еще не завершена полностью (is_completed = False).
+    2. Тема остается активной в дашборде, пока все её этапы (видео, тест и т.д.) не будут пройдены.
+    3. Сортируем курсы по дате последнего обновления прогресса или дате записи на курс.
+    """
+    from app.models.course_module import CourseModule
+    
+    enrollments = db.query(CourseEnrollment).filter(CourseEnrollment.user_id == current_user.id).all()
+    if not enrollments:
         return []
-    topics = db.query(CourseTopic).filter(CourseTopic.id.in_(topic_ids)).all()
-    topics_by_id = {t.id: t for t in topics}
-    courses = {c.id: c for c in db.query(Course).filter(Course.id.in_({t.course_id for t in topics})).all()}
-    result = []
-    for p in progress_rows:
-        if p.topic_id not in topics_by_id:
+    
+    course_ids = [e.course_id for e in enrollments]
+    
+    # Собираем весь прогресс пользователя
+    all_progress = db.query(StudentProgress).filter(StudentProgress.user_id == current_user.id).all()
+    progress_by_course = {}
+    for p in all_progress:
+        progress_by_course.setdefault(p.course_id, {})[p.topic_id] = p
+        
+    result_candidates = []
+    
+    for cid in course_ids:
+        # Получаем темы курса в правильном порядке (через модули)
+        ordered_topics = (
+            db.query(CourseTopic)
+            .join(CourseModule, CourseModule.id == CourseTopic.module_id)
+            .filter(CourseTopic.course_id == cid)
+            .order_by(CourseModule.order_number, CourseTopic.order_number)
+            .all()
+        )
+        
+        if not ordered_topics:
             continue
-        t = topics_by_id[p.topic_id]
-        duration = t.video_duration or 3600
-        watched = p.video_watched_seconds or 0
-        pct = min(100, round(watched / duration * 100)) if duration else 0
-        c = courses.get(t.course_id)
-        result.append({
-            "topic_id": t.id,
-            "course_id": t.course_id,
-            "course_title": c.title if c else "",
-            "course_image_url": c.image_url if c and c.image_url else None,
-            "topic_title": t.title,
-            "video_watched_seconds": watched,
-            "video_duration": duration,
-            "progress_percent": pct,
-        })
-    return result
-
-
+            
+        active_topic = None
+        course_last_update = None
+        
+        # Находим последнюю дату обновления в этом курсе для сортировки
+        for p in all_progress:
+            if p.course_id == cid:
+                if not course_last_update or (p.updated_at and p.updated_at > course_last_update):
+                    course_last_update = p.updated_at
+        
+        # Если прогресса вообще в курсе нет, используем дату записи на курс
+        if not course_last_update:
+            enr = next((e for e in enrollments if e.course_id == cid), None)
+            if enr:
+                course_last_update = enr.enrolled_at
+        
+        # Ищем 'активную' тему: первая незавершенная (is_completed = False)
+        for t in ordered_topics:
+            p = progress_by_course.get(cid, {}).get(t.id)
+            if not p or not p.is_completed:
+                active_topic = t
+                break
+        
+        if active_topic:
+            p = progress_by_course.get(cid, {}).get(active_topic.id)
+            duration = active_topic.video_duration or 3600
+            watched = p.video_watched_seconds if p else 0
+            pct = min(100, round(watched / duration * 100)) if duration else 0
+            
+            c = db.query(Course).filter(Course.id == cid).first()
+            
+            result_candidates.append({
+                "topic_id": active_topic.id,
+                "course_id": cid,
+                "course_title": c.title if c else "",
+                "course_image_url": c.image_url if c and c.image_url else None,
+                "topic_title": active_topic.title,
+                "video_watched_seconds": watched,
+                "video_duration": duration,
+                "progress_percent": pct,
+                "last_update": course_last_update or datetime.min
+            })
+            
+    # Сортируем по дате последнего обновления (сначала активные)
+    result_candidates.sort(key=lambda x: x["last_update"], reverse=True)
+    
+    # Удаляем служебное поле и ограничиваем
+    final_result = []
+    for r in result_candidates:
+        r.pop("last_update")
+        final_result.append(r)
+        
+    return final_result[:6]
 @router.get("/events")
 def get_upcoming_events(
     db: Annotated[Session, Depends(get_db)],
@@ -751,7 +805,13 @@ def get_upcoming_deadlines(
     if not group_ids:
         return []
     
-    # Получаем задания с дедлайнами, которые еще не прошли и не закрыты вручную
+    # Получаем ID заданий, которые студент уже сдал
+    submitted_assignment_ids = db.query(AssignmentSubmission.assignment_id).filter(
+        AssignmentSubmission.student_id == current_user.id
+    ).all()
+    submitted_ids = [r[0] for r in submitted_assignment_ids]
+
+    # Получаем задания с дедлайнами, которые еще не прошли, не закрыты вручную и еще не сданы
     now = datetime.now() # Naive comparison for SQLite
     assignments = (
         db.query(TeacherAssignment)
@@ -760,6 +820,7 @@ def get_upcoming_deadlines(
             TeacherAssignment.deadline.isnot(None),
             TeacherAssignment.deadline >= now,
             TeacherAssignment.closed_at.is_(None),
+            ~TeacherAssignment.id.in_(submitted_ids),
         )
         .order_by(TeacherAssignment.deadline.asc())
         .limit(limit)
@@ -770,15 +831,9 @@ def get_upcoming_deadlines(
     course_ids = list({a.course_id for a in assignments})
     courses = {c.id: c for c in db.query(Course).filter(Course.id.in_(course_ids)).all()}
     
-    # Получаем информацию о сдаче заданий
-    assignment_ids = [a.id for a in assignments]
-    submissions = {
-        s.assignment_id: s
-        for s in db.query(AssignmentSubmission).filter(
-            AssignmentSubmission.student_id == current_user.id,
-            AssignmentSubmission.assignment_id.in_(assignment_ids),
-        ).all()
-    }
+    # submissions нам больше не нужны для фильтрации внутри цикла, 
+    # так как мы отфильтровали их в основном запросе.
+    # Но мы оставляем поле submitted для совместимости с фронтендом (всегда False).
     
     result = []
     for a in assignments:
@@ -796,8 +851,8 @@ def get_upcoming_deadlines(
         # Определяем тип: если есть test_id, то это тест, иначе задание
         deadline_type = "test" if a.test_id else "assignment"
         
-        # Проверяем, сдано ли задание
-        submitted = a.id in submissions
+        # В этом списке будут только не сданные задания
+        submitted = False
         
         course = courses.get(a.course_id)
         result.append({

@@ -17,7 +17,7 @@ from app.models.ai_challenge import AIChallenge
 from app.models.notification import Notification
 from app.models.course_topic import CourseTopic
 from app.models.course import Course
-from app.services.ai_service import get_challenge_recommendations
+from app.services.ai_service import get_challenge_recommendations, solve_quiz_questions
 from app.data.challenge_questions import (
     get_questions_by_mode,
     CHALLENGE_CATEGORIES,
@@ -1127,23 +1127,36 @@ def start_challenge(
         )
     effective_limit = min(limit, available)
     questions = questions[:effective_limit]
-    # AI opponent: simulated (no LLM). Correct answers for user are always from DB (TestQuestion.correct_answer).
-    lo, hi = AI_TIME_RANGES[ai_level]
-    ai_times = [round(random.uniform(lo, hi), 2) for _ in questions]
-    ai_bonus = random.randint(0, 3)
+    # Get real AI results
+    ai_results = solve_quiz_questions(
+        questions=questions,
+        ai_level=ai_level,
+        lang=lang or "ru",
+        game_mode=game_mode,
+        db=db
+    )
+    
+    ai_times = [r.get("thinking_time", 2.0) for r in ai_results]
+    ai_correct_count = sum(1 for r in ai_results if r.get("is_correct"))
+    # If the AI made a mistake, we need to know WHICH answer it picked if we ever want to show it.
+    # For now, we store the local_answer_map as usual, but using AI's chosen answers.
+    local_answer_map = {str(r.get("id")): (r.get("answer") or "a").strip().lower() for r in ai_results}
+    
+    ai_bonus = random.randint(0, 3) 
     round_limit = ROUND_TIME_LIMIT_BY_LEVEL.get(ai_level, ROUND_TIME_LIMIT)
+    
     challenge = AIChallenge(
         user_id=current_user.id,
         course_id=course_id,
         ai_total_time=sum(ai_times),
-        ai_correct_count=len(questions),  # AI assumed to get all correct; no mock answers
+        ai_correct_count=ai_correct_count,
         user_total_time=0,
         user_correct_count=0,
         ai_level=ai_level,
         round_time_limit_seconds=round_limit,
         ai_bonus_points=ai_bonus,
         game_type=game_mode,
-        ai_times_json=json.dumps(ai_times),
+        ai_times_json=json.dumps({"times": ai_times, "local_answer_map": local_answer_map}),
     )
     db.add(challenge)
     db.commit()
@@ -1453,17 +1466,18 @@ def start_new_mode_challenge(
     if len(questions) < 2:
         raise HTTPException(status_code=400, detail=get_error_msg("not_enough_questions", lang))
 
-    # AI opponent simulation
-    lo, hi = AI_TIME_RANGES.get(ai_level, (2.0, 3.0))
-    ai_times = [round(random.uniform(lo, hi), 2) for _ in questions]
-
-    # Simulate AI correct count (AI doesn't always get all right in new modes)
-    if ai_level == "beginner":
-        ai_correct = max(1, len(questions) - random.randint(1, 3))
-    elif ai_level == "expert":
-        ai_correct = len(questions) - random.randint(0, 1)
-    else:
-        ai_correct = len(questions) - random.randint(0, 2)
+    # Get real AI results
+    ai_results = solve_quiz_questions(
+        questions=questions,
+        ai_level=ai_level,
+        lang=lang or "ru",
+        game_mode=game_mode,
+        db=db
+    )
+    
+    ai_times = [r.get("thinking_time", 2.0) for r in ai_results]
+    ai_correct = sum(1 for r in ai_results if r.get("is_correct"))
+    local_answer_map = {str(r.get("id")): (r.get("answer") or "a").strip().lower() for r in ai_results}
 
     anchor_cid = _ai_challenge_anchor_course_id(db)
     challenge = AIChallenge(
@@ -1477,7 +1491,7 @@ def start_new_mode_challenge(
         round_time_limit_seconds=time_limit,
         ai_bonus_points=random.randint(0, 2),
         game_type=game_mode,
-        ai_times_json=json.dumps(ai_times),
+        ai_times_json=json.dumps({"times": ai_times, "local_answer_map": local_answer_map}),
     )
     db.add(challenge)
     db.commit()

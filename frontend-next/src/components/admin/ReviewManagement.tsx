@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { api as apiClient } from "@/api/client";
@@ -241,7 +241,7 @@ export default function ReviewManagement() {
                                             </div>
                                         )}
                                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-3">
-                                            {r.created_at ? formatDateLocalized(r.created_at, lang) : ""}
+                                            {r.created_at ? formatLocalizedDate(r.created_at, lang as any, t) : ""}
                                         </p>
                                     </div>
                                     <div className="flex flex-col gap-2">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient, useQueries } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
-import type { Lang } from "@/i18n/translations";
+import { formatWeekdayLongAndTime } from "@/utils/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -32,12 +32,6 @@ type Assignment = {
   deadline: string | null;
   is_closed: boolean;
 };
-
-function formatDueWhen(iso: string, lang: Lang): string {
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, { weekday: "long", hour: "2-digit", minute: "2-digit" }).format(d);
-}
 
 function pickNearestDeadline(assignments: Assignment[]) {
   const now = Date.now();
@@ -223,7 +217,7 @@ export default function TeacherCoursesPage() {
               const y = yearFromCreated(g.created_at);
               const deadlineLine = nearest?.deadline
                 ? t("teacherCourseCardDeadlineLine")
-                  .replace("{when}", formatDueWhen(nearest.deadline, lang))
+                  .replace("{when}", formatWeekdayLongAndTime(nearest.deadline, lang, t))
                   .replace("{title}", nearest.title)
                 : null;
 
@@ -231,7 +225,7 @@ export default function TeacherCoursesPage() {
                 <BlurFade key={g.id} delay={0.05 * idx}>
                   <div className="relative">
                     <div
-                      className="w-full text-left rounded-2xl overflow-hidden card-glow-hover transition-transform hover:scale-[1.01] flex flex-col"
+                      className="w-full text-left rounded-2xl card-glow-hover transition-transform hover:scale-[1.01] flex flex-col relative"
                       style={{ ...glassStyle }}
                     >
                       <button
@@ -290,7 +284,7 @@ export default function TeacherCoursesPage() {
                                 style={{ color: textColors.primary }}
                               >
                                 <Pencil className="w-4 h-4" style={{ color: textColors.secondary }} />
-                                {t("edit") || "Изменить"}
+                                {t("edit")}
                               </button>
                               
                               {(user?.role === "admin" || g.teacher_id === user?.id) && (
@@ -301,9 +295,9 @@ export default function TeacherCoursesPage() {
                                     variant="ghost"
                                     size="sm"
                                     className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-500/10 px-3 py-2.5 rounded-lg"
-                                    text={t("delete") || "Удалить"}
-                                    title={`${t("teacherDeleteGroup") || "Удалить группу"}: ${g.group_name}?`}
-                                    description={t("confirmDelete") || "Это действие нельзя отменить."}
+                                    text={t("delete")}
+                                    title={`${t("teacherDeleteGroup")}: ${g.group_name}?`}
+                                    description={t("confirmDelete")}
                                   />
                                 </div>
                               )}
@@ -341,7 +335,7 @@ export default function TeacherCoursesPage() {
 
       {modalOpen ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setModalOpen(false)} aria-label="Close" />
+          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setModalOpen(false)} aria-label={t("close")} />
           <div
             className="relative w-full max-w-md rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200"
             style={{ ...modalStyle }}
@@ -454,7 +448,7 @@ export default function TeacherCoursesPage() {
 
       {renameModalOpen && renamingGroup && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setRenameModalOpen(false)} aria-label="Close" />
+          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setRenameModalOpen(false)} aria-label={t("close")} />
           <div
             className="relative w-full max-w-md rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200"
             style={{ ...modalStyle }}

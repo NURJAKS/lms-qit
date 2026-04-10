@@ -564,7 +564,7 @@ function CourseCreateModal({
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
               required
-              placeholder="Python программалау негіздері"
+              placeholder={t("adminCoursePlaceholderKz")}
             />
           </div>
           <div>
@@ -577,7 +577,7 @@ function CourseCreateModal({
               onChange={(e) => setTitleRu(e.target.value)}
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
-              placeholder="Основы программирования на Python"
+              placeholder={t("adminCoursePlaceholderRu")}
             />
           </div>
           <div>
@@ -590,7 +590,7 @@ function CourseCreateModal({
               onChange={(e) => setTitleEn(e.target.value)}
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
-              placeholder="Python Programming Fundamentals"
+              placeholder={t("adminCoursePlaceholderEn")}
             />
           </div>
           <div>
@@ -618,7 +618,7 @@ function CourseCreateModal({
               step={1}
               className="w-full rounded-lg px-3 py-2"
               style={inputStyle}
-              placeholder="0"
+              placeholder={t("placeholderNumber")}
             />
           </div>
           <div>

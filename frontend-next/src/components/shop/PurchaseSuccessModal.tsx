@@ -9,7 +9,7 @@ import { getModalStyle, getTextColors } from "@/utils/themeStyles";
 import { cn } from "@/lib/utils";
 
 import { useLanguage } from "@/context/LanguageContext";
-import { getLocaleForLang, formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 interface PurchaseSuccessModalProps {
   isOpen: boolean;
@@ -44,11 +44,7 @@ export function PurchaseSuccessModal({
   }, [isOpen]);
 
   const deliveryDate = estimatedDeliveryDate
-    ? formatDateLocalized(estimatedDeliveryDate, lang, {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+    ? formatLocalizedDate(estimatedDeliveryDate, lang as any, t)
     : null;
 
   return (

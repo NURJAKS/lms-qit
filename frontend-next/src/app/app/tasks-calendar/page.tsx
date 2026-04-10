@@ -9,6 +9,7 @@ import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
+import { toast } from "@/store/notificationStore";
 import {
   Plus,
   Trash2,
@@ -68,7 +69,7 @@ const WEEKDAY_FULL_KEYS = ["weekdaySun", "weekdayMon", "weekdayTue", "weekdayWed
 export default function TasksCalendarPage() {
   const { t, lang } = useLanguage();
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isTeacher } = useAuthStore();
   const searchParams = useSearchParams();
 
   const locale = lang === "ru" ? "ru-RU" : lang === "kk" ? "kk-KZ" : "en-US";
@@ -102,13 +103,13 @@ export default function TasksCalendarPage() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "all-assignments" && user?.role !== "teacher") setActiveTab("all-assignments");
-  }, [searchParams, user?.role]);
+    if (tab === "all-assignments" && !isTeacher()) setActiveTab("all-assignments");
+  }, [searchParams, isTeacher]);
 
   // Учителю вкладка «Все задания» не показывается — оставляем только «По дате»
   useEffect(() => {
-    if (user?.role === "teacher" && activeTab === "all-assignments") setActiveTab("by-date");
-  }, [user?.role, activeTab]);
+    if (isTeacher() && activeTab === "all-assignments") setActiveTab("by-date");
+  }, [isTeacher, activeTab]);
 
   const { data: schedule = [] } = useQuery({
     queryKey: ["schedule", date.getFullYear(), date.getMonth()],
@@ -251,10 +252,10 @@ export default function TasksCalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-events"] });
       setSelectedEvent(null);
-      alert(t("scheduleDeleted"));
+      toast.success(t("scheduleDeleted"));
     },
     onError: (err) => {
-      alert(t("scheduleDeleteError"));
+      toast.error(t("scheduleDeleteError"));
     },
   });
 

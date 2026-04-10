@@ -6,9 +6,10 @@ import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/store/notificationStore";
 import { Loader2, Check, X, Copy, UserPlus, ExternalLink, ClipboardList } from "lucide-react";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
@@ -140,7 +141,7 @@ export default function AdminApplicationsPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     } finally {
       setApprovingId(null);
     }
@@ -152,7 +153,7 @@ export default function AdminApplicationsPage() {
       await api.post(`/admin/applications/${appId}/reject`);
       queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     } finally {
       setRejectingId(null);
     }
@@ -164,7 +165,7 @@ export default function AdminApplicationsPage() {
       await api.post(`/admin/applications/${appId}/reopen`);
       queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     } finally {
       setReopeningId(null);
     }
@@ -174,7 +175,7 @@ export default function AdminApplicationsPage() {
     navigator.clipboard.writeText(text);
   };
 
-  const formatDate = (d: string | null) => formatDateTimeLocalized(d, lang);
+  const formatDate = (d: string | null) => formatLocalizedDate(d, lang as any, t);
 
   const showParentEmail = applications.some((a) => a.parent_email);
   const showParentFullName = applications.some((a) => a.parent_full_name);
@@ -240,7 +241,7 @@ export default function AdminApplicationsPage() {
               <thead className="bg-gray-100 dark:bg-[rgba(0,0,0,0.3)]">
                 <tr>
                   <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("date")}</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">Email</th>
+                  <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("adminEmailLabel")}</th>
                   <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("fullName")}</th>
                   <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">{t("phone")}</th>
                   {showParentEmail && (
@@ -483,7 +484,7 @@ export default function AdminApplicationsPage() {
                       assignCuratorMutation.mutate(undefined, {
                         onSettled: () => setAssigningId(null),
                         onError: (e) => {
-                          alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+                          toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
                         },
                       });
                     }}

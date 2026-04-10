@@ -1181,6 +1181,106 @@ def list_students_without_group(
     ]
 
 
+@router.get("/group-assignment-queue")
+def group_assignment_queue(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_admin_user)],
+):
+    """Очередь для менеджера: подтверждение оплаты по email + студенты с доступом к курсу без учебной группы."""
+    subq = (
+        select(1)
+        .select_from(GroupStudent)
+        .join(TeacherGroup, GroupStudent.group_id == TeacherGroup.id)
+        .where(
+            and_(
+                TeacherGroup.course_id == CourseEnrollment.course_id,
+                GroupStudent.student_id == CourseEnrollment.user_id,
+            )
+        )
+    )
+
+    awaiting_rows = (
+        db.query(CourseApplication, User, Course)
+        .join(User, CourseApplication.user_id == User.id)
+        .join(Course, CourseApplication.course_id == Course.id)
+        .filter(CourseApplication.status == "pending_confirmation")
+        .order_by(CourseApplication.created_at.desc())
+        .all()
+    )
+
+    needs_group_rows = (
+        db.query(CourseEnrollment, User, Course)
+        .join(User, CourseEnrollment.user_id == User.id)
+        .join(Course, CourseEnrollment.course_id == Course.id)
+        .filter(~exists(subq))
+        .order_by(CourseEnrollment.enrolled_at.desc())
+        .all()
+    )
+
+    pair_set = {(u.id, c.id) for _e, u, c in needs_group_rows}
+    paid_map: dict[tuple[int, int], int] = {}
+    if pair_set:
+        user_ids = {p[0] for p in pair_set}
+        course_ids = {p[1] for p in pair_set}
+        paid_apps = (
+            db.query(CourseApplication)
+            .filter(
+                CourseApplication.status == "paid",
+                CourseApplication.user_id.in_(user_ids),
+                CourseApplication.course_id.in_(course_ids),
+            )
+            .order_by(CourseApplication.id.desc())
+            .all()
+        )
+        for app in paid_apps:
+            key = (app.user_id, app.course_id)
+            if key in pair_set and key not in paid_map:
+                paid_map[key] = app.id
+
+    def _app_row(app: CourseApplication, u: User, c: Course) -> dict:
+        return {
+            "queue_kind": "awaiting_confirmation",
+            "application_id": app.id,
+            "user_id": u.id,
+            "course_id": c.id,
+            "full_name": u.full_name or app.full_name,
+            "email": u.email or app.email,
+            "phone": (u.phone or app.phone or "") or "",
+            "course_title": c.title,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "enrolled_at": None,
+        }
+
+    def _ng_row(e: CourseEnrollment, u: User, c: Course) -> dict:
+        key = (u.id, c.id)
+        paid_app_id = paid_map.get(key)
+        return {
+            "queue_kind": "needs_group",
+            "application_id": paid_app_id,
+            "user_id": u.id,
+            "course_id": c.id,
+            "full_name": u.full_name,
+            "email": u.email,
+            "phone": (u.phone or "") or "",
+            "course_title": c.title,
+            "created_at": None,
+            "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
+        }
+
+    awaiting_confirmation = [_app_row(app, u, c) for app, u, c in awaiting_rows]
+    needs_group = [_ng_row(e, u, c) for e, u, c in needs_group_rows]
+
+    return {
+        "awaiting_confirmation": awaiting_confirmation,
+        "needs_group": needs_group,
+        "counts": {
+            "awaiting_confirmation": len(awaiting_confirmation),
+            "needs_group": len(needs_group),
+            "total": len(awaiting_confirmation) + len(needs_group),
+        },
+    }
+
+
 class AddStudentTaskCreate(BaseModel):
     student_id: int
     teacher_id: int

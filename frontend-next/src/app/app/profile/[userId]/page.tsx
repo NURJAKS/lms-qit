@@ -261,15 +261,16 @@ export default function UserProfilePage() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-6 lg:gap-8">
       <div className="min-w-0">
-        <div className="flex flex-wrap gap-4 mb-6">
-          {canManageUsers && (
-            <Link href="/app/admin/users" className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[var(--qit-primary)]">
+        <div className="mb-6">
+          {canManageUsers ? (
+            <Link href="/app/admin/users" className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-[var(--qit-primary)] transition-colors">
               <ArrowLeft className="w-4 h-4" /> {t("adminUsersTitle")}
             </Link>
+          ) : (
+            <Link href="/app/leaderboard" className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-[var(--qit-primary)] transition-colors">
+              <ArrowLeft className="w-4 h-4" /> {t("leaderboardTitle")}
+            </Link>
           )}
-          <Link href="/app/leaderboard" className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[var(--qit-primary)]">
-            <ArrowLeft className="w-4 h-4" /> {t("leaderboardTitle")}
-          </Link>
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white mb-4 sm:mb-6">{t("profile")}</h1>
         <div className="mb-6">

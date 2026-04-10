@@ -15,7 +15,7 @@ from app.core.database import engine, Base
 from app.core.migrations import run_migrations
 from app.core.config import settings
 from app.models import *  # noqa: F401 - register all models
-from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community, private_comments, support
+from app.api.routes import auth, admin, applications, courses, topics, tests, progress, users, ai_bot, ai_challenge, notifications, schedule, teacher, analytics, student_analytics, parent, payments, assignments, shop, dashboard, premium, reviews, community, private_comments, support, questions
 from app.api.routes import analytics_student as analytics_student_insights
 from app.jobs.daily_rewards import run_daily_leaderboard_rewards
 
@@ -132,6 +132,7 @@ app.include_router(premium.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(community.router, prefix="/api")
 app.include_router(analytics_student_insights.router, prefix="/api")
+app.include_router(questions.router, prefix="/api")
 app.include_router(support.router, prefix="/api")
 
 

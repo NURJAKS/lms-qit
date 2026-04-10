@@ -119,7 +119,8 @@ export default function DashboardPage() {
   const isDark = theme === "dark";
   const { user, isTeacher } = useAuthStore();
   const userId = user?.id;
-  const isAdmin = user?.role && ["admin", "director", "curator"].includes(user.role);
+  const isAdmin = user?.role && ["admin", "director"].includes(user.role);
+  const isCurator = user?.role === "curator";
   const { data: enrollments = [] } = useQuery({
     queryKey: ["my-enrollments", userId],
     queryFn: async () => {
@@ -169,7 +170,7 @@ export default function DashboardPage() {
       content = <AdminDashboard />;
     } else if (isStudentWithoutGroup) {
       content = <StudentPendingGroupDashboard t={t} />;
-    } else if (isTeacher()) {
+    } else if (isTeacher() || isCurator) {
       content = <TeacherDashboard />;
     } else if (user?.role === "parent") {
       content = <ParentDashboard />;

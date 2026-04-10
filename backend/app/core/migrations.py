@@ -437,6 +437,22 @@ def _ensure_teacher_question_answers_extended_columns(db_engine: Engine) -> None
         return
 
 
+def _ensure_course_feed_posts_attachment_urls(db_engine: Engine) -> None:
+    """Add attachment_urls (JSON) to course_feed_posts for images/files in feed."""
+    try:
+        insp = inspect(db_engine)
+        if not insp.has_table("course_feed_posts"):
+            return
+        existing = {c["name"] for c in insp.get_columns("course_feed_posts")}
+        sqlite = "sqlite" in str(db_engine.url).lower()
+        col = "TEXT" if sqlite else "JSON"
+        with db_engine.begin() as conn:
+            if "attachment_urls" not in existing:
+                conn.execute(text(f"ALTER TABLE course_feed_posts ADD COLUMN attachment_urls {col}"))
+    except Exception:
+        return
+
+
 def _ensure_topic_synopsis_and_feed_tables(db_engine: Engine) -> None:
     """Create topic_synopsis_submissions and course_feed_posts if missing."""
     try:
@@ -497,6 +513,7 @@ def _ensure_support_tickets_table(db_engine: Engine) -> None:
 def run_migrations() -> None:
     """Entry point for running lightweight, in‑app migrations."""
     _ensure_topic_synopsis_and_feed_tables(engine)
+    _ensure_course_feed_posts_attachment_urls(engine)
     _ensure_user_city_column(engine)
     _ensure_user_teacher_columns(engine)
     _ensure_user_admin_columns(engine)

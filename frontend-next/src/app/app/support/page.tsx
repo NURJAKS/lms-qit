@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { useAuthStore } from "@/store/authStore";
 import { MessageCircle, Send, CheckCircle2, AlertCircle, Loader2, BookOpen, Activity } from "lucide-react";
 import type { Course } from "@/types";
@@ -189,7 +190,7 @@ export default function StudentSupportPage() {
                       {ticket.status === "resolved" ? t("supportFilterResolved") : t("supportFilterOpen")}
                     </span>
                     <span className="text-[10px] text-gray-400">
-                      {ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : ""}
+                      {ticket.created_at ? formatLocalizedDate(ticket.created_at, lang, t as any) : ""}
                     </span>
                   </div>
                   <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">

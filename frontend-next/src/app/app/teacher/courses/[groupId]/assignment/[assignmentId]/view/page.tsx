@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
 type RubricCriterion = {
@@ -52,6 +52,7 @@ export default function AssignmentFileViewerPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [gradeInput, setGradeInput] = useState("");
+  const [lastAutoSum, setLastAutoSum] = useState<string>("");
   const [privateComment, setPrivateComment] = useState("");
   const [rubricInputs, setRubricInputs] = useState<Record<number, string>>({});
   const [hasAppliedQuerySelection, setHasAppliedQuerySelection] = useState(false);
@@ -101,6 +102,7 @@ export default function AssignmentFileViewerPage() {
       next[c.id] = rg ? String(rg.points) : "";
     });
     setRubricInputs(next);
+    setLastAutoSum(selectedSubmission.grade != null ? String(selectedSubmission.grade) : "");
     const files = [
       ...(selectedSubmission.file_url ? [selectedSubmission.file_url] : []),
       ...(selectedSubmission.file_urls ?? []),
@@ -113,6 +115,26 @@ export default function AssignmentFileViewerPage() {
     }
     setSelectedFileIndex(0);
   }, [selectedSubmission, rubric, hasAppliedQueryFile, queryFileIndex]);
+
+  // Auto-calculate grade from rubric
+  useEffect(() => {
+    if (rubric.length === 0) return;
+    const sum = Object.values(rubricInputs).reduce((acc, val) => {
+      const n = parseFloat(val);
+      return acc + (Number.isFinite(n) ? n : 0);
+    }, 0);
+
+    const roundedSum = String(Math.round(sum * 100) / 100);
+
+    // Only update gradeInput if it matches lastAutoSum (meaning it's in sync)
+    // or if the gradeInput is empty.
+    if (sum > 0 || Object.keys(rubricInputs).length > 0) {
+      if (gradeInput === "" || gradeInput === lastAutoSum) {
+        setGradeInput(roundedSum);
+        setLastAutoSum(roundedSum);
+      }
+    }
+  }, [rubricInputs, rubric.length, lastAutoSum]);
 
   const selectedFiles = selectedSubmission
     ? [...(selectedSubmission.file_url ? [selectedSubmission.file_url] : []), ...(selectedSubmission.file_urls ?? [])]
@@ -243,7 +265,7 @@ export default function AssignmentFileViewerPage() {
                 {t("teacherAssignmentNotSubmittedWarning")}
                 {assignment?.deadline ? (
                   <span className="mt-1 block text-xs opacity-90">
-                    {t("teacherAssignmentDue")} {formatDateTimeLocalized(assignment.deadline, lang)}
+                    {t("teacherAssignmentDue")} {formatLocalizedDate(assignment.deadline, lang as any, t, { includeTime: true })}
                   </span>
                 ) : null}
               </div>

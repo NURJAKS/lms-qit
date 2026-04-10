@@ -11,6 +11,7 @@ import {
   MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatRelativeDate } from "@/utils/dateUtils";
 
 type TargetType = "assignment" | "material";
 
@@ -53,20 +54,6 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function formatRelativeDate(iso: string | null, t: (k: any) => string) {
-  if (!iso) return "";
-  const date = new Date(iso);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
-
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  if (diffDays === 1) {
-    return t("yesterday");
-  }
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
 
 export function PrivateCommentsSection({
   targetType,
@@ -81,7 +68,7 @@ export function PrivateCommentsSection({
   placeholder?: string;
   title?: string;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
 
@@ -147,7 +134,8 @@ export function PrivateCommentsSection({
           <p className="text-xs text-gray-400 pl-8 italic">{t("privateCommentsEmpty")}</p>
         ) : (
           displayComments.map((c, idx) => {
-            const authorName = c.author_name || (c.author_role === "teacher" ? t("studentTeacher") : t("you"));
+            const isStaff = ["teacher", "curator", "admin", "director"].includes(c.author_role || "");
+            const authorName = c.author_name || (isStaff ? t("studentTeacher") : t("you"));
             const initials = getInitials(authorName);
             const bgColor = getAvatarColor(authorName);
 
@@ -162,7 +150,7 @@ export function PrivateCommentsSection({
                       {authorName}
                     </span>
                     <span className="text-[10px] text-gray-400 font-medium">
-                      • {formatRelativeDate(c.created_at, t)}
+                      • {formatRelativeDate(c.created_at || "", lang, t)}
                     </span>
                   </div>
                   <div className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap">

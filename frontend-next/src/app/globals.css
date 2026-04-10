@@ -49,6 +49,13 @@
 }
 
 /* Dark theme - applied when html has .dark class */
+/* Native <option> backgrounds in dark mode (improves contrast when the list is themed). */
+html.dark select option,
+.dark select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
 html.dark {
   --background: #0B0F19;
   --foreground: #FFFFFF;

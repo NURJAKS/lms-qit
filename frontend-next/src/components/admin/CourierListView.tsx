@@ -10,7 +10,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle, getModalStyle } from "@/utils/themeStyles";
 import { Truck, Package, CheckCircle, Clock, User, Search, X, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 type Courier = {
@@ -129,18 +129,18 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center gap-3" style={{ color: textColors.primary }}>
-          <Truck className="w-8 h-8" style={{ color: "#06B6D4" }} />
-          {t("adminShopCouriersAndDeliveries")}
+       <div className="space-y-6 pb-24 lg:pb-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        <h1 className="text-xl sm:text-3xl font-bold flex items-center gap-2 sm:gap-3 min-w-0" style={{ color: textColors.primary }}>
+          <Truck className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" style={{ color: "#06B6D4" }} />
+          <span className="break-words">{t("adminShopCouriersAndDeliveries")}</span>
         </h1>
         <button
           onClick={() => setShowAddCourierModal(true)}
-          className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90 flex items-center gap-2"
+          className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-all hover:opacity-90 flex items-center justify-center gap-2"
           style={{ background: "linear-gradient(135deg, #06B6D4 0%, #3B82F6 100%)" }}
         >
-          <UserPlus className="w-5 h-5" />
+          <UserPlus className="w-5 h-5 shrink-0" />
           {t("adminShopAddCourier")}
         </button>
       </div>
@@ -211,28 +211,37 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                           {courier.phone}
                         </p>
                       )}
-                      <div className="flex gap-4 mt-2">
-                        <div>
-                          <div className="text-xs" style={{ color: textColors.secondary }}>
+                      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mt-2 w-full min-w-0">
+                        <div className="min-w-0 px-0.5">
+                          <div
+                            className="text-[10px] sm:text-xs leading-tight break-words"
+                            style={{ color: textColors.secondary }}
+                          >
                             {t("adminShopTotal")}
                           </div>
-                          <div className="text-sm font-bold" style={{ color: textColors.primary }}>
+                          <div className="text-sm font-bold tabular-nums" style={{ color: textColors.primary }}>
                             {courier.deliveries_count}
                           </div>
                         </div>
-                        <div>
-                          <div className="text-xs" style={{ color: "#F59E0B" }}>
+                        <div className="min-w-0 px-0.5">
+                          <div
+                            className="text-[10px] sm:text-xs leading-tight break-words"
+                            style={{ color: "#F59E0B" }}
+                          >
                             {t("adminShopInWork")}
                           </div>
-                          <div className="text-sm font-bold" style={{ color: "#F59E0B" }}>
+                          <div className="text-sm font-bold tabular-nums" style={{ color: "#F59E0B" }}>
                             {courier.pending_deliveries}
                           </div>
                         </div>
-                        <div>
-                          <div className="text-xs" style={{ color: "#10B981" }}>
+                        <div className="min-w-0 px-0.5">
+                          <div
+                            className="text-[10px] sm:text-xs leading-tight break-words"
+                            style={{ color: "#10B981" }}
+                          >
                             {t("adminShopDelivered")}
                           </div>
-                          <div className="text-sm font-bold" style={{ color: "#10B981" }}>
+                          <div className="text-sm font-bold tabular-nums" style={{ color: "#10B981" }}>
                             {courier.delivered_count}
                           </div>
                         </div>
@@ -254,28 +263,37 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                   <User className="w-6 h-6" style={{ color: "#06B6D4" }} />
                   {courierDeliveries.courier.full_name}
                 </h2>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <div className="text-sm mb-1" style={{ color: textColors.secondary }}>
+                <div className="grid grid-cols-3 gap-2 sm:gap-4 min-w-0">
+                  <div className="min-w-0">
+                    <div
+                      className="text-xs sm:text-sm mb-1 leading-tight break-words"
+                      style={{ color: textColors.secondary }}
+                    >
                       {t("adminShopTotalDeliveries")}
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: textColors.primary }}>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color: textColors.primary }}>
                       {courierDeliveries.deliveries.length}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-sm mb-1" style={{ color: "#F59E0B" }}>
+                  <div className="min-w-0">
+                    <div
+                      className="text-xs sm:text-sm mb-1 leading-tight break-words"
+                      style={{ color: "#F59E0B" }}
+                    >
                       {t("adminShopInWork")}
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: "#F59E0B" }}>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color: "#F59E0B" }}>
                       {courierDeliveries.deliveries.filter((d) => d.delivery_status !== "delivered").length}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-sm mb-1" style={{ color: "#10B981" }}>
+                  <div className="min-w-0">
+                    <div
+                      className="text-xs sm:text-sm mb-1 leading-tight break-words"
+                      style={{ color: "#10B981" }}
+                    >
                       {t("adminShopDelivered")}
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: "#10B981" }}>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color: "#10B981" }}>
                       {courierDeliveries.deliveries.filter((d) => d.delivery_status === "delivered").length}
                     </div>
                   </div>
@@ -357,11 +375,7 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                                 <div className="flex items-center gap-1.5">
                                   <CheckCircle className="w-3.5 h-3.5" style={{ color: "#10B981" }} />
                                   <span className="text-sm" style={{ color: "#10B981" }}>
-                                    {formatDateLocalized(delivery.delivered_at, lang, {
-                                      day: "numeric",
-                                      month: "long",
-                                      year: "numeric",
-                                    })}
+                                    {formatLocalizedDate(delivery.delivered_at, lang as any, t)}
 
                                   </span>
                                 </div>
@@ -369,11 +383,7 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                                 <div className="flex items-center gap-1.5">
                                   <Clock className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
                                   <span className="text-sm" style={{ color: textColors.secondary }}>
-                                    {t("adminShopExpected")} {formatDateLocalized(delivery.estimated_delivery_date, lang, {
-                                      day: "numeric",
-                                      month: "long",
-                                      year: "numeric",
-                                    })}
+                                    {t("adminShopExpected")} {formatLocalizedDate(delivery.estimated_delivery_date, lang as any, t)}
                                   </span>
                                 </div>
                               ) : (
@@ -384,8 +394,7 @@ export function CourierListView({ initialCourierId = null }: CourierListViewProp
                             </td>
                             <td className="px-4 py-3 text-sm" style={{ color: textColors.secondary }}>
                               {delivery.purchased_at
-                                ? formatDateLocalized(delivery.purchased_at, lang)
-
+                                ? formatLocalizedDate(delivery.purchased_at, lang as any, t)
                                 : "-"}
                             </td>
                           </tr>

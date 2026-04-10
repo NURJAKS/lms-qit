@@ -170,7 +170,7 @@ export default function StudentCoursesLayout({ children }: { children: React.Rea
       >
         <button
           type="button"
-          aria-label="Menu"
+          aria-label={t("openMenu")}
           onClick={() => setMobileOpen(true)}
           className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
         >
@@ -197,7 +197,7 @@ export default function StudentCoursesLayout({ children }: { children: React.Rea
 
       {mobileOpen ? (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          <button type="button" className="absolute inset-0 bg-black/50" aria-label="Close" onClick={() => setMobileOpen(false)} />
+          <button type="button" className="absolute inset-0 bg-black/50" aria-label={t("close")} onClick={() => setMobileOpen(false)} />
           <div
             className={`relative w-[280px] max-w-[85vw] h-full shadow-2xl flex flex-col p-4 border-r ${asideBorder} animate-in fade-in slide-in-from-left duration-200`}
             style={{ ...glassStyle }}
@@ -207,7 +207,7 @@ export default function StudentCoursesLayout({ children }: { children: React.Rea
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
-                aria-label="Close menu"
+                aria-label={t("closeMenu")}
               >
                 <X className="w-5 h-5" style={{ color: textColors.primary }} />
               </button>

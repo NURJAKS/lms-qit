@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import {
   Users,
   BookOpen,
@@ -340,7 +340,7 @@ export function AdminOverview() {
                           </span>
                         </td>
                         <td className="py-3 px-4" style={{ color: textColors.secondary }}>
-                          {l.created_at ? formatDateTimeLocalized(l.created_at, lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          {l.created_at ? formatLocalizedDate(l.created_at, lang as any, t, { includeTime: true }) : "—"}
                         </td>
                       </motion.tr>
                     ))}

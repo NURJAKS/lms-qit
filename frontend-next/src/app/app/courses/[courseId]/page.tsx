@@ -9,6 +9,7 @@ import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
 import type { TranslationKey } from "@/i18n/translations";
+import { toast } from "@/store/notificationStore";
 import { Lock, Zap, CreditCard, Smartphone, Loader2, FileQuestion, Users } from "lucide-react";
 import { TestComponent } from "@/components/tests/TestComponent";
 import { LearningPath, type FlattenedTopic } from "@/components/courses/LearningPath";
@@ -55,7 +56,7 @@ function PremiumEnrollButton({
       await api.post(`/courses/${courseId}/enroll`);
       onEnrolled();
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
     } finally {
       setLoading(false);
     }
@@ -320,7 +321,7 @@ export default function CourseDetailPage() {
       }, 2500);
     } catch (e) {
       setPaymentStep("card");
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
     } finally {
       setPaying(false);
     }
@@ -333,9 +334,9 @@ export default function CourseDetailPage() {
     try {
       await api.post("/support/tickets", { message, course_id: id });
       setSupportMessage("");
-      alert(t("supportTicketSent"));
+      toast.success(t("supportTicketSent"));
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
+      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("courseError"));
     } finally {
       setSupportSubmitting(false);
     }
@@ -513,7 +514,7 @@ export default function CourseDetailPage() {
                       value={cardNumber}
                       onChange={(e) => setCardNumber(e.target.value)}
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      placeholder="4111 1111 1111 1111"
+                      placeholder={t("placeholderCardNumber")}
                     />
                   </div>
                   <div className="flex gap-3">
@@ -524,7 +525,7 @@ export default function CourseDetailPage() {
                         value={cardExpiry}
                         onChange={(e) => setCardExpiry(e.target.value)}
                         className="w-full border dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white"
-                        placeholder="MM/YY"
+                        placeholder={t("placeholderExpiry")}
                       />
                     </div>
                     <div className="w-24">
@@ -534,7 +535,7 @@ export default function CourseDetailPage() {
                         value={cardCvv}
                         onChange={(e) => setCardCvv(e.target.value)}
                         className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="123"
+                        placeholder={t("placeholderCvv")}
                       />
                     </div>
                   </div>
@@ -619,7 +620,7 @@ export default function CourseDetailPage() {
         <>
           {!waitingForGroup && (
           <nav
-            className="-mx-1 mb-6 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-b border-gray-200 px-1 pb-px [-webkit-overflow-scrolling:touch] dark:border-gray-600 sm:mx-0 sm:gap-6 sm:px-0"
+            className="mb-6 flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain border-b border-gray-200 px-3 pb-0.5 [-webkit-overflow-scrolling:touch] dark:border-gray-600 sm:gap-6 sm:px-0 scroll-px-3 sm:scroll-px-0"
             aria-label={t("courseSectionsAria")}
           >
             <button
@@ -769,7 +770,14 @@ export default function CourseDetailPage() {
                 </div>
 
                 {activeTestId ? (
-                  <div className="p-4">
+                  <div className="p-4 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTestId(null)}
+                      className="text-sm font-medium text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline"
+                    >
+                      {t("topicBackToCourse")}
+                    </button>
                     <TestComponent
                       testId={activeTestId}
                       onComplete={() => setActiveTestId(null)}
@@ -810,37 +818,57 @@ export default function CourseDetailPage() {
                             missingItems.push(`${t("assignmentsLabel")}: ${assignmentsInfo}`);
                           }
 
+                          const cardClass = `text-left p-4 rounded-xl border dark:border-gray-600 transition-colors block w-full ${
+                            canTake
+                              ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                              : "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50 pointer-events-none"
+                          }`;
+
+                          const inner = (
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-800 dark:text-white flex items-center gap-2">
+                                  {displayTitle}
+                                  {!canTake && <Lock className="w-4 h-4 text-gray-400 shrink-0" />}
+                                </div>
+                                {finalCourseSubtitle && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{finalCourseSubtitle}</p>
+                                )}
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  {test.question_count} {t("leaderboardQuestion")} • {test.passing_score}% {t("leaderboardPass")}
+                                </div>
+                                {!canTake && missingItems.length > 0 && (
+                                  <div className="text-xs text-amber-800 dark:text-amber-200 mt-2 leading-snug">
+                                    {t("testsAllTopicsAndAssignmentsRequired")} ({missingItems.join(", ")})
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+
+                          if (test.is_final && canTake) {
+                            return (
+                              <a
+                                key={test.id}
+                                href={`/app/test/${test.id}?courseId=${id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={cardClass}
+                              >
+                                {inner}
+                              </a>
+                            );
+                          }
+
                           return (
                             <button
                               key={test.id}
                               type="button"
                               onClick={() => canTake && setActiveTestId(test.id)}
                               disabled={!canTake}
-                              className={`text-left p-4 rounded-xl border dark:border-gray-600 transition-colors ${
-                                canTake
-                                  ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                                  : "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50"
-                              }`}
+                              className={cardClass}
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1">
-                                  <div className="font-medium text-gray-800 dark:text-white flex items-center gap-2">
-                                    {displayTitle}
-                                    {!canTake && <Lock className="w-4 h-4 text-gray-400" />}
-                                  </div>
-                                  {finalCourseSubtitle && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{finalCourseSubtitle}</p>
-                                  )}
-                                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                    {test.question_count} {t("leaderboardQuestion")} • {test.passing_score}% {t("leaderboardPass")}
-                                  </div>
-                                  {!canTake && missingItems.length > 0 && (
-                                    <div className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                                      {t("testsAllTopicsAndAssignmentsRequired")} ({missingItems.join(", ")})
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                              {inner}
                             </button>
                           );
                         })}

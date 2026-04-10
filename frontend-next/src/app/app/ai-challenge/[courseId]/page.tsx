@@ -1031,13 +1031,22 @@ export default function AIChallengePage() {
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-ping" />
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
               </div>
-              {(startMutation.isError || newModeStartMutation.isError) && (
-                <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                  <p className="text-red-600 dark:text-red-400 text-sm">
-                    {getApiErrorMessage(startMutation.error || newModeStartMutation.error, t("error"))}
-                  </p>
-                </div>
-              )}
+              {(startMutation.isError || newModeStartMutation.isError) && (() => {
+                const err = startMutation.error || newModeStartMutation.error;
+                
+                // Rely on the message string as it's the most reliable for standard Axios timeouts
+                const errorMessage = (err as any)?.message?.toLowerCase().includes("timeout") 
+                  ? t("requestTimeoutRetry") 
+                  : getApiErrorMessage(err, t("error"));
+                
+                return (
+                  <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                    <p className="text-red-600 dark:text-red-400 text-sm">
+                      {errorMessage}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </BlurFade>

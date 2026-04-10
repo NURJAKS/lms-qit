@@ -9,6 +9,7 @@ import { PrivateCommentsSection } from "@/components/courses/PrivateCommentsSect
 import { CheckCircle2, FileText, Globe, Loader2, Plus, X, MessageSquare, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { htmlLinksOpenInNewTab } from "@/lib/htmlLinkNewTab";
 
 type AssignmentRow = {
   id: number;
@@ -26,6 +27,7 @@ type AssignmentRow = {
   submission_text?: string | null;
   closed: boolean;
   manually_closed?: boolean;
+  is_synopsis?: boolean;
 };
 
 type QuestionRow = {
@@ -72,7 +74,7 @@ function apiErrorDetail(err: unknown): string | null {
 }
 
 function fileNameFromUrl(url: string, idx: number): string {
-  return url.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+  return url.split("/").pop()?.split("?")[0] || `${t("fileTypeFile")} ${idx + 1}`;
 }
 
 function TopicAssignmentCard({
@@ -223,10 +225,12 @@ function TopicAssignmentCard({
   const submissionBlocked = assignment.closed && !assignment.submitted;
 
   return (
-    <article className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <h4 className="text-base font-semibold text-gray-900 dark:text-white">{assignment.title}</h4>
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+    <article className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 sm:p-5 space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <h4 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white min-w-0 break-words flex-1">
+          {assignment.title}
+        </h4>
+        <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0 self-start">
           {assignment.grade != null ? t("gradedStatus") : assignment.submitted ? t("submittedStatus") : t("appointedStatus")}
         </span>
       </div>
@@ -234,7 +238,7 @@ function TopicAssignmentCard({
       {assignment.description ? (
         <div
           className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-200 [&_img]:max-w-full [&_pre]:overflow-x-auto"
-          dangerouslySetInnerHTML={{ __html: assignment.description }}
+          dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(assignment.description) }}
         />
       ) : null}
 
@@ -284,7 +288,6 @@ function TopicAssignmentCard({
               </>
             ) : (
               <>
-                <p className="font-semibold">{t("assignmentCannotSubmitPastDeadline")}</p>
                 <p className="mt-1">{t("assignmentDeadlinePassedStudentExplanation")}</p>
               </>
             )}
@@ -333,9 +336,9 @@ function TopicAssignmentCard({
           <textarea
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
-            rows={3}
+            rows={5}
             placeholder={t("studentSubmissionAnswerPlaceholder")}
-            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+            className="w-full min-h-[7rem] sm:min-h-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
           />
 
           <div className="relative" ref={addMenuRef}>
@@ -468,7 +471,9 @@ function TopicQuestionCard({
       <div className="p-4 sm:p-5 flex items-start gap-4">
         <div className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white",
-          isGraded ? "bg-green-500 shadow-lg shadow-green-500/20" : "bg-blue-500 shadow-lg shadow-blue-500/20"
+          isGraded ? "bg-green-500 shadow-lg shadow-green-500/20" : 
+          question.status === "submitted" ? "bg-gray-400 shadow-lg shadow-gray-400/20" :
+          "bg-blue-500 shadow-lg shadow-blue-500/20"
         )}>
           <MessageSquare className="w-5 h-5" />
         </div>
@@ -484,7 +489,7 @@ function TopicQuestionCard({
               </span>
             )}
           </div>
-          <p className="text-base text-gray-800 dark:text-gray-200 line-clamp-2">
+          <p className="text-sm sm:text-base text-gray-800 dark:text-gray-200 line-clamp-4 sm:line-clamp-none">
             {question.text}
           </p>
           
@@ -503,7 +508,7 @@ function TopicQuestionCard({
               href={`/app/teacher/view-questions/${question.id}`}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-sm font-bold text-blue-600 dark:text-blue-400 transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
             >
-              {question.status === "submitted" ? t("viewDetails") || "View Details" : t("studentAnswerPlaceholder")?.split("...")[0] || "Answer"}
+              {question.status === "submitted" ? t("viewDetails") : t("studentAnswerPlaceholder")?.split("...")[0] || "Answer"}
               <ChevronRight className="w-4 h-4" />
             </Link>
           </div>
@@ -540,7 +545,7 @@ export function TopicAssignmentsInlineSection({
   });
 
   const topicAssignments = useMemo(
-    () => assignmentsData.filter((a) => a.course_id === courseId && a.topic_id === topicId),
+    () => assignmentsData.filter((a) => a.course_id === courseId && a.topic_id === topicId && !a.is_synopsis),
     [assignmentsData, courseId, topicId]
   );
 

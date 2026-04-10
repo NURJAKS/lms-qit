@@ -9,30 +9,26 @@ YouTube URLs per topic for main Python and Web courses.
 Әр элемент реті: курстағы order_number сәйкес (Python 1..10, Web 1..10).
 """
 
-# Python: 10 topics — тақырыпқа сәйкес (негіз, айнымалылар, операторлар, if, for, функциялар, құрылымдар, сөздіктер/файлдар, ООП, курс ішінде модульдер)
+# Python: 7 topics
 PYTHON_TOPIC_VIDEOS = [
-    "https://www.youtube.com/watch?v=kqtD5dpn9C8",
-    "https://www.youtube.com/watch?v=Z1Yd7upQsXY",
-    "https://www.youtube.com/watch?v=v5MR5JnKcZI",
-    "https://www.youtube.com/watch?v=AWek49wXGzI",
-    "https://www.youtube.com/watch?v=OnDr4J2UXSA",
-    "https://www.youtube.com/watch?v=9Os0o3wzS_I",
-    "https://www.youtube.com/watch?v=R-HLU9Fl5ug",
-    "https://www.youtube.com/watch?v=4mX0uPQFLDU",
-    "https://www.youtube.com/watch?v=qiSCMNBIP2g",
-    "https://www.youtube.com/watch?v=K5KVEU3aaeQ",
+    "https://youtu.be/ymxpfWURgew",
+    "https://youtu.be/-6Q1Ui3E_44",
+    "https://youtu.be/6sHKH1VNtQo",
+    "https://youtu.be/CB_l0idVj7k",
+    "https://youtu.be/2ETmarcmN9I",
+    "https://youtu.be/ZdzpPqWlLXc",
+    "https://youtu.be/rBbQ2S3hFlw",
 ]
 
-# Web: 10 topics (3 модуль — HTML, CSS, JS; «Жобалық қолданбалар» модулі жоқ)
+# Web: 8 topics
 WEB_TOPIC_VIDEOS = [
-    "https://www.youtube.com/watch?v=bWPMssHtgSo",
-    "https://www.youtube.com/watch?v=UB1O30fR-EE",
-    "https://www.youtube.com/watch?v=frAGrGN00OA",
-    "https://www.youtube.com/watch?v=PlxWf493en4",
-    "https://www.youtube.com/watch?v=1PnVor36_40",
-    "https://www.youtube.com/watch?v=JJSoEo8JSnc",
-    "https://www.youtube.com/watch?v=1Rs2ND1ryYc",
-    "https://www.youtube.com/watch?v=hdI2bqOjy3c",
-    "https://www.youtube.com/watch?v=y17RuWkWdn8",
-    "https://www.youtube.com/watch?v=XF1_MlZ5l6M",
+    "https://youtu.be/JtZO7bp8BOY",
+    "https://youtu.be/uwyaYRJDvl0",
+    "https://youtu.be/0lA_HJj0sZQ",
+    "https://youtu.be/jizbVDVXuWg",
+    "https://youtu.be/0KMtQfASPjQ",
+    "https://youtu.be/ENEviJIMiHA",
+    "https://youtu.be/CeKjgyQbtLI",
+    "https://youtu.be/wO2gpnfF2Mw",
 ]
+

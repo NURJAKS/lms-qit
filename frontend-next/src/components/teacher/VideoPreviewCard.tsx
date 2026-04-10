@@ -3,6 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
+import { useLanguage } from "@/context/LanguageContext";
 
 function getYoutubeId(url: string): string | null {
   try {
@@ -31,6 +32,7 @@ export function VideoPreviewCard({
   onRemove: () => void;
 }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const isDark = theme === "dark";
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
@@ -114,7 +116,7 @@ export function VideoPreviewCard({
           type="button"
           onClick={onRemove}
           className="shrink-0 p-1 rounded-lg text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-          aria-label="Remove"
+          aria-label={t("remove")}
         >
           <Trash2 className="w-4 h-4" />
         </button>

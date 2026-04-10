@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Loader2, Crown } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import type { SafeProfilePreviewData } from "@/types/profiles";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import type { TranslationKey } from "@/i18n/translations";
 import {
   mapProfileStatus,
@@ -30,6 +30,17 @@ type FieldItem = {
   value: ReactNode;
 };
 
+function localizedGender(raw: string | null | undefined, t: (k: TranslationKey) => string) {
+  if (!raw) return "";
+  const keys: Record<string, TranslationKey> = {
+    Мужской: "profileGenderMale",
+    Женский: "profileGenderFemale",
+    Другое: "profileGenderOther",
+  };
+  const key = keys[raw];
+  return key ? t(key) : raw;
+}
+
 type Section = {
   title: string;
   items: FieldItem[];
@@ -49,9 +60,9 @@ function formatList(values?: string[] | null): string | null {
   return values.filter(Boolean).join(", ");
 }
 
-function formatDate(value: string | null | undefined, lang: string): string | null {
+function formatDate(value: string | null | undefined, lang: string, t: any): string | null {
   if (!value) return null;
-  return formatDateLocalized(value, lang, { day: "numeric", month: "long", year: "numeric" });
+  return formatLocalizedDate(value, lang as any, t);
 }
 
 function pickRoleLabel(profile: SafeProfilePreviewData, t: TFn): string {
@@ -101,7 +112,7 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
   const { t, lang } = useLanguage();
 
   const roleLabel = pickRoleLabel(profile, t);
-  const memberSince = formatDate(profile.created_at, lang);
+  const memberSince = formatDate(profile.created_at, lang, t);
 
   const isTopThree = rank != null && rank >= 1 && rank <= 3;
 
@@ -110,6 +121,14 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
 
   const dash = profileEmptyDash(t);
 
+  function maskValue(value: string | null | undefined): string {
+    if (!value || value.length < 4) return dash;
+    const visibleStart = value.length > 8 ? 3 : 1;
+    const visibleEnd = 3;
+    const masked = "*".repeat(value.length - visibleStart - visibleEnd);
+    return value.substring(0, visibleStart) + masked + value.substring(value.length - visibleEnd);
+  }
+
   const baseSections: Section[] = [
     {
       title: t("profileBasicInfoSection"),
@@ -117,6 +136,9 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
         { label: t("profileFullName"), value: profile.full_name },
         { label: t("role"), value: roleLabel },
         { label: t("profileStatus"), value: displayStatus ? displayStatus : dash },
+        { label: t("profileGender"), value: localizedGender(profile.gender, t) },
+        { label: t("profileNationality"), value: profile.nationality ?? "" },
+        { label: t("profileBirthDate"), value: profile.birth_date ? formatDate(profile.birth_date, lang, t) : dash },
         { label: t("profileCity"), value: profile.city ? mapCity(profile.city, t) : dash },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     },
@@ -125,6 +147,7 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
       items: [
         { label: t("profilePersonalEmail"), value: profile.email },
         { label: t("profilePhone"), value: profile.phone ? profile.phone : dash },
+        { label: t("profilePhoneAlternative"), value: profile.phone_alternative ?? "" },
         { label: t("profileWorkEmail"), value: profile.email_work ?? "" },
         { label: t("profileWorkPhone"), value: profile.phone_work ?? "" },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
@@ -140,6 +163,29 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
         { label: t("profileGroups"), value: profile.group ?? "" },
         { label: t("profileStudyForm"), value: mapStudyForm(profile.study_form, t) || (profile.study_form ?? "") },
         { label: t("profileParent"), value: profile.parent?.full_name ? `${profile.parent.full_name}` : "" },
+      ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
+    });
+    baseSections.push({
+      title: t("profileLocationDetails"),
+      items: [
+        { label: t("profileCountry"), value: profile.country ?? "" },
+        { label: t("profilePostalCode"), value: profile.postal_code ?? "" },
+        { label: t("profileAddress"), value: profile.address ?? "" },
+      ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
+    });
+    baseSections.push({
+      title: t("profileDocumentInfo"),
+      items: [
+        { label: t("profileIin"), value: maskValue(profile.iin) },
+        { label: t("profileIdentityCard"), value: maskValue(profile.identity_card) },
+        { label: t("profileStudentIdCardNumber"), value: profile.student_id_card_number ?? "" },
+      ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
+    });
+    baseSections.push({
+      title: t("profileAcademicInfo"),
+      items: [
+        { label: t("profileAdmissionDate"), value: formatDate(profile.admission_date, lang, t) ?? "" },
+        { label: t("profileGraduationDatePlanned"), value: formatDate(profile.graduation_date_planned, lang, t) ?? "" },
       ].filter((item) => hasMeaningfulValue(item.value)) as FieldItem[],
     });
   } else if (profile.role === "parent") {
@@ -197,8 +243,8 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
             <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{t("profilePublicPreview")}</p>
             <div className="h-px bg-gray-200 dark:bg-gray-700" />
           </div>
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <div className="relative shrink-0">
+          <div className="flex flex-col items-center text-center md:flex-row md:items-start md:text-left gap-4">
+            <div className="relative shrink-0 mx-auto md:mx-0">
               <div className="w-20 h-20 rounded-2xl bg-[var(--qit-primary)]/10 flex items-center justify-center overflow-hidden">
                 {profile.photo_url ? (
                   <img src={profile.photo_url} alt="" className="w-full h-full object-cover" />
@@ -216,8 +262,8 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
+            <div className="min-w-0 flex-1 w-full flex flex-col items-center md:items-start">
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-1">
                 <span className="inline-flex items-center rounded-full bg-[var(--qit-primary)]/10 px-3 py-1 text-xs font-semibold text-[var(--qit-primary)] dark:text-[#00b0ff]">
                   {roleLabel}
                 </span>
@@ -238,8 +284,10 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
                     </span>
                   ))}
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white break-words">{profile.full_name}</h2>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white break-words text-center md:text-left w-full">
+                {profile.full_name}
+              </h2>
+              <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap items-center md:items-start justify-center md:justify-start gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 w-full">
                 <span className="mobile-safe-text">{profile.email}</span>
                 {profile.phone && <span>{profile.phone}</span>}
                 {profile.city && <span>{mapCity(profile.city, t)}</span>}

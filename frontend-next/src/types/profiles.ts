@@ -240,11 +240,21 @@ export interface SafeProfilePreviewData {
   description?: string | null;
   phone?: string | null;
   city?: string | null;
+  address?: string | null;
   created_at?: string | null;
+  birth_date?: string | null;
   points?: number | null;
   status?: string | null;
 
   // Student
+  gender?: string | null;
+  nationality?: string | null;
+  iin?: string | null;
+  identity_card?: string | null;
+  phone_alternative?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  student_id_card_number?: string | null;
   specialty?: string | null;
   course?: number | null;
   group?: string | null;

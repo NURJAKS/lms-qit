@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated
@@ -23,6 +24,7 @@ from app.models.teacher_assignment import TeacherAssignment
 from app.models.study_schedule import StudySchedule
 from app.models.course_feed_post import CourseFeedPost
 from app.models.assignment_submission import AssignmentSubmission
+from app.models.topic_synopsis import TopicSynopsisSubmission
 from app.api.course_access import (
     can_view_course_structure_video_urls,
     course_has_groups,
@@ -42,6 +44,36 @@ class CourseFeedPostCreate(BaseModel):
     link_url: str | None = Field(None, max_length=500)
     group_id: int | None = None
     active_until: datetime | None = None
+    attachment_urls: list[str] | None = None
+
+
+def _normalize_feed_attachment_urls(raw: list[str] | None, max_n: int = 12) -> list[str] | None:
+    if not raw:
+        return None
+    out: list[str] = []
+    for u in raw[:max_n]:
+        s = (u or "").strip()
+        if not s or len(s) > 900:
+            continue
+        if s.startswith("/uploads/") or s.startswith("https://") or s.startswith("http://"):
+            out.append(s)
+    return out or None
+
+
+def _feed_attachments_list(post: CourseFeedPost) -> list[str]:
+    v = post.attachment_urls
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v if x]
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed if x]
+        except Exception:
+            return []
+    return []
 
 
 def _teacher_can_post_feed(db: Session, user: User, course_id: int, group_id: int | None) -> bool:
@@ -404,20 +436,25 @@ def get_student_course_feed(
             .limit(40)
             .all()
         )
+        # Pre-fetch submissions to avoid N+1 overhead
+        asg_ids = [a.id for a in assigns]
+        subs = (
+            db.query(AssignmentSubmission)
+            .filter(
+                AssignmentSubmission.assignment_id.in_(asg_ids),
+                AssignmentSubmission.student_id == current_user.id,
+            )
+            .all()
+        )
+        sub_map = {s.assignment_id: s for s in subs}
+
         for a in assigns:
             dl = a.deadline
             if dl is None:
                 continue
             if dl.tzinfo is None:
                 dl = dl.replace(tzinfo=timezone.utc)
-            sub = (
-                db.query(AssignmentSubmission)
-                .filter(
-                    AssignmentSubmission.assignment_id == a.id,
-                    AssignmentSubmission.student_id == current_user.id,
-                )
-                .first()
-            )
+            sub = sub_map.get(a.id)
             done = sub is not None and sub.grade is not None
             if done:
                 continue
@@ -432,6 +469,7 @@ def get_student_course_feed(
                     "meta": {"assignment_id": a.id},
                 }
             )
+
 
     today = date.today()
     sched = (
@@ -480,11 +518,60 @@ def get_student_course_feed(
                 "id": f"post-{p.id}",
                 "title": p.title,
                 "body": p.body,
-                "link": p.link_url or f"/app/courses/{course_id}",
+                "link": p.link_url,
+                "attachment_urls": _feed_attachments_list(p),
                 "date": p.created_at.isoformat() if p.created_at else None,
                 "meta": {"post_id": p.id, "group_id": p.group_id},
             }
         )
+
+    # 4. Недавно проверенные работы (Задания)
+    graded_assigns = (
+        db.query(AssignmentSubmission)
+        .join(TeacherAssignment, TeacherAssignment.id == AssignmentSubmission.assignment_id)
+        .filter(
+            AssignmentSubmission.student_id == current_user.id,
+            TeacherAssignment.course_id == course_id,
+            AssignmentSubmission.grade.isnot(None),
+        )
+        .order_by(AssignmentSubmission.graded_at.desc())
+        .limit(10)
+        .all()
+    )
+    for gs in graded_assigns:
+        items.append({
+            "kind": "graded",
+            "id": f"gr-asg-{gs.id}",
+            "title": f"Оценено: {gs.assignment.title}",
+            "body": f"Ваша работа проверена. Оценка: {gs.grade}",
+            "link": f"/app/courses/{course_id}?tab=classwork&assignmentId={gs.assignment_id}",
+            "date": gs.graded_at.isoformat() if gs.graded_at else None,
+            "meta": {"submission_id": gs.id}
+        })
+
+    # 5. Недавно проверенные работы (Конспекты)
+    graded_syn = (
+        db.query(TopicSynopsisSubmission)
+        .join(CourseTopic, CourseTopic.id == TopicSynopsisSubmission.topic_id)
+        .filter(
+            TopicSynopsisSubmission.user_id == current_user.id,
+            CourseTopic.course_id == course_id,
+            TopicSynopsisSubmission.grade.isnot(None),
+        )
+        .order_by(TopicSynopsisSubmission.graded_at.desc())
+        .limit(10)
+        .all()
+    )
+    for gs in graded_syn:
+        items.append({
+            "kind": "graded",
+            "id": f"gr-syn-{gs.id}",
+            "title": f"Проверено: Конспект ({gs.topic.title})",
+            "body": "Ваш конспект проверен учителем.",
+            "link": f"/app/courses/{course_id}/topic/{gs.topic_id}",
+            "date": gs.graded_at.isoformat() if gs.graded_at else None,
+            "meta": {"synopsis_id": gs.id}
+        })
 
     def sort_key(it: dict):
         d = it.get("date") or ""
@@ -513,6 +600,7 @@ def create_course_feed_post(
         g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
         if not g or g.course_id != course_id:
             raise HTTPException(status_code=400, detail="Группа не относится к этому курсу")
+    att = _normalize_feed_attachment_urls(body.attachment_urls)
     row = CourseFeedPost(
         author_id=current_user.id,
         course_id=course_id,
@@ -521,12 +609,35 @@ def create_course_feed_post(
         title=body.title.strip(),
         body=(body.body or "").strip() or None,
         link_url=(body.link_url or "").strip() or None,
+        attachment_urls=att,
         active_until=body.active_until,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
     return {"id": row.id, "created_at": row.created_at.isoformat() if row.created_at else None}
+
+
+@router.delete("/{course_id}/feed/posts/{post_id}")
+def delete_course_feed_post(
+    course_id: int,
+    post_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Удалить пост ленты (опрос, событие и т.д.): admin, director, curator, учитель с доступом к курсу/группе."""
+    post = (
+        db.query(CourseFeedPost)
+        .filter(CourseFeedPost.id == post_id, CourseFeedPost.course_id == course_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    if not _teacher_can_post_feed(db, current_user, course_id, post.group_id):
+        raise HTTPException(status_code=403, detail="Нет прав удалять эту запись")
+    db.delete(post)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/my/enrollments")

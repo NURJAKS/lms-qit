@@ -60,12 +60,8 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
     return filtered.map((course, index) => {
       const titleKey = course.title ? COURSE_TITLE_KEYS[course.title] : null;
       const localizedTitle = titleKey ? t(titleKey as any) : (course.title || `${t("course")} #${course.course_id}`);
-      
       return {
         name: localizedTitle,
-        shortName: localizedTitle.length > 20 
-          ? localizedTitle.substring(0, 20) + "..." 
-          : localizedTitle,
         enrollments: course.enrollments,
         completed: course.completed_topics,
         index,
@@ -74,12 +70,16 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
   }, [courseStats, timeRange, t]);
 
   const maxValue = useMemo(() => {
-    if (chartData.length === 0) return 100;
-    return Math.max(
-      ...chartData.map((d) => Math.max(d.enrollments, d.completed)),
-      100
-    );
+    if (chartData.length === 0) return 0;
+    return Math.max(...chartData.map((d) => Math.max(d.enrollments, d.completed)), 0);
   }, [chartData]);
+
+  const yAxisMax = useMemo(() => {
+    if (maxValue <= 0) return 10;
+    const padded = Math.ceil(maxValue * 1.12);
+    const step = padded <= 20 ? 5 : padded <= 50 ? 10 : padded <= 200 ? 20 : 50;
+    return Math.max(10, Math.ceil(padded / step) * step);
+  }, [maxValue]);
 
   // Форматирование значений для Y-axis
   const formatYAxis = (value: number) => {
@@ -173,8 +173,8 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
       
       <div className="relative">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div 
               className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
@@ -187,7 +187,7 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
           </div>
 
           {/* Time range selectors */}
-          <div className="flex items-center gap-2 overflow-x-auto pr-1">
+          <div className="flex items-center gap-2 overflow-x-auto pr-1 pb-0.5 -mx-1 px-1 w-full sm:w-auto min-w-0">
             {[
               { key: "all" as TimeRange, label: t("coursesFilterAll") },
               { key: "top10" as TimeRange, label: "Top 10" },
@@ -224,11 +224,11 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
         </div>
 
         {/* Chart */}
-        <div className="h-80 -mx-2">
+        <div className="h-[22rem] sm:h-80 -mx-2">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
               data={chartData}
-              margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
+              margin={{ top: 10, right: 8, left: 0, bottom: 8 }}
             >
               <defs>
                 <linearGradient id="enrollmentsGradient" x1="0" y1="0" x2="0" y2="1">
@@ -246,19 +246,21 @@ export function CourseStatsChart({ courseStats }: CourseStatsChartProps) {
                 vertical={false}
               />
               <XAxis
-                dataKey="shortName"
-                tick={{ fontSize: isMobile ? 10 : 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                dataKey="name"
+                tick={{ fontSize: isMobile ? 9 : 11, fill: isDark ? "#94A3B8" : "#64748B" }}
                 stroke={isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"}
-                angle={isMobile ? 0 : 30}
-                textAnchor={isMobile ? "middle" : "start"}
-                interval={chartData.length > (isMobile ? 4 : 8) ? "preserveStartEnd" : 0}
-                height={isMobile ? 56 : 84}
+                angle={-38}
+                textAnchor="end"
+                interval={chartData.length > 6 ? "preserveStartEnd" : 0}
+                height={isMobile ? 88 : 96}
               />
               <YAxis
                 tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
                 stroke={isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)"}
                 tickFormatter={formatYAxis}
-                domain={[0, Math.ceil(maxValue * 1.1)]}
+                domain={[0, yAxisMax]}
+                allowDecimals={false}
+                tickCount={6}
               />
               <Tooltip 
                 content={<CustomTooltip />}

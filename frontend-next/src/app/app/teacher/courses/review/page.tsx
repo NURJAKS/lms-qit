@@ -10,7 +10,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors, getInputStyle } from "@/utils/themeStyles";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { FileText, ChevronDown, ChevronRight, MoreVertical } from "lucide-react";
-import { formatDateLocalized, formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 type InboxItem = {
@@ -33,9 +33,7 @@ type Group = {
   course_id: number;
 };
 
-function formatDeadlineRow(iso: string | null, lang: Lang): string {
-  return formatDateTimeLocalized(iso, lang, { dateStyle: "medium", timeStyle: "short" });
-}
+// formatDeadlineRow removed, using formatLocalizedDate directly
 
 
 type TabKey = "pending" | "graded";
@@ -135,10 +133,7 @@ export default function TeacherCoursesReviewPage() {
     const groups: { [key: string]: InboxItem[] } = {};
     items.forEach((item) => {
       if (!item.deadline) return;
-      const dateKey = formatDateLocalized(item.deadline, lang, {
-        day: "numeric",
-        month: "long",
-      });
+      const dateKey = formatLocalizedDate(item.deadline, lang, t);
 
       const key = `${t("teacherDueDateRowLabel")}: ${dateKey}`;
       if (!groups[key]) groups[key] = [];
@@ -218,32 +213,34 @@ export default function TeacherCoursesReviewPage() {
                       {item.deadline ? (
                         <>
                           {" "}
-                          • {t("teacherDueDateRowLabel")}: {formatDeadlineRow(item.deadline, lang)}
+                          • {t("teacherDueDateRowLabel")}: {formatLocalizedDate(item.deadline, lang, t, { includeTime: true })}
                         </>
                       ) : null}
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm sm:justify-end">
-                  <div className="text-center min-w-[4rem]">
-                    <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {submittedToReview}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 text-sm sm:justify-end w-full sm:w-auto">
+                  <div className="grid grid-cols-3 sm:flex items-center gap-4 sm:gap-6 flex-1 sm:flex-none">
+                    <div className="text-center">
+                      <div className="font-semibold text-base sm:text-sm" style={{ color: textColors.primary }}>
+                        {submittedToReview}
+                      </div>
+                      <div className="text-[10px] sm:text-xs uppercase tracking-wider opacity-70" style={{ color: textColors.secondary }}>{t("submitted")}</div>
                     </div>
-                    <div style={{ color: textColors.secondary }}>{t("submitted")}</div>
-                  </div>
-                  <div className="text-center min-w-[4rem]">
-                    <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {assignedNotSubmitted}
+                    <div className="text-center">
+                      <div className="font-semibold text-base sm:text-sm" style={{ color: textColors.primary }}>
+                        {assignedNotSubmitted}
+                      </div>
+                      <div className="text-[10px] sm:text-xs uppercase tracking-wider opacity-70" style={{ color: textColors.secondary }}>{t("assigned")}</div>
                     </div>
-                    <div style={{ color: textColors.secondary }}>{t("assigned")}</div>
-                  </div>
-                  <div className="text-center min-w-[4rem]">
-                    <div className="font-semibold" style={{ color: textColors.primary }}>
-                      {gradedDone}
+                    <div className="text-center">
+                      <div className="font-semibold text-base sm:text-sm" style={{ color: textColors.primary }}>
+                        {gradedDone}
+                      </div>
+                      <div className="text-[10px] sm:text-xs uppercase tracking-wider opacity-70" style={{ color: textColors.secondary }}>{t("graded")}</div>
                     </div>
-                    <div style={{ color: textColors.secondary }}>{t("graded")}</div>
                   </div>
-                  <div className="relative">
+                  <div className="relative flex justify-end sm:block">
                     <button
                       type="button"
                       className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
@@ -251,14 +248,14 @@ export default function TeacherCoursesReviewPage() {
                         e.stopPropagation();
                         setActiveMenu(activeMenu === item.id ? null : item.id);
                       }}
-                      aria-label="menu"
+                      aria-label={t("menu")}
                     >
                       <MoreVertical className="w-5 h-5" style={{ color: textColors.secondary }} />
                     </button>
                     {activeMenu === item.id && (
                       <div
                         ref={menuRef}
-                        className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-xl shadow-xl border border-black/5 dark:border-white/10 overflow-hidden"
+                        className="absolute right-0 top-1/2 -translate-y-1/2 mt-8 z-50 min-w-[200px] rounded-xl shadow-xl border border-black/5 dark:border-white/10 overflow-hidden"
                         style={{ ...glassStyle, background: theme === "dark" ? "#1E293B" : "#FFFFFF" }}
                       >
                         {tab === "pending" ? (
@@ -319,9 +316,9 @@ export default function TeacherCoursesReviewPage() {
         </h1>
       </BlurFade>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
         <div
-          className="inline-flex rounded-xl p-1 gap-1"
+          className="flex w-full sm:w-auto rounded-xl p-1.5 gap-1.5"
           style={{
             ...glassStyle,
             background: theme === "dark" ? "rgba(26, 34, 56, 0.5)" : "rgba(255,255,255,0.9)",
@@ -330,8 +327,8 @@ export default function TeacherCoursesReviewPage() {
           <button
             type="button"
             onClick={() => setTab("pending")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === "pending" ? "text-white shadow-md" : ""
+            className={`flex-1 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 ${
+              tab === "pending" ? "text-white shadow-lg scale-[1.02]" : "hover:bg-black/5 dark:hover:bg-white/5"
             }`}
             style={
               tab === "pending"
@@ -344,8 +341,8 @@ export default function TeacherCoursesReviewPage() {
           <button
             type="button"
             onClick={() => setTab("graded")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === "graded" ? "text-white shadow-md" : ""
+            className={`flex-1 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 ${
+              tab === "graded" ? "text-white shadow-lg scale-[1.02]" : "hover:bg-black/5 dark:hover:bg-white/5"
             }`}
             style={
               tab === "graded"
@@ -357,9 +354,9 @@ export default function TeacherCoursesReviewPage() {
           </button>
         </div>
 
-        <div className="sm:ml-auto">
+        <div className="w-full sm:w-auto sm:ml-auto">
           <select
-            className="rounded-xl px-3 py-2.5 text-sm min-w-[200px] outline-none"
+            className="w-full sm:min-w-[220px] rounded-xl px-4 py-3 text-sm outline-none transition-all duration-300 focus:ring-2 focus:ring-blue-500/50"
             style={{ ...inputStyle }}
             value={groupFilter === "" ? "" : String(groupFilter)}
             onChange={(e) => setGroupFilter(e.target.value ? Number(e.target.value) : "")}
@@ -380,7 +377,7 @@ export default function TeacherCoursesReviewPage() {
         </p>
       ) : empty ? (
         <BlurFade>
-          <div className="rounded-2xl p-10 text-center flex flex-col items-center gap-4" style={{ ...glassStyle }}>
+          <div className="rounded-2xl p-6 sm:p-10 text-center flex flex-col items-center gap-4" style={{ ...glassStyle }}>
             <svg
               width="120"
               height="100"

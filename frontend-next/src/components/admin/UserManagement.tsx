@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -13,9 +14,10 @@ import { getGlassCardStyle, getModalStyle, getInputStyle, getTextColors } from "
 import { BlurFade } from "@/components/ui/blur-fade";
 import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
-import { formatDateTimeLocalized, formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { mapCity } from "@/lib/profileFieldLabels";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { toast } from "@/store/notificationStore";
 import { motion, AnimatePresence } from "framer-motion";
 
 const ADMIN_REWARD_COINS_MAX = 100_000;
@@ -53,6 +55,29 @@ type StudentWithoutGroup = {
   course_title: string;
   enrolled_at: string | null;
 };
+
+type AssignStudentTarget = StudentWithoutGroup & { application_id?: number | null };
+
+type GroupQueueItem = {
+  queue_kind: "awaiting_confirmation" | "needs_group";
+  application_id: number | null;
+  user_id: number;
+  course_id: number;
+  full_name: string;
+  email: string;
+  phone: string;
+  course_title: string | null;
+  created_at: string | null;
+  enrolled_at: string | null;
+};
+
+type GroupQueueResponse = {
+  awaiting_confirmation: GroupQueueItem[];
+  needs_group: GroupQueueItem[];
+  counts: { awaiting_confirmation: number; needs_group: number; total: number };
+};
+
+type UsersTabId = "group-queue" | "users" | "parents" | "relations" | "without-group" | "applications";
 
 type Application = {
   id: number;
@@ -107,7 +132,9 @@ export function UserManagement() {
   const { user } = useAuthStore();
   const canManageUsers = useAuthStore((s) => s.canManageUsers());
   const isCurator = user?.role === "curator";
-  const [activeTab, setActiveTab] = useState<"users" | "parents" | "relations" | "without-group" | "applications">("users");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<UsersTabId>("users");
   const [search, setSearch] = useState("");
   const [relationStudentSearch, setRelationStudentSearch] = useState("");
   const [relationParentSearch, setRelationParentSearch] = useState("");
@@ -120,7 +147,7 @@ export function UserManagement() {
   const [uiToast, setUiToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
-  const [assignModal, setAssignModal] = useState<StudentWithoutGroup | null>(null);
+  const [assignModal, setAssignModal] = useState<AssignStudentTarget | null>(null);
   const [rewardUser, setRewardUser] = useState<UserRow | null>(null);
   const [rewardSuccess, setRewardSuccess] = useState<{ amount: number; balance: number } | null>(null);
   const queryClient = useQueryClient();
@@ -176,6 +203,15 @@ export function UserManagement() {
       return data;
     },
     enabled: activeTab === "applications",
+  });
+
+  const { data: groupQueue } = useQuery({
+    queryKey: ["admin-group-assignment-queue"],
+    queryFn: async () => {
+      const { data } = await api.get<GroupQueueResponse>("/admin/group-assignment-queue");
+      return data;
+    },
+    enabled: activeTab === "group-queue",
   });
 
   const { data: applicationTeacherGroups = [] } = useQuery({
@@ -272,6 +308,7 @@ export function UserManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
       queryClient.invalidateQueries({ queryKey: ["admin-students-without-group"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-group-assignment-queue"] });
       setUiToast({ type: "success", text: t("adminGrantAccessSuccess") });
     },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
@@ -290,12 +327,35 @@ export function UserManagement() {
       setAssignCuratorModal(null);
       setAssignCuratorGroupId("");
       queryClient.invalidateQueries({ queryKey: ["admin-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-group-assignment-queue"] });
       setUiToast({ type: "success", text: t("adminAssignToCuratorSuccess") });
     },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setUiToast({ type: "error", text: e?.response?.data?.detail ?? t("error") });
     },
   });
+
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "group-queue") {
+      if (activeTab !== "group-queue") setActiveTab("group-queue");
+    } else if (activeTab === "group-queue") {
+      setActiveTab("users");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const currentTabParam = searchParams.get("tab");
+    if (activeTab === "group-queue") {
+      if (currentTabParam !== "group-queue") {
+        router.replace("/app/admin/users?tab=group-queue");
+      }
+    } else {
+      if (currentTabParam === "group-queue") {
+        router.replace("/app/admin/users");
+      }
+    }
+  }, [activeTab, router, searchParams]);
 
   useEffect(() => {
     const next: Record<number, string> = {};
@@ -350,7 +410,7 @@ export function UserManagement() {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -393,8 +453,10 @@ export function UserManagement() {
     return colors[status] || "bg-gray-100 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-500/30";
   };
 
-  const formatDate = (d: string | null) => formatDateTimeLocalized(d, lang);
+  const formatDate = (d: string | null) => formatLocalizedDate(d, lang as any, t);
   const parentUsers = users.filter((u) => u.role === "parent");
+  const queueAwaitingConfirmation = groupQueue?.awaiting_confirmation ?? [];
+  const queueNeedsGroup = groupQueue?.needs_group ?? [];
 
   return (
     <div>
@@ -425,78 +487,87 @@ export function UserManagement() {
           </div>
         </BlurFade>
       )}
-      <div className="mb-6 border-b border-gray-200 dark:border-white/10 pb-2 w-full overflow-x-auto">
-        <div className="flex gap-2 min-w-max pr-1">
-        <BlurFade delay={0.15} duration={0.4} blur="4px" offset={10}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("users")}
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
-                activeTab === "users"
+      <div className="mb-6 border-b border-gray-200 dark:border-white/10 pb-4 w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
+        <div className="flex gap-2 min-w-max pr-2 pb-1 snap-x snap-mandatory">
+          <BlurFade delay={0.15} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("group-queue")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "group-queue"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
+              style={activeTab === "group-queue" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
+            >
+              {t("adminGroupQueueTab")}
+              {groupQueue?.counts?.total ? ` (${groupQueue.counts.total})` : ""}
+            </button>
+          </BlurFade>
+          <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("users")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "users"
+                  ? "text-white shadow-lg"
+                  : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                }`}
               style={activeTab === "users" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
-          >
-            {t("adminUsersAll")}
-          </button>
-        </BlurFade>
-        <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("parents")}
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
-                activeTab === "parents"
+            >
+              {t("adminUsersAll")}
+            </button>
+          </BlurFade>
+          <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("parents")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "parents"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               style={activeTab === "parents" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
-          >
-            {t("parentsTab")}
-          </button>
-        </BlurFade>
-        <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("relations")}
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
-                activeTab === "relations"
+            >
+              {t("parentsTab")}
+            </button>
+          </BlurFade>
+          <BlurFade delay={0.3} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("relations")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "relations"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               style={activeTab === "relations" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
-          >
-            {t("adminRelationsTab")}
-          </button>
-        </BlurFade>
-        <BlurFade delay={0.3} duration={0.4} blur="4px" offset={10}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("without-group")}
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
-                activeTab === "without-group"
+            >
+              {t("adminRelationsTab")}
+            </button>
+          </BlurFade>
+          <BlurFade delay={0.35} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("without-group")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "without-group"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               style={activeTab === "without-group" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
-          >
-            {t("adminStudentsWithoutGroup")}
-          </button>
-        </BlurFade>
-        <BlurFade delay={0.35} duration={0.4} blur="4px" offset={10}>
-          <button
-            type="button"
-            onClick={() => setActiveTab("applications")}
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
-                activeTab === "applications"
+            >
+              {t("adminStudentsWithoutGroup")}
+            </button>
+          </BlurFade>
+          <BlurFade delay={0.4} duration={0.4} blur="4px" offset={10}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("applications")}
+              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base shrink-0 snap-start ${activeTab === "applications"
                   ? "text-white shadow-lg"
                   : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               style={activeTab === "applications" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
-          >
-            {t("applicationsList")}
-          </button>
-        </BlurFade>
+            >
+              {t("applicationsList")}
+            </button>
+          </BlurFade>
         </div>
       </div>
       <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
@@ -549,12 +620,11 @@ export function UserManagement() {
                     <button
                       type="button"
                       onClick={() => setStatusFilter(s)}
-                  className={`px-4 py-2 font-medium rounded-lg transition-all ${
-                    statusFilter === s
-                      ? "text-white shadow-lg"
-                      : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                  }`}
-                  style={statusFilter === s ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
+                      className={`px-4 py-2 font-medium rounded-lg transition-all ${statusFilter === s
+                          ? "text-white shadow-lg"
+                          : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        }`}
+                      style={statusFilter === s ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
                     >
                       {statusLabel(s)}
                     </button>
@@ -584,519 +654,630 @@ export function UserManagement() {
           )}
         </div>
       </BlurFade>
-      <BlurFade delay={0.2} duration={0.5} blur="6px" offset={15} direction="up">
+      <BlurFade key={activeTab} delay={0.05} duration={0.4} blur="6px" offset={15} direction="up">
         <div className="rounded-2xl overflow-hidden border-0 backdrop-blur-xl shadow-lg w-full" style={getGlassCardStyle(theme)}>
-          {activeTab === "users" ? (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-              <tr>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminFullName")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("email")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("role")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminRelationColumn")}
-                </th>
-                {canManageUsers && (
-                  <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
-                    {t("adminCoursesActions")}
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                  <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                <td className="py-4 px-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
-                      {u.photo_url ? (
-                        <img src={u.photo_url} alt={u.full_name} className="w-full h-full rounded-full object-cover" />
+          {activeTab === "group-queue" ? (
+            <div className="space-y-6 p-4 sm:p-6">
+              <div>
+                <h3 className="text-base font-semibold mb-3" style={{ color: textColors.primary }}>
+                  {t("adminQueueAwaitingConfirmation")} ({queueAwaitingConfirmation.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                      <tr>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("date")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("fullName")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("email")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("course")}</th>
+                        <th className="text-right py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queueAwaitingConfirmation.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-sm" style={{ color: textColors.secondary }}>
+                            {t("adminQueueAwaitingConfirmationEmpty")}
+                          </td>
+                        </tr>
                       ) : (
-                        getInitials(u.full_name)
+                        queueAwaitingConfirmation.map((row) => (
+                          <tr key={`await-${row.application_id}-${row.user_id}-${row.course_id}`} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.secondary }}>{formatDate(row.created_at)}</td>
+                            <td className="py-3 px-4 text-sm font-medium" style={{ color: textColors.primary }}>{row.full_name}</td>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.secondary }}>{row.email}</td>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.primary }}>{row.course_title ? getLocalizedCourseTitle({ title: row.course_title } as any, t) : "—"}</td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!row.application_id) return;
+                                  grantAccessMutation.mutate(row.application_id);
+                                }}
+                                disabled={grantAccessMutation.isPending || !row.application_id}
+                                className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
+                                style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+                              >
+                                {t("adminGrantAccess")}
+                              </button>
+                            </td>
+                          </tr>
+                        ))
                       )}
-                    </div>
-                    <div>
-                      <Link
-                        href={`/app/profile/${u.id}`}
-                        className="font-medium transition-colors hover:text-[#8B5CF6] truncate max-w-[150px] inline-block"
-                        style={{ color: textColors.primary }}
-                      >
-                        {u.full_name}
-                      </Link>
-                      <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 px-6">
-                  <span className="truncate max-w-[180px] inline-block" style={{ color: textColors.primary }} title={u.email}>{u.email}</span>
-                </td>
-                <td className="py-4 px-6">
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getRoleBadgeColor(u.role)}`}>
-                    {u.role}
-                  </span>
-                </td>
-                <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                  {u.role === "student" ? (
-                    u.parent ? (
-                      <div>
-                        <p style={{ color: textColors.primary }}>{u.parent.full_name}</p>
-                        <p className="text-xs">ID: {u.parent.id}</p>
-                      </div>
-                    ) : (
-                      t("adminNoParentAssigned")
-                    )
-                  ) : u.role === "parent" ? (
-                    <div className="flex flex-wrap gap-1 items-center">
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
-                        {t("adminChildrenCountLabel")}: {u.children?.length ?? 0}
-                      </span>
-                      {(u.children ?? []).slice(0, 3).map((child) => (
-                        <span
-                          key={child.id}
-                          className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
-                        >
-                          {child.full_name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                {canManageUsers && (
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {u.role === "student" && (
-                        <button
-                          type="button"
-                          onClick={() => setRewardUser(u)}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                          style={{ color: "#EAB308" }}
-                          title={t("adminRewardCoinsButtonTitle")}
-                        >
-                          <Coins className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setEditing(u)}
-                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                        style={{ color: "#8B5CF6" }}
-                        title={t("adminEdit")}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <DeleteConfirmButton
-                        onDelete={() => deleteMutation.mutate(u.id)}
-                        isLoading={deleteMutation.isPending && deleteMutation.variables === u.id}
-                        hideText={!collapsed}
-                        size="sm"
-                        variant="ghost"
-                        className="p-1"
-                        title={`${t("adminDelete")} ${u.full_name}?`}
-                        description={t("adminUserDeleteConfirm")}
-                      />
-                    </div>
-                  </td>
-                  )}
-                    </tr>
-                ))}
-            </tbody>
-          </table>
-          </div>
-          ) : activeTab === "parents" ? (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px]">
-            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-              <tr>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminFullName")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("email")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminParentsLinkedStudents")}
-                </th>
-                <th className="text-right py-4 px-6 font-semibold text-sm w-52" style={{ color: textColors.primary }}>
-                  {t("adminCoursesActions")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {parentUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
-                    {t("noParentsFound")}
-                  </td>
-                </tr>
-              ) : (
-                parentUsers.map((u) => (
-                  <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                    <td className="py-4 px-6">
-                      <div>
-                        <Link
-                          href={`/app/profile/${u.id}`}
-                          className="font-medium transition-colors hover:text-[#8B5CF6] inline-block"
-                          style={{ color: textColors.primary }}
-                        >
-                          {u.full_name}
-                        </Link>
-                        <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6" style={{ color: textColors.primary }}>{u.email}</td>
-                    <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                      {u.children && u.children.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 items-center">
-                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
-                            {t("childrenCount").replace("{count}", String(u.children.length))}
-                          </span>
-                          {u.children.map((child) => (
-                            <span
-                              key={child.id}
-                              className="text-xs px-2 py-0.5 rounded-full"
-                              style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
-                            >
-                              {child.full_name}
-                            </span>
-                          ))}
-                        </div>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-base font-semibold mb-3" style={{ color: textColors.primary }}>
+                  {t("adminQueueNeedsGroup")} ({queueNeedsGroup.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                      <tr>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("fullName")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("email")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("course")}</th>
+                        <th className="text-left py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("adminEnrolledAt")}</th>
+                        <th className="text-right py-3 px-4 font-semibold text-sm" style={{ color: textColors.primary }}>{t("actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queueNeedsGroup.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-sm" style={{ color: textColors.secondary }}>
+                            {t("adminQueueNeedsGroupEmpty")}
+                          </td>
+                        </tr>
                       ) : (
-                        t("noChildren")
+                        queueNeedsGroup.map((row) => (
+                          <tr key={`group-${row.user_id}-${row.course_id}`} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                            <td className="py-3 px-4 text-sm font-medium" style={{ color: textColors.primary }}>{row.full_name}</td>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.secondary }}>{row.email}</td>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.primary }}>{row.course_title ? getLocalizedCourseTitle({ title: row.course_title } as any, t) : "—"}</td>
+                            <td className="py-3 px-4 text-sm" style={{ color: textColors.secondary }}>{formatDate(row.enrolled_at)}</td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setAssignModal({
+                                    id: row.user_id,
+                                    full_name: row.full_name,
+                                    email: row.email,
+                                    phone: row.phone || "",
+                                    course_id: row.course_id,
+                                    course_title: row.course_title || "",
+                                    enrolled_at: row.enrolled_at,
+                                    application_id: row.application_id,
+                                  })
+                                }
+                                className="py-2 px-3 rounded-lg text-white text-sm"
+                                style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                              >
+                                {t("adminAssign")}
+                              </button>
+                            </td>
+                          </tr>
+                        ))
                       )}
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab("relations")}
-                        className="py-2 px-4 rounded-lg text-white text-sm"
-                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                      >
-                        {t("adminOpenRelationManager")}
-                      </button>
-                    </td>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "users" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminFullName")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("email")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("role")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminRelationColumn")}
+                    </th>
+                    {canManageUsers && (
+                      <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
+                        {t("adminCoursesActions")}
+                      </th>
+                    )}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          </div>
-          ) : activeTab === "relations" ? (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
-            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-              <tr>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("student")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminCurrentParent")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminSelectParentToLink")}
-                </th>
-                <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminCoursesActions")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {relationRows.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
-                    {t("adminNoRelationsFound")}
-                  </td>
-                </tr>
-              ) : (
-                relationRows.map((row) => {
-                  const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
-                  return (
-                    <tr
-                      key={row.student.id}
-                      className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}
-                    >
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
                       <td className="py-4 px-6">
-                        <div>
-                          <p style={{ color: textColors.primary }}>{row.student.full_name}</p>
-                          <p className="text-xs" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
+                            {u.photo_url ? (
+                              <img src={u.photo_url} alt={u.full_name} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              getInitials(u.full_name)
+                            )}
+                          </div>
+                          <div>
+                            <Link
+                              href={`/app/profile/${u.id}`}
+                              className="font-medium transition-colors hover:text-[#8B5CF6] truncate max-w-[150px] inline-block"
+                              style={{ color: textColors.primary }}
+                            >
+                              {u.full_name}
+                            </Link>
+                            <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
+                          </div>
                         </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="truncate max-w-[180px] inline-block" style={{ color: textColors.primary }} title={u.email}>{u.email}</span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getRoleBadgeColor(u.role)}`}>
+                          {u.role}
+                        </span>
                       </td>
                       <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                        {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                        {u.role === "student" ? (
+                          u.parent ? (
+                            <div>
+                              <p style={{ color: textColors.primary }}>{u.parent.full_name}</p>
+                              <p className="text-xs">ID: {u.parent.id}</p>
+                            </div>
+                          ) : (
+                            t("adminNoParentAssigned")
+                          )
+                        ) : u.role === "parent" ? (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
+                              {t("adminChildrenCountLabel")}: {u.children?.length ?? 0}
+                            </span>
+                            {(u.children ?? []).slice(0, 3).map((child) => (
+                              <span
+                                key={child.id}
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
+                              >
+                                {child.full_name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
                       </td>
-                      <td className="py-4 px-6">
-                        <select
-                          value={selectedParent}
-                          onChange={(e) =>
-                            setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
-                          }
-                          className="w-full border-0 rounded-lg px-3 py-2"
-                          style={inputStyle}
-                        >
-                          <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
-                            — {t("adminSelectNone")}
-                          </option>
-                          {parentOptions.map((parent) => (
-                            <option
-                              key={parent.id}
-                              value={parent.id}
-                              style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
+                      {canManageUsers && (
+                        <td className="py-4 px-6 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {u.role === "student" && (
+                              <button
+                                type="button"
+                                onClick={() => setRewardUser(u)}
+                                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                style={{ color: "#EAB308" }}
+                                title={t("adminRewardCoinsButtonTitle")}
+                              >
+                                <Coins className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEditing(u)}
+                              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                              style={{ color: "#8B5CF6" }}
+                              title={t("adminEdit")}
                             >
-                              {parent.full_name} (#{parent.id})
-                            </option>
-                          ))}
-                        </select>
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <DeleteConfirmButton
+                              onDelete={() => deleteMutation.mutate(u.id)}
+                              isLoading={deleteMutation.isPending && deleteMutation.variables === u.id}
+                              hideText={!collapsed}
+                              size="sm"
+                              variant="ghost"
+                              className="p-1"
+                              title={`${t("adminDelete")} ${u.full_name}?`}
+                              description={t("adminUserDeleteConfirm")}
+                            />
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : activeTab === "parents" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px]">
+                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminFullName")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("email")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminParentsLinkedStudents")}
+                    </th>
+                    <th className="text-right py-4 px-6 font-semibold text-sm w-52" style={{ color: textColors.primary }}>
+                      {t("adminCoursesActions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parentUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                        {t("noParentsFound")}
                       </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center justify-end gap-2">
+                    </tr>
+                  ) : (
+                    parentUsers.map((u) => (
+                      <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                        <td className="py-4 px-6">
+                          <div>
+                            <Link
+                              href={`/app/profile/${u.id}`}
+                              className="font-medium transition-colors hover:text-[#8B5CF6] inline-block"
+                              style={{ color: textColors.primary }}
+                            >
+                              {u.full_name}
+                            </Link>
+                            <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6" style={{ color: textColors.primary }}>{u.email}</td>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                          {u.children && u.children.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 items-center">
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
+                                {t("childrenCount").replace("{count}", String(u.children.length))}
+                              </span>
+                              {u.children.map((child) => (
+                                <span
+                                  key={child.id}
+                                  className="text-xs px-2 py-0.5 rounded-full"
+                                  style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
+                                >
+                                  {child.full_name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            t("noChildren")
+                          )}
+                        </td>
+                        <td className="py-4 px-6 text-right">
                           <button
                             type="button"
-                            onClick={() =>
-                              linkParentMutation.mutate({
-                                studentId: row.student.id,
-                                parentId: selectedParent ? Number(selectedParent) : null,
-                              })
-                            }
-                            disabled={linkParentMutation.isPending}
-                            className="py-2 px-4 rounded-lg text-white text-sm disabled:opacity-60"
+                            onClick={() => setActiveTab("relations")}
+                            className="py-2 px-4 rounded-lg text-white text-sm"
                             style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
                           >
-                            {t("adminLinkSave")}
+                            {t("adminOpenRelationManager")}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
-                            disabled={linkParentMutation.isPending}
-                            className="py-2 px-4 rounded-lg text-sm disabled:opacity-60"
-                            style={{
-                              background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
-                              color: "#EF4444",
-                            }}
-                          >
-                            {t("adminUnlinkParent")}
-                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : activeTab === "relations" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("student")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminCurrentParent")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminSelectParentToLink")}
+                    </th>
+                    <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminCoursesActions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {relationRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                        {t("adminNoRelationsFound")}
+                      </td>
+                    </tr>
+                  ) : (
+                    relationRows.map((row) => {
+                      const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
+                      return (
+                        <tr
+                          key={row.student.id}
+                          className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}
+                        >
+                          <td className="py-4 px-6">
+                            <div>
+                              <p style={{ color: textColors.primary }}>{row.student.full_name}</p>
+                              <p className="text-xs" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                            {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                          </td>
+                          <td className="py-4 px-6">
+                            <select
+                              value={selectedParent}
+                              onChange={(e) =>
+                                setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
+                              }
+                              className="w-full border-0 rounded-lg px-3 py-2"
+                              style={inputStyle}
+                            >
+                              <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
+                                — {t("adminSelectNone")}
+                              </option>
+                              {parentOptions.map((parent) => (
+                                <option
+                                  key={parent.id}
+                                  value={parent.id}
+                                  style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
+                                >
+                                  {parent.full_name} (#{parent.id})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  linkParentMutation.mutate({
+                                    studentId: row.student.id,
+                                    parentId: selectedParent ? Number(selectedParent) : null,
+                                  })
+                                }
+                                disabled={linkParentMutation.isPending}
+                                className="py-2 px-4 rounded-lg text-white text-sm disabled:opacity-60"
+                                style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                              >
+                                {t("adminLinkSave")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
+                                disabled={linkParentMutation.isPending}
+                                className="py-2 px-4 rounded-lg text-sm disabled:opacity-60"
+                                style={{
+                                  background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
+                                  color: "#EF4444",
+                                }}
+                              >
+                                {t("adminUnlinkParent")}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : activeTab === "without-group" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px]">
+                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                  <tr>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminFullName")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("email")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("phone")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("courses")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("adminEnrolledAt")}
+                    </th>
+                    <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
+                      {t("adminCoursesActions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentsWithoutGroup.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(139, 92, 246, 0.2)" }}>
+                            <UserPlus className="w-8 h-8" style={{ color: "#8B5CF6" }} />
+                          </div>
+                          <p style={{ color: textColors.secondary }}>{t("adminNoStudentsWithoutGroup")}</p>
                         </div>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-          </div>
-          ) : activeTab === "without-group" ? (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
-            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-              <tr>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminFullName")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("email")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("phone")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("courses")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("adminEnrolledAt")}
-                </th>
-                <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
-                  {t("adminCoursesActions")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {studentsWithoutGroup.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center">
-                      <div className="flex flex-col items-center">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(139, 92, 246, 0.2)" }}>
-                          <UserPlus className="w-8 h-8" style={{ color: "#8B5CF6" }} />
-                        </div>
-                        <p style={{ color: textColors.secondary }}>{t("adminNoStudentsWithoutGroup")}</p>
-                      </div>
-                    </td>
-                  </tr>
-              ) : (
-                studentsWithoutGroup.map((s) => (
-                    <tr key={`${s.id}-${s.course_id}`} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
-                        {getInitials(s.full_name)}
-                      </div>
-                      <span className="font-medium" style={{ color: textColors.primary }}>{s.full_name}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6" style={{ color: textColors.primary }}>{s.email}</td>
-                  <td className="py-4 px-6" style={{ color: textColors.secondary }}>{s.phone || "—"}</td>
-                  <td className="py-4 px-6" style={{ color: textColors.primary }}>{getLocalizedCourseTitle({ title: s.course_title } as any, t)}</td>
-                  <td className="py-4 px-6" style={{ color: textColors.secondary }}>
-                    {s.enrolled_at ? formatDateLocalized(s.enrolled_at, lang) : "—"}
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setAssignModal(s)}
-                      className="flex items-center gap-2 ml-auto py-2.5 px-4 rounded-xl text-white hover:opacity-90 text-sm font-medium transition-all shadow-lg"
-                      style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 4px 14px rgba(16, 185, 129, 0.4)" }}
-                    >
-                      <UserPlus className="w-4 h-4" /> {t("adminAssign")}
-                      </button>
-                    </td>
-                    </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          </div>
+                  ) : (
+                    studentsWithoutGroup.map((s) => (
+                      <tr key={`${s.id}-${s.course_id}`} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
+                              {getInitials(s.full_name)}
+                            </div>
+                            <span className="font-medium" style={{ color: textColors.primary }}>{s.full_name}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6" style={{ color: textColors.primary }}>{s.email}</td>
+                        <td className="py-4 px-6" style={{ color: textColors.secondary }}>{s.phone || "—"}</td>
+                        <td className="py-4 px-6" style={{ color: textColors.primary }}>{getLocalizedCourseTitle({ title: s.course_title } as any, t)}</td>
+                        <td className="py-4 px-6" style={{ color: textColors.secondary }}>
+                          {s.enrolled_at ? formatLocalizedDate(s.enrolled_at, lang as any, t) : "—"}
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setAssignModal(s)}
+                            className="flex items-center gap-2 ml-auto py-2.5 px-4 rounded-xl text-white hover:opacity-90 text-sm font-medium transition-all shadow-lg"
+                            style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 4px 14px rgba(16, 185, 129, 0.4)" }}
+                          >
+                            <UserPlus className="w-4 h-4" /> {t("adminAssign")}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           ) : activeTab === "applications" ? (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-              <tr>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("date")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("email")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("fullName")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("phone")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("parentEmail")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("parentFullName")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("course")}
-                </th>
-                <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("status")}
-                </th>
-                <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                  {t("actions")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {applications.length === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px]">
+                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
                   <tr>
-                    <td colSpan={9} className="py-12 text-center">
-                      <div className="flex flex-col items-center">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(139, 92, 246, 0.2)" }}>
-                          <ClipboardList className="w-8 h-8" style={{ color: "#8B5CF6" }} />
-                        </div>
-                        <p style={{ color: textColors.secondary }}>{t("noApplications")}</p>
-                      </div>
-                    </td>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("date")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("email")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("fullName")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("phone")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("parentEmail")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("parentFullName")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("course")}
+                    </th>
+                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("status")}
+                    </th>
+                    <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                      {t("actions")}
+                    </th>
                   </tr>
-              ) : (
-                applications.map((app) => (
-                    <tr key={app.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                  <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{formatDate(app.created_at)}</td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
-                        {getInitials(app.full_name)}
-                      </div>
-                      <span className="text-sm" style={{ color: textColors.primary }}>{app.email}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm font-medium" style={{ color: textColors.primary }}>{app.full_name}</td>
-                  <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.phone || "—"}</td>
-                  <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.parent_email || "—"}</td>
-                  <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.parent_full_name || "—"}</td>
-                  <td className="py-4 px-6 text-sm" style={{ color: textColors.primary }}>{app.course_title ? getLocalizedCourseTitle({ title: app.course_title } as any, t) : "—"}</td>
-                  <td className="py-4 px-6">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)}`}>
-                      {statusLabel(app.status)}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <select
-                        value={selectedStatusByApp[app.id] ?? app.status}
-                        onChange={(e) =>
-                          setSelectedStatusByApp((prev) => ({
-                            ...prev,
-                            [app.id]: e.target.value,
-                          }))
-                        }
-                        className="border-0 rounded-lg px-3 py-2 text-sm"
-                        style={inputStyle}
-                      >
-                        <option value="paid">{statusLabel("paid")}</option>
-                        <option value="pending">{statusLabel("pending")}</option>
-                        <option value="approved">{statusLabel("approved")}</option>
-                        <option value="rejected">{statusLabel("rejected")}</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applicationStatusMutation.mutate({
-                            appId: app.id,
-                            status: selectedStatusByApp[app.id] ?? app.status,
-                          })
-                        }
-                        disabled={
-                          applicationStatusMutation.isPending ||
-                          (selectedStatusByApp[app.id] ?? app.status) === app.status
-                        }
-                        className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
-                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                      >
-                        {t("save")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => grantAccessMutation.mutate(app.id)}
-                        disabled={grantAccessMutation.isPending}
-                        className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
-                        style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
-                        title={t("adminGrantAccessHint")}
-                      >
-                        {grantAccessMutation.isPending ? "..." : t("adminGrantAccess")}
-                      </button>
-                      {app.status === "paid" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAssignCuratorModal({ appId: app.id, courseId: app.course_id });
-                            setAssignCuratorGroupId("");
-                          }}
-                          className="py-2 px-3 rounded-lg text-white text-sm"
-                          style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)" }}
-                        >
-                          {t("adminAssignToCurator")}
-                        </button>
-                      )}
-                    </div>
-                    </td>
+                </thead>
+                <tbody>
+                  {applications.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(139, 92, 246, 0.2)" }}>
+                            <ClipboardList className="w-8 h-8" style={{ color: "#8B5CF6" }} />
+                          </div>
+                          <p style={{ color: textColors.secondary }}>{t("noApplications")}</p>
+                        </div>
+                      </td>
                     </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          </div>
+                  ) : (
+                    applications.map((app) => (
+                      <tr key={app.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{formatDate(app.created_at)}</td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
+                              {getInitials(app.full_name)}
+                            </div>
+                            <span className="text-sm" style={{ color: textColors.primary }}>{app.email}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-sm font-medium" style={{ color: textColors.primary }}>{app.full_name}</td>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.phone || "—"}</td>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.parent_email || "—"}</td>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>{app.parent_full_name || "—"}</td>
+                        <td className="py-4 px-6 text-sm" style={{ color: textColors.primary }}>{app.course_title ? getLocalizedCourseTitle({ title: app.course_title } as any, t) : "—"}</td>
+                        <td className="py-4 px-6">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)}`}>
+                            {statusLabel(app.status)}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <select
+                              value={selectedStatusByApp[app.id] ?? app.status}
+                              onChange={(e) =>
+                                setSelectedStatusByApp((prev) => ({
+                                  ...prev,
+                                  [app.id]: e.target.value,
+                                }))
+                              }
+                              className="border-0 rounded-lg px-3 py-2 text-sm"
+                              style={inputStyle}
+                            >
+                              <option value="paid">{statusLabel("paid")}</option>
+                              <option value="pending">{statusLabel("pending")}</option>
+                              <option value="approved">{statusLabel("approved")}</option>
+                              <option value="rejected">{statusLabel("rejected")}</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                applicationStatusMutation.mutate({
+                                  appId: app.id,
+                                  status: selectedStatusByApp[app.id] ?? app.status,
+                                })
+                              }
+                              disabled={
+                                applicationStatusMutation.isPending ||
+                                (selectedStatusByApp[app.id] ?? app.status) === app.status
+                              }
+                              className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
+                              style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                            >
+                              {t("save")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => grantAccessMutation.mutate(app.id)}
+                              disabled={grantAccessMutation.isPending}
+                              className="py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60"
+                              style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+                              title={t("adminGrantAccessHint")}
+                            >
+                              {grantAccessMutation.isPending ? "..." : t("adminGrantAccess")}
+                            </button>
+                            {app.status === "paid" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignCuratorModal({ appId: app.id, courseId: app.course_id });
+                                  setAssignCuratorGroupId("");
+                                }}
+                                className="py-2 px-3 rounded-lg text-white text-sm"
+                                style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)" }}
+                              >
+                                {t("adminAssignToCurator")}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           ) : null}
         </div>
       </BlurFade>
@@ -1107,6 +1288,7 @@ export function UserManagement() {
           onClose={() => setAssignModal(null)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["admin-students-without-group"] });
+            queryClient.invalidateQueries({ queryKey: ["admin-group-assignment-queue"] });
             setAssignModal(null);
           }}
         />
@@ -1253,10 +1435,10 @@ function RewardErrorModal({
         className="rounded-2xl shadow-2xl p-8 max-w-sm mx-4 w-full border-0 text-center relative overflow-hidden"
         style={modalStyle}
       >
-        <div 
-          className="absolute top-0 left-0 w-full h-1 bg-red-500" 
+        <div
+          className="absolute top-0 left-0 w-full h-1 bg-red-500"
         />
-        
+
         <div className="w-20 h-20 bg-red-100 dark:bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
           <Info className="w-10 h-10 text-red-600 dark:text-red-400" />
         </div>
@@ -1264,7 +1446,7 @@ function RewardErrorModal({
         <h3 className="text-xl font-bold mb-4" style={{ color: textColors.primary }}>
           {t("error")}
         </h3>
-        
+
         <p className="text-sm mb-8 opacity-80" style={{ color: textColors.secondary }}>
           {message}
         </p>
@@ -1303,11 +1485,11 @@ function RewardSuccessModal({
         className="rounded-2xl shadow-2xl p-8 max-w-sm mx-4 w-full border-0 text-center relative overflow-hidden"
         style={modalStyle}
       >
-        <div 
-          className="absolute top-0 left-0 w-full h-1" 
+        <div
+          className="absolute top-0 left-0 w-full h-1"
           style={{ background: "linear-gradient(90deg, #EAB308, #CA8A04)" }}
         />
-        
+
         <div className="w-20 h-20 bg-yellow-100 dark:bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
           <Coins className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />
         </div>
@@ -1315,7 +1497,7 @@ function RewardSuccessModal({
         <h3 className="text-2xl font-bold mb-2" style={{ color: textColors.primary }}>
           {t("adminRewardCoinsSuccess")}
         </h3>
-        
+
         <div className="space-y-1 mb-8">
           <p className="text-3xl font-black text-yellow-600 dark:text-yellow-400">
             +{amount}
@@ -1328,7 +1510,7 @@ function RewardSuccessModal({
         <button
           onClick={onClose}
           className="w-full py-3 px-6 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg"
-          style={{ 
+          style={{
             background: "linear-gradient(135deg, #EAB308 0%, #CA8A04 100%)",
             boxShadow: "0 4px 15px rgba(234, 179, 8, 0.4)"
           }}
@@ -1817,7 +1999,7 @@ function UserDetailModal({
                       <dt style={{ color: textColors.secondary }}>{t("parentCity")}</dt>
                       <dd style={{ color: textColors.primary }}>{mapCity(app.parent_city, t) || "—"}</dd>
                       <dt style={{ color: textColors.secondary }}>{t("date")}</dt>
-                      <dd style={{ color: textColors.primary }}>{app.created_at ? formatDateLocalized(app.created_at, lang) : "—"}</dd>
+                      <dd style={{ color: textColors.primary }}>{app.created_at ? formatLocalizedDate(app.created_at, lang as any, t) : "—"}</dd>
                     </dl>
                   </div>
                 ))}
@@ -2070,7 +2252,7 @@ function UserEditModal({
                   type="text"
                   value={photoUrl}
                   onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://..."
+                  placeholder={t("placeholderUrl")}
                   className="w-full border-0 rounded-lg px-3 py-2"
                   style={inputStyle}
                 />

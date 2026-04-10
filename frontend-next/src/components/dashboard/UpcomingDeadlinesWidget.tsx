@@ -9,7 +9,7 @@ import { api } from "@/api/client";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
 import { motion, AnimatePresence } from "motion/react";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 type Deadline = {
   id: number;
@@ -52,7 +52,7 @@ function formatDueDate(dateStr: string, t: any, lang: string): string {
   if (diffDays === 1) return t("tomorrow");
   if (diffDays < 7) return t("daysLeft").replace("{count}", String(diffDays));
   
-  return formatDateTimeLocalized(dateStr, lang, { hour: "2-digit", minute: "2-digit" });
+  return formatLocalizedDate(dateStr, lang as any, t, { includeTime: true });
 }
 
 export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" | "grid" }) {

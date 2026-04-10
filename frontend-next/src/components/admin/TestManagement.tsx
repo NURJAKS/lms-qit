@@ -132,17 +132,17 @@ export function TestManagement({ courseId, courseTitle }: TestManagementProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: textColors.primary }}>{t("adminTestTitle")}: {courseTitle}</h1>
-          <p className="mt-1" style={{ color: textColors.secondary }}>{t("adminTestSubtitle")}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-2xl font-bold break-words" style={{ color: textColors.primary }}>{t("adminTestTitle")}: {courseTitle}</h1>
+          <p className="mt-1 text-sm sm:text-base" style={{ color: textColors.secondary }}>{t("adminTestSubtitle")}</p>
         </div>
         <button
           type="button"
           onClick={() => setShowCreateTest(true)}
-          className="flex items-center gap-2 py-2 px-4 rounded-lg bg-qit-primary text-white hover:opacity-90"
+          className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-qit-primary text-white hover:opacity-90 w-full sm:w-auto shrink-0 text-sm font-medium"
         >
-          <Plus className="w-4 h-4" /> {t("adminTestCreate")}
+          <Plus className="w-4 h-4 shrink-0" /> {t("adminTestCreate")}
         </button>
       </div>
 

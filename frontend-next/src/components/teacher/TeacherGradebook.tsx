@@ -8,9 +8,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import type { Lang } from "@/i18n/translations";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
-import { Loader2, MoreVertical } from "lucide-react";
+import { formatLocalizedDate } from "@/utils/dateUtils";
+import { Loader2, MoreVertical, Clock, Filter, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getLocalizedTopicTitle } from "@/lib/courseUtils";
+import { toast, useNotificationStore } from "@/store/notificationStore";
 
 type GbStudent = { id: number; full_name: string; email: string };
 type GbAssignment = {
@@ -37,23 +39,20 @@ type GradebookPayload = {
   row_averages: Record<string, number | null>;
 };
 
-function fmtDueShort(iso: string | null, lang: Lang): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
-}
+
 
 type SortStudents = "name" | "avg_high" | "avg_low";
 
-export function TeacherGradebook({ groupId }: { groupId: number }) {
+export function TeacherGradebook({ groupId, topics = [] }: { groupId: number; topics?: { id: number; title: string }[] }) {
   const { t, lang } = useLanguage();
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const showConfirm = useNotificationStore((s) => s.showConfirm);
   const glassStyle = getGlassCardStyle(theme);
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
   const [sortStudents, setSortStudents] = useState<SortStudents>("name");
+  const [topicFilter, setTopicFilter] = useState<"all" | number>("all");
   const [columnMenuId, setColumnMenuId] = useState<number | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -89,7 +88,7 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
     },
     onError: (err: unknown) => {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      if (typeof window !== "undefined") window.alert(typeof detail === "string" ? detail : t("teacherGradebookLoadError"));
+      toast.error(typeof detail === "string" ? detail : t("teacherGradebookLoadError"));
     },
   });
 
@@ -104,7 +103,7 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
     },
     onError: (err: unknown) => {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      if (typeof window !== "undefined") window.alert(typeof detail === "string" ? detail : t("teacherGradebookLoadError"));
+      toast.error(typeof detail === "string" ? detail : t("teacherGradebookLoadError"));
     },
   });
 
@@ -127,7 +126,12 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
     return list;
   }, [data?.students, data?.row_averages, sortStudents]);
 
-  const assignments = data?.assignments ?? [];
+  const assignments = useMemo(() => {
+    const list = data?.assignments ?? [];
+    if (topicFilter === "all") return list;
+    return list.filter((a) => a.topic_id === topicFilter);
+  }, [data?.assignments, topicFilter]);
+
   const cells = data?.cells ?? {};
   const colAvg = data?.column_averages ?? {};
   const rowAvg = data?.row_averages ?? {};
@@ -178,41 +182,65 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm" style={{ color: textColors.secondary }}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between px-1">
+        <p className="hidden text-sm sm:block" style={{ color: textColors.secondary }}>
           {t("teacherGradebookHint")}
         </p>
-        <label className="flex items-center gap-2 text-sm" style={{ color: textColors.primary }}>
-          <span className="shrink-0 opacity-80">{t("teacherAssignmentSortByEllipsis")}</span>
-          <select
-            value={sortStudents}
-            onChange={(e) => setSortStudents(e.target.value as SortStudents)}
-            className="min-w-0 rounded-xl border px-3 py-2 text-sm outline-none sm:min-w-[200px]"
-            style={{
-              borderColor: border,
-              background: isDark ? "rgba(255,255,255,0.06)" : "#fff",
-              color: textColors.primary,
-            }}
-          >
-            <option value="name">{t("teacherGradebookSortName")}</option>
-            <option value="avg_high">{t("teacherGradebookSortAvgHigh")}</option>
-            <option value="avg_low">{t("teacherGradebookSortAvgLow")}</option>
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <label className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: textColors.primary }}>
+            <Filter className="h-3.5 w-3.5 opacity-60 sm:hidden" />
+            <span className="hidden shrink-0 opacity-80 sm:inline">{t("topicFilter")}</span>
+            <select
+              value={topicFilter === "all" ? "all" : topicFilter}
+              onChange={(e) => setTopicFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+              className="max-w-[130px] truncate rounded-xl border px-2 py-1.5 text-xs outline-none sm:max-w-[200px] sm:px-3 sm:py-2 sm:text-sm"
+              style={{
+                borderColor: border,
+                background: isDark ? "rgba(255,255,255,0.06)" : "#fff",
+                color: textColors.primary,
+              }}
+            >
+              <option value="all">{t("allTopics")}</option>
+              {topics.map((tp) => (
+                <option key={tp.id} value={tp.id}>
+                  {tp.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: textColors.primary }}>
+            <ArrowUpDown className="h-3.5 w-3.5 opacity-60 sm:hidden" />
+            <span className="hidden shrink-0 opacity-80 sm:inline">{t("teacherAssignmentSortByEllipsis")}</span>
+            <select
+              value={sortStudents}
+              onChange={(e) => setSortStudents(e.target.value as SortStudents)}
+              className="max-w-[120px] truncate rounded-xl border px-2 py-1.5 text-xs outline-none sm:max-w-none sm:px-3 sm:py-2 sm:text-sm"
+              style={{
+                borderColor: border,
+                background: isDark ? "rgba(255,255,255,0.06)" : "#fff",
+                color: textColors.primary,
+              }}
+            >
+              <option value="name">{t("teacherGradebookSortName")}</option>
+              <option value="avg_high">{t("teacherGradebookSortAvgHigh")}</option>
+              <option value="avg_low">{t("teacherGradebookSortAvgLow")}</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <div
-        className="overflow-x-auto rounded-2xl border"
+        className="overflow-auto rounded-2xl border max-h-[75vh] relative scrollbar-thin shadow-sm"
         style={{ ...glassStyle, borderColor: border }}
       >
-        <p className="px-3 pt-3 text-xs sm:hidden" style={{ color: textColors.secondary }}>
+        <p className="px-3 pt-3 text-[10px] sm:hidden" style={{ color: textColors.secondary }}>
           {"\u2194 "}{t("teacherGradebookHint")}
         </p>
-        <table className="w-max min-w-full border-collapse text-left text-sm">
+        <table className="w-max min-w-full border-separate border-spacing-0 text-left text-xs sm:text-sm">
           <thead>
             <tr>
               <th
-                className="sticky left-0 z-20 min-w-[160px] sm:min-w-[200px] border-b px-3 py-3 text-xs font-semibold uppercase tracking-wide"
+                className="sticky left-0 top-0 z-40 min-w-[100px] max-w-[100px] sm:min-w-[200px] sm:max-w-none truncate border-b px-2 sm:px-3 py-3 text-[10px] sm:text-xs font-semibold uppercase tracking-wide"
                 style={{
                   background: isDark ? "rgb(30 41 59)" : "rgb(248 250 252)",
                   borderColor: border,
@@ -224,8 +252,11 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
               {assignments.map((a) => (
                 <th
                   key={a.id}
-                  className="min-w-[140px] sm:min-w-[160px] border-b px-2 py-3 align-bottom font-normal"
-                  style={{ borderColor: border }}
+                  className="sticky top-0 z-30 min-w-[80px] sm:min-w-[160px] border-b px-2 py-3 align-bottom font-normal"
+                  style={{
+                    background: isDark ? "rgb(30 41 59)" : "rgb(248 250 252)",
+                    borderColor: border,
+                  }}
                 >
                   <div
                     className="flex items-start justify-between gap-1"
@@ -242,11 +273,11 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                         </p>
                       ) : null}
                       <div className="text-[11px] font-medium opacity-80" style={{ color: textColors.secondary }}>
-                        {a.deadline ? fmtDueShort(a.deadline, lang) : t("noDueDate")}
+                        {a.deadline ? formatLocalizedDate(a.deadline, lang, t, { shortMonth: true }) : t("noDueDate")}
                       </div>
                       <Link
                         href={`/app/teacher/courses/${groupId}/assignment/${a.id}`}
-                        className="mt-0.5 block text-left font-semibold leading-snug text-blue-600 hover:underline dark:text-blue-400"
+                        className="mt-0.5 block text-left font-semibold leading-snug text-blue-600 hover:underline dark:text-blue-400 line-clamp-2"
                       >
                         {a.title}
                       </Link>
@@ -291,13 +322,12 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                             role="menuitem"
                             disabled={deleteAssignmentMutation.isPending}
                             onClick={() => {
-                              if (
-                                typeof window !== "undefined" &&
-                                !window.confirm(t("teacherGradebookDeleteConfirm").replace("{title}", a.title))
-                              ) {
-                                return;
-                              }
-                              deleteAssignmentMutation.mutate(a.id);
+                              showConfirm({
+                                title: t("delete"),
+                                message: t("teacherGradebookDeleteConfirm").replace("{title}", a.title),
+                                variant: "danger",
+                                onConfirm: () => deleteAssignmentMutation.mutate(a.id),
+                              });
                             }}
                           >
                             {t("teacherGradebookColumnMenuDelete")}
@@ -318,13 +348,11 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                             role="menuitem"
                             disabled={markReviewedMutation.isPending}
                             onClick={() => {
-                              if (
-                                typeof window !== "undefined" &&
-                                !window.confirm(t("teacherGradebookMarkReviewedConfirm"))
-                              ) {
-                                return;
-                              }
-                              markReviewedMutation.mutate(a.id);
+                              showConfirm({
+                                title: t("teacherGradebookColumnMenuMarkReviewed"),
+                                message: t("teacherGradebookMarkReviewedConfirm"),
+                                onConfirm: () => markReviewedMutation.mutate(a.id),
+                              });
                             }}
                           >
                             {t("teacherGradebookColumnMenuMarkReviewed")}
@@ -347,7 +375,7 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
             </tr>
             <tr>
               <td
-                className="sticky left-0 z-20 border-b px-3 py-2 text-xs font-bold uppercase tracking-wide"
+                className="sticky left-0 top-[60px] sm:top-[68px] z-40 min-w-[100px] max-w-[100px] sm:min-w-[200px] sm:max-w-none truncate border-b px-2 sm:px-3 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wide"
                 style={{
                   background: isDark ? "rgb(30 41 59)" : "rgb(241 245 249)",
                   borderColor: border,
@@ -361,8 +389,12 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                 return (
                   <td
                     key={a.id}
-                    className="border-b px-2 py-2 text-center text-sm font-semibold tabular-nums"
-                    style={{ borderColor: border, color: textColors.primary }}
+                    className="sticky top-[60px] sm:top-[68px] z-30 border-b px-2 py-2 text-center text-sm font-semibold tabular-nums"
+                    style={{ 
+                      background: isDark ? "rgb(30 41 59)" : "rgb(241 245 249)",
+                      borderColor: border, 
+                      color: textColors.primary 
+                    }}
                   >
                     {v != null ? v : "—"}
                   </td>
@@ -374,7 +406,7 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
             {sortedStudents.map((s) => (
               <tr key={s.id}>
                 <td
-                  className="sticky left-0 z-10 border-b px-3 py-2.5"
+                  className="sticky left-0 z-10 border-b px-2 sm:px-3 py-2.5 min-w-[100px] max-w-[100px] sm:min-w-[200px] sm:max-w-none"
                   style={{
                     background: isDark ? "rgb(15 23 42)" : "#fff",
                     borderColor: border,
@@ -382,13 +414,13 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                 >
                   <Link
                     href={`/app/profile/${s.id}`}
-                    className="font-medium hover:underline"
+                    className="block font-medium hover:underline truncate max-w-[90px] sm:max-w-none text-xs sm:text-sm"
                     style={{ color: isDark ? "#93c5fd" : "#2563eb" }}
                   >
                     {s.full_name || s.email}
                   </Link>
-                  <div className="text-[11px] opacity-70 truncate max-w-[200px]" style={{ color: textColors.secondary }}>
-                    {t("teacherGradebookStudentAvg")}:{" "}
+                  <div className="text-[10px] sm:text-[11px] opacity-70 truncate max-w-[90px] sm:max-w-[200px]" style={{ color: textColors.secondary }}>
+                    <span className="hidden sm:inline">{t("teacherGradebookStudentAvg")}: </span>
                     <span className="tabular-nums font-semibold">
                       {rowAvg[String(s.id)] != null ? rowAvg[String(s.id)] : "—"}
                     </span>
@@ -415,13 +447,22 @@ export function TeacherGradebook({ groupId }: { groupId: number }) {
                       ) : cell?.submitted && !cell.graded ? (
                         <Link
                           href={`/app/teacher/view-answers/${a.id}?tab=submissions`}
-                          className="text-xs font-semibold text-amber-700 hover:underline dark:text-amber-400"
+                          className="flex justify-center text-amber-500 hover:text-amber-600 dark:text-amber-400"
+                          title={t("teacherSubmissionStatusPending")}
                         >
-                          {t("teacherSubmissionStatusPending")}
+                          <Clock className="h-4 w-4 sm:hidden" />
+                          <span className="hidden text-xs font-semibold hover:underline sm:inline">
+                            {t("teacherSubmissionStatusPending")}
+                          </span>
                         </Link>
                       ) : (
-                        <span className="text-xs font-medium opacity-60" style={{ color: textColors.secondary }}>
-                          {t("teacherSubmissionStatusNotSubmitted")}
+                        <span 
+                          className="text-xs font-medium opacity-60" 
+                          style={{ color: textColors.secondary }}
+                          title={t("teacherSubmissionStatusNotSubmitted")}
+                        >
+                          <span className="sm:hidden">—</span>
+                          <span className="hidden sm:inline">{t("teacherSubmissionStatusNotSubmitted")}</span>
                         </span>
                       )}
                     </td>

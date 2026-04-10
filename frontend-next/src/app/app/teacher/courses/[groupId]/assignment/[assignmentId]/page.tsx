@@ -15,9 +15,11 @@ import {
   Paperclip,
 } from "lucide-react";
 import { AssignmentClassCommentsSection } from "@/components/courses/AssignmentClassCommentsSection";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
+import { interpolateTemplate } from "@/utils/interpolateTemplate";
 import { AssignmentAttachmentsGC } from "@/components/teacher/AssignmentAttachmentsGC";
 import { AssignmentRubricExplorer } from "@/components/teacher/AssignmentRubricExplorer";
+import { cn } from "@/lib/utils";
 
 type RubricCriterion = {
   id: number;
@@ -56,6 +58,7 @@ type AssignmentDetails = {
   attachment_urls?: string[];
   attachment_links?: string[];
   video_urls?: string[];
+  is_synopsis?: boolean;
   rubric?: RubricCriterion[];
 };
 
@@ -92,6 +95,7 @@ export default function TeacherAssignmentPage() {
   const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(null);
   const [privateComment, setPrivateComment] = useState("");
   const [gradeInput, setGradeInput] = useState("");
+  const [lastAutoSum, setLastAutoSum] = useState<string>("");
   const [rubricInputs, setRubricInputs] = useState<Record<number, string>>({});
   const [sortBy, setSortBy] = useState<"name" | "status">("name");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "graded" | "not_submitted">("all");
@@ -259,6 +263,8 @@ export default function TeacherAssignmentPage() {
       next[c.id] = rg ? String(rg.points) : "";
     });
     setRubricInputs(next);
+    setLastAutoSum(selectedSubmission.grade != null ? String(selectedSubmission.grade) : "");
+
     const files = [
       ...(selectedSubmission.file_url ? [selectedSubmission.file_url] : []),
       ...(selectedSubmission.file_urls ?? []),
@@ -276,6 +282,26 @@ export default function TeacherAssignmentPage() {
     }
     setSelectedFileUrl(null);
   }, [selectedSubmission, rubric, hasAppliedQueryFile, queryFileIndex, queryStudentId]);
+
+  // Auto-calculate grade from rubric
+  useEffect(() => {
+    if (rubric.length === 0) return;
+    const sum = Object.values(rubricInputs).reduce((acc, val) => {
+      const n = parseFloat(val);
+      return acc + (Number.isFinite(n) ? n : 0);
+    }, 0);
+
+    const roundedSum = String(Math.round(sum * 100) / 100);
+
+    // Only update gradeInput if it matches lastAutoSum (meaning it's in sync)
+    // or if the gradeInput is empty, or if we just haven't set a lastAutoSum yet.
+    if (sum > 0 || Object.keys(rubricInputs).length > 0) {
+      if (gradeInput === "" || gradeInput === lastAutoSum) {
+        setGradeInput(roundedSum);
+        setLastAutoSum(roundedSum);
+      }
+    }
+  }, [rubricInputs, rubric.length, lastAutoSum]);
 
   const assignmentFromList = assignmentListQuery.data?.find((a) => a.id === assignmentId);
   const postedAt = assignmentFromList?.created_at;
@@ -437,31 +463,31 @@ export default function TeacherAssignmentPage() {
           <ChevronLeft className="h-4 w-4" />
           {t("teacherBack")}
         </button>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
-              <FileText className="h-5 w-5 text-[var(--qit-primary)]" />
-              {details.title}
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="flex items-start gap-2 text-lg font-bold text-gray-900 sm:text-xl dark:text-white">
+              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--qit-primary)]" />
+              <span className="min-w-0 break-words">{details.title}</span>
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-              <span>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 text-sm text-gray-500 dark:text-gray-400">
+              <span className="min-w-0">
                 {t("teacherAssignmentInstructor")} {user?.full_name || t("profileValueEmpty")}
               </span>
               <span>
                 {t("teacherAssignmentPointsShort")} {maxPoints}
               </span>
-              <span>
+              <span className="min-w-0">
                 {t("teacherAssignmentDue")}{" "}
-                {details.deadline ? formatDateTimeLocalized(details.deadline, lang) : t("teacherAssignmentNoDue")}
+                {details.deadline ? formatLocalizedDate(details.deadline, lang, t, { includeTime: true }) : t("teacherAssignmentNoDue")}
               </span>
-              <span>
-                {t("teacherAssignmentPostedAt")} {postedAt ? formatDateTimeLocalized(postedAt, lang) : t("profileValueEmpty")}
+              <span className="min-w-0">
+                {t("teacherAssignmentPostedAt")} {postedAt ? formatLocalizedDate(postedAt, lang, t, { includeTime: true }) : t("profileValueEmpty")}
               </span>
             </div>
           </div>
-          <div className="flex gap-2 rounded-full border border-gray-200 bg-white/80 p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+          <div className="flex w-full shrink-0 gap-1 rounded-2xl border border-gray-200 bg-white/80 p-1 shadow-sm sm:inline-flex sm:w-auto sm:rounded-full dark:border-gray-700 dark:bg-gray-800/70">
             <button
-              className={`rounded-full px-3 py-1.5 text-sm ${
+              className={`min-h-[44px] flex-1 rounded-xl px-3 py-2 text-center text-sm font-medium sm:min-h-0 sm:flex-initial sm:rounded-full sm:py-1.5 ${
                 activeTab === "instructions"
                   ? "bg-[var(--qit-primary)] text-white shadow-sm"
                   : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -472,7 +498,7 @@ export default function TeacherAssignmentPage() {
               {t("teacherViewAnswersInstructions")}
             </button>
             <button
-              className={`rounded-full px-3 py-1.5 text-sm ${
+              className={`min-h-[44px] flex-1 rounded-xl px-3 py-2 text-center text-sm font-medium sm:min-h-0 sm:flex-initial sm:rounded-full sm:py-1.5 ${
                 activeTab === "student-work"
                   ? "bg-[var(--qit-primary)] text-white shadow-sm"
                   : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -480,7 +506,7 @@ export default function TeacherAssignmentPage() {
               onClick={() => router.push(`/app/teacher/courses/${groupId}/assignment/${assignmentId}?tab=student-work`)}
               type="button"
             >
-              {t("teacherAssignmentStudentWorkTab")}
+              <span className="line-clamp-2 text-balance sm:line-clamp-none">{t("teacherAssignmentStudentWorkTab")}</span>
             </button>
           </div>
         </div>
@@ -499,9 +525,9 @@ export default function TeacherAssignmentPage() {
       ) : null}
 
       {activeTab === "instructions" ? (
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-gray-100/60 p-6 dark:from-gray-950 dark:to-gray-950">
+        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-gray-100/60 p-4 sm:p-6 dark:from-gray-950 dark:to-gray-950">
           <div className="mx-auto max-w-4xl space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("profileDescription")}</h2>
               {details.description ? (
                 <div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: details.description }} />
@@ -511,12 +537,12 @@ export default function TeacherAssignmentPage() {
             </div>
 
             {details.rubric && details.rubric.length > 0 ? (
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
                 <AssignmentRubricExplorer assignmentTitle={details.title} rubric={details.rubric} />
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("teacherAssignmentAttachments")}</h2>
               <AssignmentAttachmentsGC
                 attachmentUrls={details.attachment_urls ?? []}
@@ -525,16 +551,16 @@ export default function TeacherAssignmentPage() {
               />
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("teacherAssignmentCommentsSection")}</h2>
               <AssignmentClassCommentsSection assignmentId={assignmentId} hideHeading />
             </div>
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-80 shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-            <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 p-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <aside className="flex max-h-[min(42vh,380px)] w-full shrink-0 flex-col overflow-hidden border-b border-gray-200 bg-white md:max-h-none md:h-auto md:w-80 md:shrink-0 md:border-b-0 md:border-r dark:border-gray-700 dark:bg-gray-900">
+            <div className="sticky top-0 z-10 shrink-0 border-b border-gray-200 bg-white/95 p-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
               <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">{t("teacherAssignmentAllLearners")}</p>
               <div className="mb-3 flex flex-wrap gap-1.5">
                 {[
@@ -576,7 +602,7 @@ export default function TeacherAssignmentPage() {
               </div>
             </div>
 
-            <ul className="h-[calc(100%-112px)] space-y-1 overflow-y-auto p-2">
+            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-2">
               {sortedSubmissions.map((s) => (
                 <li key={s.student_id}>
                   <button
@@ -608,22 +634,22 @@ export default function TeacherAssignmentPage() {
             </ul>
           </aside>
 
-          <main className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center justify-between border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
-                <div className="flex items-center gap-3">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 dark:border-gray-700 dark:bg-gray-900/95">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
                   <div className="h-9 w-9 rounded-full bg-[var(--qit-primary)]/15 text-center text-sm leading-9 text-[var(--qit-primary)]">
                     {(selectedSubmission?.student_name || "?").charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold">{selectedSubmission?.student_name}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{selectedSubmission?.student_name}</p>
                     <input
-                      className="mt-1 w-24 rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
+                      className="mt-1 w-full max-w-[6rem] rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
                       value={gradeInput}
                       onChange={(e) => setGradeInput(e.target.value)}
                       placeholder={`${maxPoints}/${maxPoints}`}
                     />
                   </div>
-                  <div className="ml-2 flex rounded-lg border border-gray-300 dark:border-gray-700">
+                  <div className="flex shrink-0 rounded-lg border border-gray-300 sm:ml-2 dark:border-gray-700">
                     <button
                       type="button"
                       className="border-r border-gray-300 p-2 dark:border-gray-700"
@@ -644,8 +670,8 @@ export default function TeacherAssignmentPage() {
                 </div>
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[1fr_340px]">
-                <div className="min-h-0 overflow-y-auto bg-gradient-to-b from-gray-100 to-gray-50 p-4 dark:from-gray-950 dark:to-gray-950">
+              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_minmax(280px,340px)]">
+                <div className="min-h-0 min-w-0 overflow-y-auto bg-gradient-to-b from-gray-100 to-gray-50 p-3 sm:p-4 dark:from-gray-950 dark:to-gray-950">
                   {selectedSubmission ? (
                     <div className="mb-3 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50/80 px-4 py-3 shadow-sm dark:border-blue-900/40 dark:from-blue-950/30 dark:to-indigo-950/10">
                       <p className="text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">{t("teacherNowReviewing")}</p>
@@ -657,7 +683,14 @@ export default function TeacherAssignmentPage() {
                       </p>
                       {selectedSubmission.returned_at ? (
                         <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-                          {t("teacherReturnedToStudentAt").replace("{date}", formatDateTimeLocalized(selectedSubmission.returned_at, lang))}
+                          {interpolateTemplate(t("teacherReturnedToStudentAt"), {
+                            time: formatLocalizedDate(
+                              selectedSubmission.returned_at,
+                              lang,
+                              t,
+                              { includeTime: true }
+                            ),
+                          })}
                         </p>
                       ) : (
                         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
@@ -684,18 +717,22 @@ export default function TeacherAssignmentPage() {
                                 : "border-gray-200 bg-gray-50 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="flex min-w-0 items-center gap-2.5">
-                                <FileText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--qit-primary)]" />
-                                <span className="truncate text-base font-semibold">{fileNameFromUrl(u, i)}</span>
-                              </span>
-                              {u === activeFile ? (
-                                <span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                                  {t("teacherFileActive")}
-                                </span>
-                              ) : null}
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-2.5 overflow-hidden">
+                              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--qit-primary)]" />
+                              <div className="min-w-0 flex-1 overflow-hidden w-full">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                                  <span className="min-w-0 flex-1 text-base font-semibold leading-snug break-words sm:truncate">
+                                    {fileNameFromUrl(u, i)}
+                                  </span>
+                                  {u === activeFile ? (
+                                    <span className="shrink-0 self-start rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-950/90 dark:text-blue-100 border border-blue-200/80 dark:border-blue-700/80 whitespace-normal text-left max-w-full">
+                                      {t("teacherFileActive")}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
-                            <span className="mt-2 block text-sm text-gray-500 dark:text-gray-400">
+                            <span className="mt-2 block text-sm text-gray-600 dark:text-gray-300">
                                 {/\.(jpeg|jpg|gif|png|webp)$/i.test(u.split("?")[0])
                                   ? t("teacherAssignmentOpenLink")
                                   : t("teacherDownloadFile")}
@@ -730,17 +767,46 @@ export default function TeacherAssignmentPage() {
                   )}
                 </div>
 
-                <aside className="min-h-0 overflow-y-auto border-l border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                <aside className="min-h-0 min-w-0 overflow-y-auto border-t border-gray-200 bg-white p-3 sm:p-4 lg:border-l lg:border-t-0 dark:border-gray-700 dark:bg-gray-900">
                   <div className="space-y-4">
                     <section>
                       <h3 className="mb-2 text-sm font-semibold">{t("teacherGradingGrade")}</h3>
-                      <input
-                        type="number"
-                        value={gradeInput}
-                        onChange={(e) => setGradeInput(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800"
-                        placeholder={t("teacherAssignmentGradePlaceholderShort").replace("{max}", String(maxPoints))}
-                      />
+                      {details.is_synopsis ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setGradeInput("0")}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg border text-sm font-medium transition-all",
+                              gradeInput === "0"
+                                ? "bg-red-50 border-red-500 text-red-700 shadow-sm"
+                                : "bg-white border-gray-200 text-gray-700 hover:border-red-200"
+                            )}
+                          >
+                            {t("gradePoor")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGradeInput("100")}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg border text-sm font-medium transition-all",
+                              gradeInput === "100"
+                                ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm"
+                                : "bg-white border-gray-200 text-gray-700 hover:border-emerald-200"
+                            )}
+                          >
+                            {t("gradeChecked")}
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          value={gradeInput}
+                          onChange={(e) => setGradeInput(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                          placeholder={t("teacherAssignmentGradePlaceholderShort").replace("{max}", String(maxPoints))}
+                        />
+                      )}
                     </section>
 
                     <section>

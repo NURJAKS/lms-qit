@@ -58,6 +58,15 @@ export function mapEmploymentStatus(value: string | null | undefined, t: TFn): s
   return value;
 }
 
+export function mapGender(value: string | null | undefined, t: TFn): string {
+  if (value == null || value === "") return "";
+  const n = norm(value);
+  if (n === "мужской" || n === "male" || n === "ер") return t("genderMale");
+  if (n === "женский" || n === "female" || n === "әйел") return t("genderFemale");
+  if (n === "другое" || n === "other" || n === "басқа") return t("genderOther");
+  return value;
+}
+
 export function mapEducationLevel(value: string | null | undefined, t: TFn): string {
   if (value == null || value === "") return "";
   const n = norm(value);

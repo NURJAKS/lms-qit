@@ -9,7 +9,7 @@ import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 import { DeleteConfirmButton } from "@/components/ui/DeleteConfirmButton";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 type ScheduleItem = {
@@ -101,14 +101,7 @@ export function EventDetailsModal({
   const scheduleItem = isSchedule ? (event as ScheduleItem) : null;
   const assignment = !isSchedule ? (event as Assignment) : null;
 
-  const formatDate = (dateStr: string) => {
-    return formatDateLocalized(dateStr, lang, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      weekday: "long",
-    });
-  };
+  const formatDate = (dateStr: string) => formatLocalizedDate(dateStr, lang as any, t);
 
 
   const handleSave = () => {

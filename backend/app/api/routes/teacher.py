@@ -138,6 +138,16 @@ def _normalize_question_type_api(stored: str | None) -> str:
     return s
 
 
+def _question_type_for_response(q: TeacherQuestion) -> str:
+    """Align API type with options: MC with mis-stored `open` still behaves as single_choice."""
+    opts = _question_options_list(q.options)
+    if _normalize_question_type_api(q.question_type) == "single_choice":
+        return "single_choice"
+    if len(opts) >= 2:
+        return "single_choice"
+    return "open"
+
+
 class GroupCreate(BaseModel):
     course_id: int
     group_name: str
@@ -188,6 +198,7 @@ class AssignmentCreate(BaseModel):
     rubric: list[RubricCriterionCreate] | None = None
     test_questions: list[TestQuestionCreate] | None = None  # for assignment with test
     reject_submissions_after_deadline: bool | None = None
+    is_synopsis: bool = False
 
 
 class AssignmentUpdate(BaseModel):
@@ -202,6 +213,7 @@ class AssignmentUpdate(BaseModel):
     video_urls: list[str] | None = None
     rubric: list[RubricCriterionCreate] | None = None
     reject_submissions_after_deadline: bool | None = None
+    is_synopsis: bool | None = None
 
 
 def _parse_rubric_levels_json(raw: str | None) -> list[dict]:
@@ -262,6 +274,14 @@ class QuestionCreate(BaseModel):
     question_type: str = "single_choice"  # single_choice, open
     options: list[str] | None = None
     correct_option: str | None = None
+    instructions: str | None = None
+    deadline: str | None = None
+    max_points: int = 100
+    attachment_urls: list[str] | None = None
+    attachment_links: list[str] | None = None
+    video_urls: list[str] | None = None
+    can_comment: bool = True
+    can_edit: bool = False
 
 
 class MaterialUpdate(BaseModel):
@@ -624,7 +644,18 @@ def list_groups(
             (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
         ).distinct()
 
-    rows = q.order_by(TeacherGroup.id).all()
+    # Optimize n+1 query for students_count
+    from app.models.group_student import GroupStudent
+    
+    # Subquery to count students per group efficiently in one SQL operation
+    student_count_sub = (
+        db.query(func.count(GroupStudent.id))
+        .filter(GroupStudent.group_id == TeacherGroup.id)
+        .scalar_subquery()
+    )
+    
+    rows = q.add_columns(student_count_sub).order_by(TeacherGroup.id).all()
+    
     return [
         {
             "id": r.id,
@@ -632,10 +663,10 @@ def list_groups(
             "course_title": r.course.title if r.course else "",
             "group_name": r.group_name,
             "teacher_id": r.teacher_id,
-            "students_count": len(r.students),
+            "students_count": students_count or 0,
             "created_at": r.created_at,
         }
-        for r in rows
+        for r, students_count in rows
     ]
 
 
@@ -817,6 +848,12 @@ def list_topic_synopses_for_group(
                 "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
             }
         )
+        # Assuming one grade per (user, topic) - picking latest row info
+        if item.get("grade") is None:
+            item["synopsis_id"] = s.id
+            item["grade"] = float(s.grade) if s.grade is not None else None
+            item["teacher_comment"] = s.teacher_comment
+            item["graded_at"] = s.graded_at.isoformat() if s.graded_at else None
     return list(grouped.values())
 
 
@@ -911,6 +948,17 @@ def get_teacher_group_feed(
                 au = au.replace(tzinfo=timezone.utc)
             if au < now:
                 continue
+        att_urls: list[str] = []
+        raw_att = p.attachment_urls
+        if isinstance(raw_att, list):
+            att_urls = [str(x) for x in raw_att if x]
+        elif isinstance(raw_att, str) and raw_att.strip():
+            try:
+                parsed = json.loads(raw_att)
+                if isinstance(parsed, list):
+                    att_urls = [str(x) for x in parsed if x]
+            except Exception:
+                att_urls = []
         items.append(
             {
                 "kind": "post",
@@ -919,6 +967,7 @@ def get_teacher_group_feed(
                 "title": p.title,
                 "body": p.body,
                 "link": p.link_url,
+                "attachment_urls": att_urls,
                 "date": p.created_at.isoformat() if p.created_at else None,
                 "meta": {"post_id": p.id},
             }
@@ -1309,22 +1358,34 @@ def list_add_student_tasks(
     if status:
         q = q.filter(AddStudentTask.status == status)
     rows = q.order_by(AddStudentTask.created_at.desc()).all()
-    return [
-        {
-            "id": r.id,
-            "student_id": r.student_id,
-            "student_name": r.student.full_name or r.student.email if r.student else "",
-            "student_email": r.student.email or "" if r.student else "",
-            "group_id": r.group_id,
-            "group_name": r.group.group_name if r.group else "",
-            "course_id": r.group.course_id if r.group else None,
-            "course_title": r.group.course.title if r.group and r.group.course else "",
-            "status": r.status,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-        }
-        for r in rows
-    ]
+    out = []
+    for r in rows:
+        in_group = (
+            db.query(GroupStudent)
+            .filter(
+                GroupStudent.group_id == r.group_id,
+                GroupStudent.student_id == r.student_id,
+            )
+            .first()
+            is not None
+        )
+        out.append(
+            {
+                "id": r.id,
+                "student_id": r.student_id,
+                "student_name": r.student.full_name or r.student.email if r.student else "",
+                "student_email": r.student.email or "" if r.student else "",
+                "group_id": r.group_id,
+                "group_name": r.group.group_name if r.group else "",
+                "course_id": r.group.course_id if r.group else None,
+                "course_title": r.group.course.title if r.group and r.group.course else "",
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "student_in_group": in_group,
+            }
+        )
+    return out
 
 
 @router.post("/add-student-tasks/{task_id}/complete")
@@ -1416,6 +1477,7 @@ def list_assignments(
             "closed_at": closed_at.isoformat() if closed_at else None,
             "is_closed": _is_assignment_closed(r),
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            "is_synopsis": bool(getattr(r, "is_synopsis", False)),
         })
 
     for r in materials:
@@ -1466,12 +1528,12 @@ def create_assignment(
     from datetime import datetime
     g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа к этой группе")
+        raise HTTPException(status_code=403, detail={"code": "no_access_group"})
     if body.course_id != g.course_id:
-        raise HTTPException(status_code=400, detail="course_id не совпадает с курсом группы")
+        raise HTTPException(status_code=400, detail={"code": "course_group_mismatch"})
     topic = db.query(CourseTopic).filter(CourseTopic.id == body.topic_id, CourseTopic.course_id == body.course_id).first()
     if not topic:
-        raise HTTPException(status_code=400, detail="Тема не найдена или не принадлежит курсу")
+        raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
     deadline = None
     if body.deadline:
         try:
@@ -1502,6 +1564,16 @@ def create_assignment(
                 order_number=i + 1,
             )
             db.add(tq)
+    if body.is_synopsis:
+        # Check if one already exists for this topic in this group
+        existing = db.query(TeacherAssignment).filter(
+            TeacherAssignment.group_id == body.group_id,
+            TeacherAssignment.topic_id == body.topic_id,
+            TeacherAssignment.is_synopsis == True
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail={"code": "synopsis_assignment_exists"})
+
     rej_after = True if body.reject_submissions_after_deadline is None else body.reject_submissions_after_deadline
     a = TeacherAssignment(
         teacher_id=current_user.id,
@@ -1511,12 +1583,13 @@ def create_assignment(
         title=body.title,
         description=body.description,
         deadline=deadline,
-        max_points=body.max_points,
         attachment_urls=json.dumps(body.attachment_urls) if body.attachment_urls else None,
         attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
         video_urls=json.dumps(body.video_urls) if body.video_urls else None,
         test_id=test_id_val,
         reject_submissions_after_deadline=rej_after,
+        is_synopsis=body.is_synopsis,
+        max_points=100 if body.is_synopsis else body.max_points,
     )
     db.add(a)
     db.flush()
@@ -1580,6 +1653,7 @@ def get_assignment(
         "video_urls": json.loads(a.video_urls) if a.video_urls else [],
         "rubric": rubric,
         "reject_submissions_after_deadline": bool(getattr(a, "reject_submissions_after_deadline", True)),
+        "is_synopsis": bool(getattr(a, "is_synopsis", False)),
     }
 
 
@@ -1590,13 +1664,34 @@ def list_reusable_assignment_rubrics(
     course_id: int | None = Query(None),
     exclude_assignment_id: int | None = Query(None),
 ):
-    """Задания текущего преподавателя с непустой рубрикой — для «Повторно использовать критерий»."""
+    """Assignments in the teacher's groups that have saved rubric rows (reuse picker)."""
     from app.models.course import Course
+
+    is_admin = current_user.role in ("admin", "director", "curator")
+    if is_admin:
+        q_groups = db.query(TeacherGroup)
+    else:
+        co_ids = [
+            row[0]
+            for row in db.query(GroupTeacher.group_id)
+            .filter(GroupTeacher.teacher_id == current_user.id)
+            .distinct()
+            .all()
+        ]
+        if co_ids:
+            q_groups = db.query(TeacherGroup).filter(
+                or_(TeacherGroup.teacher_id == current_user.id, TeacherGroup.id.in_(co_ids))
+            )
+        else:
+            q_groups = db.query(TeacherGroup).filter(TeacherGroup.teacher_id == current_user.id)
+    group_ids = [g.id for g in q_groups.all()]
+    if not group_ids:
+        return []
 
     q = (
         db.query(TeacherAssignment)
         .join(TeacherGroup, TeacherGroup.id == TeacherAssignment.group_id)
-        .filter(TeacherAssignment.teacher_id == current_user.id)
+        .filter(TeacherAssignment.group_id.in_(group_ids))
     )
     if course_id is not None:
         q = q.filter(TeacherAssignment.course_id == course_id)
@@ -1739,7 +1834,7 @@ def update_assignment(
             CourseTopic.id == body.topic_id, CourseTopic.course_id == a.course_id
         ).first()
         if not topic:
-            raise HTTPException(status_code=400, detail="Тема не найдена или не принадлежит курсу")
+            raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
         a.topic_id = body.topic_id
     if body.deadline is not None:
         deadline = None
@@ -1757,6 +1852,10 @@ def update_assignment(
         a.video_urls = json.dumps(body.video_urls) if body.video_urls else None
     if body.reject_submissions_after_deadline is not None:
         a.reject_submissions_after_deadline = body.reject_submissions_after_deadline
+    if body.is_synopsis is not None:
+        a.is_synopsis = body.is_synopsis
+        if a.is_synopsis:
+            a.max_points = 100
 
     if body.rubric is not None:
         db.query(TeacherAssignmentRubric).filter(
@@ -2045,6 +2144,17 @@ def grade_submission(
             add_coins(db, sub.student_id, 50, f"assignment_{sub.id}")
         sub.coins_awarded = 1
     db.commit()
+    # Send notification on grade
+    n = Notification(
+        user_id=sub.student_id,
+        type="assignment_graded",
+        title="Работа оценена",
+        message=f"Ваша работа по заданию «{a.title}» оценена: {final_grade}. {body.teacher_comment or ''}",
+        link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
+    )
+    db.add(n)
+    db.commit()
+
     return {
         "ok": True,
         "submission_id": sub.id,
@@ -2113,11 +2223,18 @@ def return_submission_to_student(
             add_coins(db, sub.student_id, 50, f"assignment_{sub.id}")
         sub.coins_awarded = 1
 
+    grade_payload = None if final_grade is None else float(final_grade)
     n = Notification(
         user_id=sub.student_id,
         type="assignment_returned",
-        title="Работа возвращена",
-        message=f"Ваша работа проверена и возвращена: {final_grade if final_grade is not None else 'без оценки'}. {body.teacher_comment or ''}",
+        title="assignment_returned",
+        message=json.dumps(
+            {
+                "grade": grade_payload,
+                "comment": (body.teacher_comment or "").strip(),
+            },
+            ensure_ascii=False,
+        ),
         link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
     )
     db.add(n)
@@ -2210,6 +2327,95 @@ def unmark_assignment_reviewed(
     return {"ok": True}
 
 
+@router.get("/groups/{group_id}/synopses")
+def list_group_synopses(
+    group_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Список конспектов студентов группы для проверки."""
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    
+    # Темы курса
+    topics = db.query(CourseTopic).filter(CourseTopic.course_id == g.course_id).order_by(CourseTopic.order_number).all()
+    topic_map = {t.id: t.title for t in topics}
+    
+    # Студенты группы
+    student_ids = [gs.student_id for gs in g.students]
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()} if student_ids else {}
+    
+    # Все сдачи конспектов студентов этой группы по этому курсу
+    rows = db.query(TopicSynopsisSubmission).filter(
+        TopicSynopsisSubmission.topic_id.in_(topic_map.keys()),
+        TopicSynopsisSubmission.user_id.in_(student_ids)
+    ).order_by(TopicSynopsisSubmission.submitted_at.desc()).all()
+    
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "student_name": users[r.user_id].full_name if r.user_id in users else "Unknown",
+            "topic_id": r.topic_id,
+            "topic_title": topic_map.get(r.topic_id, "Unknown"),
+            "file_url": r.file_url,
+            "note_text": r.note_text,
+            "grade": float(r.grade) if r.grade is not None else None,
+            "teacher_comment": r.teacher_comment,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "graded_at": r.graded_at.isoformat() if r.graded_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.put("/synopses/{synopsis_id}/grade")
+def grade_synopsis(
+    synopsis_id: int,
+    body: SubmissionGrade,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Оценить конспект студента."""
+    from datetime import datetime, timezone
+    r = db.query(TopicSynopsisSubmission).filter(TopicSynopsisSubmission.id == synopsis_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Конспект не найден")
+    
+    # Проверка доступа к группе студента
+    topic = r.topic
+    if not topic:
+        raise HTTPException(status_code=404, detail="Тема не найдена")
+    
+    # Находим группу студента по этому курсу
+    gs = db.query(GroupStudent).join(TeacherGroup, TeacherGroup.id == GroupStudent.group_id).filter(
+        GroupStudent.student_id == r.user_id,
+        TeacherGroup.course_id == topic.course_id
+    ).first()
+    
+    if not gs or not _can_manage_group(current_user, gs.group):
+        raise HTTPException(status_code=403, detail="Нет доступа к проверке этого студента")
+    
+    r.grade = body.grade
+    r.teacher_comment = body.teacher_comment
+    r.graded_by_id = current_user.id
+    r.graded_at = datetime.now(timezone.utc)
+    
+    # Уведомление студенту
+    n = Notification(
+        user_id=r.user_id,
+        type="synopsis_graded",
+        title="Конспект проверен",
+        message=f"Ваш конспект по теме «{topic.title}» проверен. Статус: Проверено. {body.teacher_comment or ''}",
+        link=f"/app/courses/{topic.course_id}/topic/{topic.id}",
+    )
+    db.add(n)
+    
+    db.commit()
+    return {"ok": True}
+
+
 # ---------- Materials ----------
 @router.get("/materials")
 def list_materials(
@@ -2256,9 +2462,15 @@ def create_material(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа к этой группе")
+        raise HTTPException(status_code=403, detail={"code": "no_access_group"})
     if body.course_id != g.course_id:
-        raise HTTPException(status_code=400, detail="course_id не совпадает с курсом группы")
+        raise HTTPException(status_code=400, detail={"code": "course_group_mismatch"})
+    if body.topic_id is not None:
+        topic = db.query(CourseTopic).filter(
+            CourseTopic.id == body.topic_id, CourseTopic.course_id == body.course_id
+        ).first()
+        if not topic:
+            raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
     m = TeacherMaterial(
         teacher_id=current_user.id,
         group_id=body.group_id,
@@ -2390,7 +2602,7 @@ def get_question(
         "group_id": q.group_id,
         "course_id": q.course_id,
         "question_text": q.question_text,
-        "question_type": q.question_type,
+        "question_type": _question_type_for_response(q),
         "options": json.loads(q.options) if q.options else [],
     }
 
@@ -2436,11 +2648,12 @@ def list_question_answers(
         "question": {
             "id": q.id,
             "text": q.question_text,
-            "type": q.question_type,
+            "type": _question_type_for_response(q),
             "options": json.loads(q.options) if q.options else [],
             "correct_option": q.correct_option,
-            "group_name": g.group_name
-        }
+            "group_name": g.group_name,
+            "allow_student_class_comments": bool(getattr(q, "allow_student_class_comments", True)),
+        },
     }
 
 
@@ -2547,18 +2760,38 @@ def create_question(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа к этой группе")
+        raise HTTPException(status_code=403, detail={"code": "no_access_group"})
     if body.course_id != g.course_id:
-        raise HTTPException(status_code=400, detail="course_id не совпадает с курсом группы")
+        raise HTTPException(status_code=400, detail={"code": "course_group_mismatch"})
+    if body.topic_id is not None:
+        topic = db.query(CourseTopic).filter(
+            CourseTopic.id == body.topic_id, CourseTopic.course_id == body.course_id
+        ).first()
+        if not topic:
+            raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
+    deadline = None
+    if body.deadline:
+        try:
+            deadline = datetime.fromisoformat(body.deadline.replace("Z", "+00:00"))
+        except Exception:
+            pass
     q = TeacherQuestion(
         teacher_id=current_user.id,
         group_id=body.group_id,
         course_id=body.course_id,
         topic_id=body.topic_id,
         question_text=body.question_text,
-        question_type=body.question_type,
+        description=(body.instructions or "").strip() or None,
+        question_type=_normalize_question_type_storage(body.question_type),
         options=json.dumps(body.options) if body.options else None,
         correct_option=body.correct_option,
+        deadline=deadline,
+        max_points=body.max_points,
+        attachment_urls=json.dumps(body.attachment_urls) if body.attachment_urls else None,
+        attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
+        video_urls=json.dumps(body.video_urls) if body.video_urls else None,
+        allow_student_class_comments=body.can_comment,
+        allow_student_edit_submission=body.can_edit,
     )
     db.add(q)
     for gs in g.students:

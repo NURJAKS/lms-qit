@@ -9,7 +9,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
 import { cn } from "@/lib/utils";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 const WD_KEYS = ["wdSun", "wdMon", "wdTue", "wdWed", "wdThu", "wdFri", "wdSat"] as const;
@@ -238,7 +238,7 @@ export function CalendarWidget() {
       end.setDate(start.getDate() + 6);
       return `${start.getDate()} ${t(MONTH_KEYS[start.getMonth()]).slice(0, 3)} - ${end.getDate()} ${t(MONTH_KEYS[end.getMonth()]).slice(0, 3)} ${end.getFullYear()}`;
     } else {
-      return formatDateLocalized(currentDate, lang, { day: "numeric", month: "long", year: "numeric", weekday: "long" });
+      return formatLocalizedDate(currentDate, lang as any, t);
 
     }
   };

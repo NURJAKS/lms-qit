@@ -3,7 +3,7 @@
 import { Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lang, TranslationKey } from "@/i18n/translations";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import { MagicCard } from "@/components/ui/magic-card";
 import { SparklesText } from "@/components/ui/sparkles-text";
 
@@ -59,7 +59,7 @@ export function LeaderboardTopAchievementCard({ item, lang, t, fancy = false }: 
     item.amount > 0
       ? t("profileAchievementTopCoins").replace("{amount}", String(item.amount))
       : null;
-  const dateStr = formatDateLocalized(item.date, lang, { month: "long" });
+  const dateStr = formatLocalizedDate(item.date, lang as any, t);
 
   const content = (
     <>

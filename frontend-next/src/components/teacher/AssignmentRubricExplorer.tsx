@@ -6,6 +6,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import type { Lang } from "@/i18n/translations";
 import { formatCriteriaCountRu } from "./assignmentInstructionUtils";
 import { cn } from "@/lib/utils";
+import { interpolateTemplate } from "@/utils/interpolateTemplate";
 
 export type RubricCriterion = {
   id: number;
@@ -95,7 +96,9 @@ export function AssignmentRubricExplorer({
               <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">{assignmentTitle}</h3>
                 <span className="text-lg font-semibold text-gray-600 dark:text-gray-300">
-                  {t("teacherRubricDetailTotal").replace("{max}", total % 1 === 0 ? String(total) : total.toFixed(1))}
+                  {interpolateTemplate(t("teacherRubricDetailTotal"), {
+                    points: total % 1 === 0 ? String(total) : total.toFixed(1),
+                  })}
                 </span>
               </div>
 
@@ -117,7 +120,7 @@ export function AssignmentRubricExplorer({
                       >
                         <span className="text-base font-semibold text-[#1a73e8] dark:text-blue-400">{c.name}</span>
                         <span className="flex shrink-0 items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-                          {t("teacherRubricCriterionMax").replace("{max}", maxStr)}
+                          {interpolateTemplate(t("teacherRubricCriterionMax"), { points: maxStr })}
                           {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </span>
                       </button>
@@ -151,7 +154,7 @@ export function AssignmentRubricExplorer({
                             </div>
                           ) : (
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              {t("teacherRubricCriterionFallback").replace("{max}", maxStr)}
+                              {t("teacherRubricCriterionFallback")}
                             </p>
                           )}
                         </div>

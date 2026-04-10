@@ -23,7 +23,7 @@ export const api = axios.create({
       ? { "ngrok-skip-browser-warning": "1" } 
       : {}),
   },
-  timeout: 15000,
+  timeout: 60000,
 });
 
 api.interceptors.request.use((config) => {

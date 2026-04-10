@@ -9,9 +9,10 @@ import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import Link from "next/link";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 export function WelcomeWidget() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuthStore();
   const { theme } = useTheme();
   const glassStyle = getGlassCardStyle(theme);
@@ -148,7 +149,7 @@ export function WelcomeWidget() {
                   {(nextEvent.course_title ? getLocalizedCourseTitle({ title: nextEvent.course_title } as any, t) : null) || nextEvent.notes || t("upcomingEvent")}
                 </p>
                 <p className="text-xs" style={{ color: textColors.secondary }}>
-                  {new Date(nextEvent.scheduled_date).toLocaleDateString()}
+                  {formatLocalizedDate(nextEvent.scheduled_date, lang, t, { shortMonth: true })}
                 </p>
               </div>
             </div>

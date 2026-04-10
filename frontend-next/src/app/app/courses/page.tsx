@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
-import type { Lang } from "@/i18n/translations";
+import { formatWeekdayLongAndTime } from "@/utils/dateUtils";
 import { useTheme } from "@/context/ThemeContext";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
 import type { Course } from "@/types";
@@ -31,12 +31,6 @@ type EnrollmentRow = {
   course: Course;
   enrolled_at?: string | null;
 };
-
-function formatDueWhen(iso: string, lang: Lang): string {
-  const d = new Date(iso);
-  const locale = lang === "kk" ? "kk-KZ" : lang === "en" ? "en-US" : "ru-RU";
-  return new Intl.DateTimeFormat(locale, { weekday: "long", hour: "2-digit", minute: "2-digit" }).format(d);
-}
 
 function pickNearestStudentAssignment(assignments: AssignmentRow[], courseId: number): AssignmentRow | null {
   const now = Date.now();
@@ -214,7 +208,7 @@ export default function MyCoursesPage() {
                 const y = yearFromEnrollment(enrollmentByCourse.get(c.id), c);
                 const deadlineLine = nearest?.deadline
                   ? t("teacherCourseCardDeadlineLine")
-                      .replace("{when}", formatDueWhen(nearest.deadline, lang))
+                      .replace("{when}", formatWeekdayLongAndTime(nearest.deadline, lang, t))
                       .replace("{title}", nearest.title)
                   : null;
 

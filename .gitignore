@@ -3,16 +3,25 @@ backend/venv/
 backend/.venv/
 venv/
 .venv/
+# Секреты только локально — в git только backend/.env.example
 backend/.env
+# Локальная / Docker data (не путать с демо backend/education.db)
 backend/data/
-backend/uploads/
+# Случайные тестовые SQLite в корне backend
+backend/app.db
+backend/sql_app.db
+backend/test.db
+# Черновики и отчёты не для клиента
+scratch/
+scratch_admin.txt
+status_report.txt
+frontend-next/alert_list.txt
+# Демо: backend/uploads/ и backend/education.db коммитим при необходимости
 backend/**/__pycache__/
 backend/**/*.py[cod]
 backend/**/*.so
 backend/.pytest_cache/
 backend/.mypy_cache/
-backend/*.db
-backend/**/*.sqlite3
 
 # === Frontend ===
 node_modules/

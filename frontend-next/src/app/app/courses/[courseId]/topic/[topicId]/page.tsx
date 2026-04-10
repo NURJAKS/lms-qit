@@ -27,7 +27,6 @@ interface Structure {
   }>;
 }
 
-const WEB_COURSE_SHARED_VIDEO_URL = "https://youtu.be/3rN_CB_PkbY?si=pbFtMkD5SNxs0Q4l";
 
 function hasVideo(topic: { title: string; video_url?: string | null }): boolean {
   return !!topic.video_url;
@@ -56,7 +55,7 @@ function isWebCourseTitle(title: string | undefined | null): boolean {
 function topicFlowBlockMessage(reason: string, t: (key: string) => string): string {
   const keys: Record<string, string> = {
     no_groups: "topicFlowNoGroups",
-    video: "topicWatchEnoughToUnlock",
+    video: "topicFlowTheoryLockedUntilVideo",
     synopsis: "topicFlowSynopsisRequired",
     no_assignment: "topicFlowWaitTeacherAssignment",
     wait_grade: "topicFlowWaitTeacherGrade",
@@ -81,6 +80,7 @@ export default function TopicViewPage() {
   const [testId, setTestId] = useState<number | null>(null);
   const [showCoinsToast, setShowCoinsToast] = useState(false);
   const [coinsToastMessage, setCoinsToastMessage] = useState<string>("");
+  const [justPassedCompleted, setJustPassedCompleted] = useState(false);
   const [actualVideoDuration, setActualVideoDuration] = useState<number | null>(null);
   const [hasShownTheoryCoinsToast, setHasShownTheoryCoinsToast] = useState(false);
   const [localWatchedSeconds, setLocalWatchedSeconds] = useState<number>(0);
@@ -125,8 +125,7 @@ export default function TopicViewPage() {
     enabled: !!cId,
   });
 
-  const isWebCourse = isWebCourseTitle(course?.title);
-  const effectiveVideoUrl = isWebCourse ? WEB_COURSE_SHARED_VIDEO_URL : topic?.video_url;
+  const effectiveVideoUrl = topic?.video_url;
 
   const {
     data: access,
@@ -323,25 +322,25 @@ export default function TopicViewPage() {
     setShowCoinsToast(true);
     setTimeout(() => setShowCoinsToast(false), 4000);
     setShowTest(false);
+    setJustPassedCompleted(true);
+  };
 
-    // Redirect to next topic or course page
-    if (structure?.modules) {
-      const flattened: number[] = [];
-      const sortedModules = [...structure.modules].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
-      for (const mod of sortedModules) {
-        const sortedTopics = [...(mod.topics || [])].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
-        for (const topic of sortedTopics) {
-          flattened.push(topic.id);
-        }
+  const onNextTopic = () => {
+    const flattened: number[] = [];
+    const sortedModules = [...structure.modules].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+    for (const mod of sortedModules) {
+      const sortedTopics = [...(mod.topics || [])].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+      for (const topic of sortedTopics) {
+        flattened.push(topic.id);
       }
+    }
 
-      const currentIndex = flattened.indexOf(tId);
-      if (currentIndex !== -1 && currentIndex < flattened.length - 1) {
-        const nextTopicId = flattened[currentIndex + 1];
-        router.push(`/app/courses/${cId}/topic/${nextTopicId}`);
-      } else {
-        router.push(`/app/courses/${cId}`);
-      }
+    const currentIndex = flattened.indexOf(tId);
+    if (currentIndex !== -1 && currentIndex < flattened.length - 1) {
+      const nextTopicId = flattened[currentIndex + 1];
+      router.push(`/app/courses/${cId}/topic/${nextTopicId}`);
+    } else {
+      router.push(`/app/courses/${cId}`);
     }
   };
 
@@ -404,7 +403,7 @@ export default function TopicViewPage() {
   const currentTestId = topicTest?.test_id ?? testId;
 
   return (
-    <div className="relative">
+    <div className="relative w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-0">
       {showCoinsToast && (
         <div
           className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-white shadow-lg animate-in slide-in-from-bottom-5"
@@ -417,7 +416,7 @@ export default function TopicViewPage() {
       <Link href={`/app/courses/${cId}`} className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-[#1a237e] dark:hover:text-[#00b0ff] mb-4">
         <ChevronLeft className="w-4 h-4" /> {t("topicBackToCourse")}
       </Link>
-      <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">
+      <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-white mb-4 break-words">
         {getLocalizedTopicTitle(topic.title, t as any)}
       </h1>
 
@@ -434,7 +433,7 @@ export default function TopicViewPage() {
             <div className="space-y-2 text-sm">
               {isVideoTopic && (
                 <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                  {watchedPercent >= 90 ? (
+                  {watchedPercent >= 99 ? (
                     <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                   ) : (
                     <div className="w-4 h-4 rounded-full border-2 border-amber-500 shrink-0" />
@@ -443,7 +442,7 @@ export default function TopicViewPage() {
                     <strong className="text-amber-600 dark:text-amber-400">
                       {t("topicRewardsTheory").replace("{coins}", "25")}
                     </strong>
-                    {watchedPercent >= 90 && (
+                    {watchedPercent >= 99 && (
                       <span className="text-green-600 dark:text-green-400 ml-1">✓</span>
                     )}
                   </span>
@@ -509,7 +508,7 @@ export default function TopicViewPage() {
                   </p>
                 </div>
               )}
-              <div className="bg-black rounded-lg overflow-hidden mb-4 max-w-4xl relative">
+              <div className="bg-black rounded-lg overflow-hidden mb-4 w-full max-w-4xl mx-auto relative min-h-[180px] sm:min-h-[220px]">
                 {!isPremium && dailyVideoLimit && !dailyVideoLimit.is_allowed && (
                   <div className="absolute inset-0 bg-black/70 z-10 flex items-center justify-center">
                     <div className="text-center text-white p-6">
@@ -564,9 +563,9 @@ export default function TopicViewPage() {
                 </div>
               )}
               {canViewTheory && (flow == null || flow.has_course_groups) && (
-                <TopicSynopsisSection topicId={tId} userId={userId} />
+                <TopicSynopsisSection topicId={tId} courseId={cId} />
               )}
-              {(flow == null || flow.has_course_groups) && (
+              {canViewTheory && (flow == null || flow.has_course_groups) && (
                 <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
               )}
             </>
@@ -580,7 +579,9 @@ export default function TopicViewPage() {
                 )}
               </div>
               {isPremium && <TopicNotes topicId={tId} />}
-              {(flow == null || flow.has_course_groups) && <TopicSynopsisSection topicId={tId} userId={userId} />}
+              {(flow == null || flow.has_course_groups) && (
+                <TopicSynopsisSection topicId={tId} userId={userId} />
+              )}
               {(flow == null || flow.has_course_groups) && (
                 <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
               )}
@@ -609,7 +610,7 @@ export default function TopicViewPage() {
                 <button
                   type="button"
                   onClick={() => setShowTest(true)}
-                  className="py-2 px-4 rounded-lg text-white"
+                  className="py-2 px-4 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
                   style={{ background: "var(--qit-primary)" }}
                 >
                   {t("topicTestButton")}
@@ -617,6 +618,29 @@ export default function TopicViewPage() {
               ) : (
                 <p className="text-gray-500">{t("topicTestNone")}</p>
               )}
+            </div>
+          )}
+
+          {(progress?.is_completed || justPassedCompleted) && (
+            <div className="mt-8 p-6 rounded-2xl border-2 border-green-200 dark:border-green-900/40 bg-green-50/50 dark:bg-green-900/10 text-center animate-in fade-in zoom-in duration-500">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-green-600 dark:text-green-400" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                {t("topicFlowCongratulations")}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                {t("topicTestCongratsBody")}
+              </p>
+              <button
+                type="button"
+                onClick={onNextTopic}
+                className="inline-flex items-center gap-2 py-3 px-8 rounded-xl text-white font-bold shadow-lg shadow-green-500/20 hover:scale-105 transition-all"
+                style={{ background: "#2ecc71" }}
+              >
+                {t("topicFlowNextTopic")}
+                <CheckCircle2 className="w-5 h-5" />
+              </button>
             </div>
           )}
         </>

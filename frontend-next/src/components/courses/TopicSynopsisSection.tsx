@@ -1,135 +1,152 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Pencil, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, FileText, Globe, Loader2, Lock, MessageSquare, Paperclip, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import type { AxiosError } from "axios";
+import { cn } from "@/lib/utils";
+
+type AssignmentRow = {
+  id: number;
+  title: string;
+  description: string | null;
+  course_id: number;
+  topic_id: number | null;
+  submitted: boolean;
+  grade: number | null;
+  teacher_comment: string | null;
+  max_points: number;
+  attachment_urls: string[];
+  attachment_links: string[];
+  submission_file_urls?: string[];
+  submission_text?: string | null;
+  closed: boolean;
+  manually_closed?: boolean;
+  is_synopsis?: boolean;
+  is_locked?: boolean;
+};
 
 type Props = {
   topicId: number;
-  userId: number | undefined;
+  courseId: number;
 };
 
-export function TopicSynopsisSection({ topicId, userId }: Props) {
+type SubmissionAttachment = { kind: "file" | "link"; url: string };
+
+function classifySubmissionAttachment(url: string): "link" | "file" {
+  return /^https?:\/\//i.test(url.trim()) ? "link" : "file";
+}
+
+function fileNameFromUrl(url: string, idx: number): string {
+  return url.split("/").pop()?.split("?")[0] || `${t("fileTypeFile")} ${idx + 1}`;
+}
+
+function apiErrorDetail(err: unknown): string | null {
+  const ax = err as AxiosError<{ detail?: unknown }>;
+  const d = ax.response?.data?.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d) && d.length > 0) {
+    const first = d[0] as { msg?: string };
+    if (typeof first?.msg === "string") return first.msg;
+  }
+  return null;
+}
+
+export function TopicSynopsisSection({ topicId, courseId }: Props) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [noteText, setNoteText] = useState("");
-  const [replaceTargetId, setReplaceTargetId] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { data: synopsis, isLoading } = useQuery({
-    queryKey: ["topic-synopsis", topicId],
+  const { data: assignmentsData = [], isPending: isLoading } = useQuery({
+    queryKey: ["student-assignments", courseId],
     queryFn: async () => {
-      const { data } = await api.get<{
-        exists: boolean;
-        files: Array<{
-          id: number;
-          file_url: string;
-          submitted_at: string | null;
-          updated_at: string | null;
-        }>;
-        note_text: string | null;
-        max_files: number;
-      }>(`/topics/${topicId}/synopsis`);
-      return data;
+      const { data } = await api.get<AssignmentRow[]>("/assignments/my");
+      return Array.isArray(data) ? data : [];
     },
-    enabled: !!topicId && userId != null,
+    enabled: !!courseId,
   });
 
-  useEffect(() => {
-    setNoteText(synopsis?.note_text ?? "");
-  }, [synopsis?.note_text, synopsis?.exists]);
+  const synopsis = useMemo(
+    () => assignmentsData.find((a) => a.topic_id === topicId && a.is_synopsis),
+    [assignmentsData, topicId]
+  );
 
-  const listQueryKey = ["topic-synopsis", topicId] as const;
-  const refreshList = () => {
-    queryClient.invalidateQueries({ queryKey: listQueryKey });
+  const [attachments, setAttachments] = useState<SubmissionAttachment[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (synopsis?.submitted) {
+      setAttachments(
+        (synopsis.submission_file_urls ?? []).map((url) => ({
+          kind: classifySubmissionAttachment(url),
+          url,
+        }))
+      );
+      setNoteText(synopsis.submission_text ?? "");
+    } else {
+      setAttachments([]);
+      setNoteText("");
+    }
+  }, [synopsis?.id, synopsis?.submitted, synopsis?.submission_file_urls, synopsis?.submission_text]);
+
+  const refreshData = () => {
+    queryClient.invalidateQueries({ queryKey: ["student-assignments", courseId] });
     queryClient.invalidateQueries({ queryKey: ["topic-flow", topicId] });
   };
 
-  const addFileMut = useMutation({
-    mutationFn: async (fileUrl: string) => {
-      await api.post(`/topics/${topicId}/synopsis`, { file_url: fileUrl });
-    },
-    onSuccess: () => {
-      setInfo(t("topicFlowSynopsisSaved"));
-      setErr(null);
-      refreshList();
-    },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErr(typeof msg === "string" ? msg : t("topicFlowSynopsisUploadError"));
-    },
-  });
-
-  const replaceFileMut = useMutation({
-    mutationFn: async ({ synopsisId, fileUrl }: { synopsisId: number; fileUrl: string }) => {
-      await api.put(`/topics/${topicId}/synopsis/${synopsisId}`, { file_url: fileUrl });
-    },
-    onSuccess: () => {
-      setReplaceTargetId(null);
-      setInfo(t("topicFlowSynopsisSaved"));
-      setErr(null);
-      refreshList();
-    },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErr(typeof msg === "string" ? msg : t("topicFlowSynopsisSaveError"));
-    },
-  });
-
-  const deleteFileMut = useMutation({
-    mutationFn: async (synopsisId: number) => {
-      await api.delete(`/topics/${topicId}/synopsis/${synopsisId}`);
-    },
-    onSuccess: () => {
-      setInfo(t("topicFlowSynopsisSaved"));
-      setErr(null);
-      refreshList();
-    },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErr(typeof msg === "string" ? msg : t("topicFlowSynopsisSaveError"));
-    },
-  });
-
-  const saveNoteMut = useMutation({
-    mutationFn: async () => {
-      await api.post(`/topics/${topicId}/synopsis/note`, { note_text: noteText.trim() || null });
-    },
-    onSuccess: () => {
-      setInfo(t("topicFlowSynopsisSaved"));
-      setErr(null);
-      refreshList();
-    },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErr(typeof msg === "string" ? msg : t("topicFlowSynopsisSaveError"));
-    },
-  });
-
-  const uploadMut = useMutation({
+  const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data } = await api.post<{ url: string }>(`/topics/${topicId}/synopsis/upload`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      return data.url;
+      if (!synopsis) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await api.post<{ url: string }>(
+        `/assignments/submissions/upload?assignment_id=${synopsis.id}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      return data?.url ?? "";
     },
     onSuccess: (url) => {
-      setErr(null);
-      if (replaceTargetId != null) {
-        replaceFileMut.mutate({ synopsisId: replaceTargetId, fileUrl: url });
-      } else {
-        addFileMut.mutate(url);
-      }
+      if (!url) return;
+      setAttachments((prev) => [...prev, { kind: "file", url }].slice(0, 5));
+      setActionError(null);
     },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setErr(typeof msg === "string" ? msg : t("topicFlowSynopsisUploadError"));
+    onError: (err) => {
+      setActionError(apiErrorDetail(err) ?? t("topicFlowSynopsisUploadError"));
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!synopsis) return;
+      await api.post(`/assignments/${synopsis.id}/submit`, {
+        submission_text: noteText.trim() || null,
+        file_urls: attachments.map((a) => a.url),
+      });
+    },
+    onSuccess: () => {
+      setInfo(t("topicFlowSynopsisSaved"));
+      setActionError(null);
+      refreshData();
+    },
+    onError: (err) => {
+      setActionError(apiErrorDetail(err) ?? t("topicFlowSynopsisSaveError"));
+    },
+  });
+
+  const unsubmitMutation = useMutation({
+    mutationFn: async () => {
+      if (!synopsis) return;
+      await api.post(`/assignments/${synopsis.id}/unsubmit`);
+    },
+    onSuccess: () => {
+      setInfo(null);
+      setActionError(null);
+      refreshData();
     },
   });
 
@@ -142,139 +159,153 @@ export function TopicSynopsisSection({ topicId, userId }: Props) {
     );
   }
 
-  const files = synopsis?.files ?? [];
-  const maxFiles = synopsis?.max_files ?? 5;
-  const done = synopsis?.exists === true;
-  const isBusy =
-    uploadMut.isPending ||
-    addFileMut.isPending ||
-    replaceFileMut.isPending ||
-    deleteFileMut.isPending ||
-    saveNoteMut.isPending;
+  if (!synopsis) return null;
 
-  const handleChoose = (forReplaceId: number | null) => {
-    setReplaceTargetId(forReplaceId);
-    fileRef.current?.click();
-  };
-
-  const canAddMore = files.length < maxFiles;
-  const showAddButton = canAddMore || replaceTargetId != null;
-
-  const fileNameOf = (url: string) => {
-    const clean = url.split("?")[0];
-    return clean.split("/").pop() || url;
-  };
-
-  const normalizeFileHref = (url: string) => (url.startsWith("/") ? url : `/uploads/${url}`);
+  const isLocked = synopsis.is_locked;
+  const isGraded = synopsis.grade !== null;
+  const isBusy = uploadMutation.isPending || saveMutation.isPending || unsubmitMutation.isPending;
 
   return (
-    <div className="mb-6 p-4 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/20">
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-        <h3 className="font-semibold text-gray-900 dark:text-white">{t("topicFlowSynopsisTitle")}</h3>
+    <div className={cn(
+      "mb-6 p-4 rounded-xl border transition-all",
+      isLocked 
+        ? "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50 opacity-60 grayscale" 
+        : "border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/20 shadow-sm shadow-teal-500/5"
+    )}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {isLocked ? <Lock className="w-5 h-5 text-gray-400" /> : <FileText className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
+          <h3 className="font-semibold text-gray-900 dark:text-white">{t("topicFlowSynopsisTitle")}</h3>
+        </div>
+        {isLocked && (
+          <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+            {t("lockedWatchVideoFirst")}
+          </span>
+        )}
+        {!isLocked && (
+          <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
+            {isGraded ? t("gradedStatus") : synopsis.submitted ? t("submittedStatus") : t("appointedStatus")}
+          </span>
+        )}
       </div>
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">{t("topicFlowSynopsisHint")}</p>
 
+      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{t("topicFlowSynopsisHint")}</p>
+
+      {/* Hidden file input */}
       <input
-        ref={fileRef}
+        ref={fileInputRef}
         type="file"
         className="hidden"
-        accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) uploadMut.mutate(f);
+          if (f) uploadMutation.mutate(f);
           e.target.value = "";
-          setReplaceTargetId(null);
         }}
       />
 
-      <div className="mb-3 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-        <span>
-          {t("topicFlowSynopsisFilesCount")
-            .replace("{count}", String(files.length))
-            .replace("{max}", String(maxFiles))}
-        </span>
-        {showAddButton ? (
-          <button
-            type="button"
-            disabled={isBusy || !canAddMore}
-            onClick={() => handleChoose(null)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300 px-3 py-1.5 font-medium text-teal-800 hover:bg-teal-100/50 disabled:opacity-50 dark:border-teal-700 dark:text-teal-200 dark:hover:bg-teal-900/40"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            {uploadMut.isPending ? t("topicFlowSynopsisUploading") : t("topicFlowChooseFile")}
-          </button>
-        ) : null}
-      </div>
-
-      {files.length > 0 ? (
-        <ul className="mb-3 space-y-2">
-          {files.map((file) => (
+      {/* Attachments list */}
+      {attachments.length > 0 && (
+        <ul className="mb-4 space-y-2">
+          {attachments.map((att, idx) => (
             <li
-              key={file.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200 bg-white/60 px-3 py-2 text-sm dark:border-teal-800 dark:bg-teal-950/20"
+              key={`${att.url}-${idx}`}
+              className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-white/60 px-3 py-2 text-sm dark:border-teal-800 dark:bg-teal-950/20"
             >
-              <a
-                href={normalizeFileHref(file.file_url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-w-0 flex-1 truncate font-medium text-teal-700 hover:underline dark:text-teal-300"
-              >
-                {fileNameOf(file.file_url)}
-              </a>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleChoose(file.id)}
-                  disabled={isBusy}
-                  className="rounded-md p-1.5 text-gray-500 hover:bg-teal-100 hover:text-teal-700 disabled:opacity-50 dark:hover:bg-teal-900/40 dark:hover:text-teal-200"
-                  title={t("topicFlowSynopsisReplace")}
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-teal-500 shrink-0" />
+                <a
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate font-medium text-teal-700 hover:underline dark:text-teal-300"
                 >
-                  <Pencil className="h-4 w-4" />
-                </button>
+                  {fileNameFromUrl(att.url, idx)}
+                </a>
+              </div>
+              {!synopsis.submitted && !isLocked && (
                 <button
                   type="button"
-                  onClick={() => deleteFileMut.mutate(file.id)}
                   disabled={isBusy}
-                  className="rounded-md p-1.5 text-gray-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/40 dark:hover:text-red-300"
-                  title={t("delete")}
+                  onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
-              </div>
+              )}
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">{t("topicFlowSynopsisNoFiles")}</p>
       )}
 
+      {/* Add file button */}
+      {!synopsis.submitted && !isLocked && (
+        <button
+          type="button"
+          disabled={isBusy || attachments.length >= 5}
+          onClick={() => fileInputRef.current?.click()}
+          className="mb-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-teal-300 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100/50 dark:hover:bg-teal-900/30 transition-all text-sm font-bold"
+        >
+          {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          {t("topicFlowChooseFile")}
+        </button>
+      )}
+
+      {/* Note textarea */}
       <textarea
         value={noteText}
         onChange={(e) => setNoteText(e.target.value)}
         placeholder={t("topicFlowSynopsisNotePlaceholder")}
-        rows={2}
-        disabled={files.length === 0}
-        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm mb-3 disabled:opacity-50"
+        rows={3}
+        disabled={synopsis.submitted || isLocked}
+        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm mb-4 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all disabled:opacity-50"
       />
 
-      {files.length > 0 && (
+      {/* Submission Actions */}
+      {!synopsis.submitted && !isLocked && (
         <button
           type="button"
-          disabled={saveNoteMut.isPending}
-          onClick={() => saveNoteMut.mutate()}
-          className="py-2 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: "var(--qit-primary)" }}
+          disabled={isBusy || (attachments.length === 0 && !noteText.trim())}
+          onClick={() => saveMutation.mutate()}
+          className="w-full py-3 rounded-xl text-sm font-extrabold text-white shadow-lg shadow-teal-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:scale-100"
+          style={{ background: "linear-gradient(135deg, #0d9488, #0f766e)" }}
         >
-          {saveNoteMut.isPending ? t("topicFlowSynopsisUploading") : t("topicFlowSynopsisSave")}
+          {saveMutation.isPending ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : t("topicFlowSynopsisSave")}
         </button>
       )}
 
-      {done && (
-        <p className="mt-2 text-sm text-green-600 dark:text-green-400">{t("topicFlowSynopsisSaved")}</p>
+      {synopsis.submitted && !isGraded && !isLocked && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-bold text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {t("topicFlowSynopsisGradingPending")}
+          </div>
+          <button
+            type="button"
+            className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 text-sm font-bold text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+            onClick={() => unsubmitMutation.mutate()}
+            disabled={unsubmitMutation.isPending}
+          >
+            {unsubmitMutation.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : t("cancelSending")}
+          </button>
+        </div>
       )}
-      {info && <p className="mt-2 text-sm text-green-600 dark:text-green-400">{info}</p>}
-      {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
+
+      {isGraded && (
+        <div className="mt-2 p-4 rounded-xl border border-green-200 bg-green-50/50 dark:border-green-900/30 dark:bg-green-900/10">
+          <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-black mb-1">
+            <CheckCircle2 className="w-5 h-5" />
+            {t("topicFlowSynopsisGraded")}
+          </div>
+          {synopsis.teacher_comment && (
+            <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 italic leading-relaxed">
+              &ldquo;{synopsis.teacher_comment}&rdquo;
+            </div>
+          )}
+        </div>
+      )}
+
+      {actionError && <p className="mt-3 text-sm font-bold text-red-600 dark:text-red-400">{actionError}</p>}
+      {info && <p className="mt-3 text-sm font-bold text-teal-600 dark:text-teal-400">{info}</p>}
     </div>
   );
 }

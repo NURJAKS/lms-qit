@@ -18,15 +18,19 @@ import {
   Filter,
   Globe,
   Loader2,
+  Lock,
   MessageSquare,
   Paperclip,
   Plus,
   Users,
+  AlertTriangle,
   X,
 } from "lucide-react";
 import { PrivateCommentsSection } from "@/components/courses/PrivateCommentsSection";
 import { AssignmentClassCommentsSection } from "@/components/courses/AssignmentClassCommentsSection";
 import { cn } from "@/lib/utils";
+import { htmlLinksOpenInNewTab } from "@/lib/htmlLinkNewTab";
+import { formatLocalizedDate, formatRelativeDate } from "@/utils/dateUtils";
 
 type RubricLevelItem = { text: string; points: number };
 type RubricItem = {
@@ -68,6 +72,8 @@ type AssignmentRow = {
   submission_file_urls?: string[];
   submission_text?: string | null;
   class_comments_count?: number;
+  allow_student_class_comments?: boolean;
+  is_locked?: boolean;
 };
 
 type MaterialRow = {
@@ -82,6 +88,7 @@ type MaterialRow = {
   attachment_urls: string[];
   attachment_links: string[];
   created_at: string | null;
+  is_locked?: boolean;
 };
 
 type QuestionRow = {
@@ -123,7 +130,7 @@ const EMPTY_MATERIALS: MaterialRow[] = [];
 const EMPTY_QUESTIONS: QuestionRow[] = [];
 const EMPTY_TOPICS: CourseTopic[] = [];
 
-function attachmentLabel(url: string, googleFormText: string = "Google Form") {
+function attachmentLabel(url: string, googleFormText: string) {
   const lower = url.toLowerCase();
   if (lower.includes("forms")) return googleFormText;
   try {
@@ -160,45 +167,6 @@ function apiErrorDetail(err: unknown): string | null {
   return null;
 }
 
-function formatDateShort(iso: string | null, lang: string = "ru") {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    const locale = lang === "en" ? "en-US" : lang === "kk" ? "kk-KZ" : "ru-RU";
-    return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-function formatPostedDate(iso: string, locale: string, t: any) {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffDays === 0) return t("today");
-    if (diffDays === 1) return t("yesterday");
-    return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-function formatDueDateTime(iso: string | null, locale: string) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(locale, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function fileKindIcon(name: string) {
   const lower = name.toLowerCase();
@@ -221,7 +189,7 @@ function AttachmentsBlock({ urls, links }: { urls: string[]; links: string[] }) 
           </div>
           <div className="space-y-1">
             {urls.map((u, idx) => {
-              const name = u.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+              const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
               return (
                 <a
                   key={`${u}-${idx}`}
@@ -278,7 +246,7 @@ function AttachmentsBlockRich({
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {urls.map((u, idx) => {
-        const name = u.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+        const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
         return (
           <a
             key={`${u}-${idx}`}
@@ -293,7 +261,7 @@ function AttachmentsBlockRich({
             {fileKindIcon(name)}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">File</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t("fileLabel")}</p>
             </div>
           </a>
         );
@@ -543,7 +511,6 @@ export function StudentCourseClasswork({
 }) {
   const { t, lang } = useLanguage();
   const queryClient = useQueryClient();
-  const dateLocale = lang === "en" ? "en-US" : lang === "kk" ? "kk-KZ" : "ru-RU";
   const courseIdOk = Number.isFinite(courseId) && courseId > 0;
 
   const [activeView, setActiveView] = useState<"list" | "detail">("list");
@@ -559,6 +526,7 @@ export function StudentCourseClasswork({
   const [submissionAttachments, setSubmissionAttachments] = useState<SubmissionAttachment[]>([]);
   const [submissionDraft, setSubmissionDraft] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showUnsubmitConfirm, setShowUnsubmitConfirm] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [linkDraft, setLinkDraft] = useState("");
   const [linkFieldOpen, setLinkFieldOpen] = useState(false);
@@ -990,7 +958,7 @@ export function StudentCourseClasswork({
                       <>
                         <span className="h-1 w-1 rounded-full bg-gray-300 dark:bg-gray-600" />
                         <span>
-                          {t("assignmentPosted")}: {formatPostedDate(a.created_at, dateLocale, t)}
+                          {t("assignmentPosted")}: {formatRelativeDate(a.created_at, lang, t)}
                         </span>
                       </>
                     ) : null}
@@ -1005,16 +973,16 @@ export function StudentCourseClasswork({
               <div className="shrink-0 text-left text-sm lg:text-right">
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-400">{t("assignmentDueWithTime")}</p>
                 <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                  {a.deadline ? formatDueDateTime(a.deadline, dateLocale) : t("noDueDate")}
+                  {a.deadline ? formatLocalizedDate(a.deadline, lang, t, { includeTime: true, shortMonth: true }) : t("noDueDate")}
                 </p>
                 {a.submitted_at ? (
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    {t("submittedStatus")}: {formatDueDateTime(a.submitted_at, dateLocale)}
+                    {t("submittedStatus")}: {formatLocalizedDate(a.submitted_at, lang, t, { includeTime: true, shortMonth: true })}
                   </p>
                 ) : null}
                 {a.graded_at ? (
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {t("gradedStatus")}: {formatDueDateTime(a.graded_at, dateLocale)}
+                    {t("gradedStatus")}: {formatLocalizedDate(a.graded_at, lang, t, { includeTime: true, shortMonth: true })}
                   </p>
                 ) : null}
               </div>
@@ -1023,7 +991,7 @@ export function StudentCourseClasswork({
             {a.description ? (
               <div
                 className="prose prose-blue max-w-none break-words leading-relaxed text-gray-800 dark:prose-invert dark:text-gray-100 [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
-                dangerouslySetInnerHTML={{ __html: a.description }}
+                dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(a.description) }}
               />
             ) : null}
 
@@ -1048,7 +1016,10 @@ export function StudentCourseClasswork({
             ) : null}
 
             <div className="border-t border-gray-100 pt-6 dark:border-gray-800">
-              <AssignmentClassCommentsSection assignmentId={a.id} />
+              <AssignmentClassCommentsSection
+                assignmentId={a.id}
+                canPost={a.allow_student_class_comments !== false}
+              />
             </div>
           </div>
 
@@ -1258,7 +1229,7 @@ export function StudentCourseClasswork({
                     type="button"
                     onClick={() => {
                       setWorkActionError(null);
-                      unsubmitMutation.mutate({ assignmentId: a.id });
+                      setShowUnsubmitConfirm(true);
                     }}
                     disabled={!canUnsubmit || unsubmitMutation.isPending}
                     className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-all"
@@ -1498,16 +1469,29 @@ export function StudentCourseClasswork({
                           return (
                             <div
                               key={`m-${mat.id}`}
-                              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 rounded-lg"
+                              className={cn(
+                                "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 transition-colors rounded-lg",
+                                mat.is_locked ? "opacity-50 grayscale cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
+                              )}
                             >
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-500 text-white">
-                                <FileText className="h-4 w-4" />
+                              <div className={cn(
+                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white",
+                                mat.is_locked ? "bg-gray-400" : "bg-gray-500"
+                              )}>
+                                {mat.is_locked ? <Lock className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                               </div>
-                              <span className="flex-1 min-w-0 truncate text-sm text-gray-900 dark:text-white">
-                                {mat.title}
-                              </span>
+                              <div className="flex-1 min-w-0">
+                                <span className="block truncate text-sm text-gray-900 dark:text-white">
+                                  {mat.title}
+                                </span>
+                                {mat.is_locked && (
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                    {t("lockedWatchVideoFirst")}
+                                  </span>
+                                )}
+                              </div>
                               <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
-                                {mat.created_at ? `${t("publishedLabel")} ${formatPostedDate(mat.created_at, dateLocale, t)}` : ""}
+                                {mat.created_at ? `${t("publishedLabel")} ${formatRelativeDate(mat.created_at, lang, t)}` : ""}
                               </span>
                             </div>
                           );
@@ -1523,7 +1507,7 @@ export function StudentCourseClasswork({
                             >
                               <div className={cn(
                                 "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-transform group-hover:scale-110",
-                                isGraded ? "bg-green-500" : "bg-blue-500"
+                                q.status === "submitted" ? "bg-gray-400" : "bg-blue-500"
                               )}>
                                 <MessageSquare className="h-4 w-4" />
                               </div>
@@ -1539,7 +1523,7 @@ export function StudentCourseClasswork({
                                 )}
                               </div>
                               <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
-                                {q.created_at ? `${t("publishedLabel")} ${formatPostedDate(q.created_at, dateLocale, t)}` : ""}
+                                {q.created_at ? `${t("publishedLabel")} ${formatRelativeDate(q.created_at, lang, t)}` : ""}
                               </span>
                             </Link>
                           );
@@ -1559,25 +1543,28 @@ export function StudentCourseClasswork({
                             <div
                               role="button"
                               tabIndex={0}
-                              onClick={() => setExpandedItem(isExpanded ? null : item.id)}
+                              onClick={() => {
+                                if (item.is_locked) return;
+                                setExpandedItem(isExpanded ? null : item.id);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
+                                  if (item.is_locked) return;
                                   setExpandedItem(isExpanded ? null : item.id);
                                 }
                               }}
                               className={cn(
-                                "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 cursor-pointer transition-colors rounded-lg",
-                                isExpanded
-                                  ? "bg-blue-50/50 dark:bg-blue-900/10"
-                                  : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
+                                "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 rounded-lg transition-colors",
+                                item.is_locked ? "opacity-50 grayscale cursor-not-allowed" : "cursor-pointer",
+                                !item.is_locked && (isExpanded ? "bg-blue-50/50 dark:bg-blue-900/10" : "hover:bg-gray-50 dark:hover:bg-gray-700/30")
                               )}
                             >
                               <div className={cn(
                                 "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white",
-                                isGraded ? "bg-green-600" : "bg-blue-600"
+                                item.is_locked ? "bg-gray-400" : (item.submitted ? "bg-gray-400" : "bg-blue-600")
                               )}>
-                                <ClipboardList className="h-4 w-4" />
+                                {item.is_locked ? <Lock className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
@@ -1591,6 +1578,11 @@ export function StudentCourseClasswork({
                                     </span>
                                   )}
                                 </div>
+                                {item.is_locked && (
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                    {t("lockedWatchVideoFirst")}
+                                  </span>
+                                )}
                               </div>
                               <span
                                 className={cn(
@@ -1599,7 +1591,7 @@ export function StudentCourseClasswork({
                                 )}
                               >
                                 {item.deadline
-                                  ? `${t("dueDateShort")} ${formatDateShort(item.deadline, lang)}`
+                                  ? `${t("dueDateShort")} ${formatLocalizedDate(item.deadline, lang, t, { shortMonth: true })}`
                                   : t("noDueDate")}
                               </span>
                             </div>
@@ -1611,7 +1603,7 @@ export function StudentCourseClasswork({
                                   {/* Meta: Posted + Grade status */}
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="font-medium text-gray-500 dark:text-gray-400">
-                                      {item.created_at ? `${t("publishedLabel")} ${formatPostedDate(item.created_at, dateLocale, t)}` : ""}
+                                      {item.created_at ? `${t("publishedLabel")} ${formatRelativeDate(item.created_at, lang, t)}` : ""}
                                     </span>
                                     {isGraded ? (
                                       <span className="text-green-600 dark:text-green-400 font-medium">
@@ -1624,7 +1616,7 @@ export function StudentCourseClasswork({
                                   {item.description && (
                                     <div
                                       className="prose prose-sm prose-blue max-w-none break-words text-gray-700 dark:prose-invert dark:text-gray-300 [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
-                                      dangerouslySetInnerHTML={{ __html: item.description }}
+                                      dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(item.description) }}
                                     />
                                   )}
 
@@ -1642,7 +1634,7 @@ export function StudentCourseClasswork({
                                   {hasAttachments && (
                                     <div className="flex flex-wrap gap-3">
                                       {(item.attachment_urls ?? []).map((u, idx) => {
-                                        const name = u.split("/").pop()?.split("?")[0] || `File ${idx + 1}`;
+                                        const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
                                         return (
                                           <a
                                             key={`${u}-${idx}`}
@@ -1653,7 +1645,7 @@ export function StudentCourseClasswork({
                                           >
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{name}</p>
-                                              <p className="text-[11px] text-gray-400">File</p>
+                                              <p className="text-[11px] text-gray-400">{t("fileTypeFile")}</p>
                                             </div>
                                             {fileKindIcon(name)}
                                           </a>
@@ -1710,6 +1702,44 @@ export function StudentCourseClasswork({
           })}
         </div>
       )}
+
+      {/* Unsubmit Confirmation Dialogue */}
+      {showUnsubmitConfirm && selectedAssignment ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowUnsubmitConfirm(false)}>
+          <div
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-gray-900 border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 mb-4">
+              <AlertTriangle className="h-7 w-7" />
+            </div>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white">{t("confirmUnsubmit")}</h3>
+            <p className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-400 leading-relaxed">
+              {t("unsubmitDescription")}
+            </p>
+            <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowUnsubmitConfirm(false)}
+                className="rounded-full border border-gray-200 px-6 py-2.5 text-sm font-bold hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 transition-colors"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  unsubmitMutation.mutate({ assignmentId: selectedAssignment.id });
+                  setShowUnsubmitConfirm(false);
+                }}
+                disabled={unsubmitMutation.isPending}
+                className="rounded-full bg-amber-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-amber-700 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all"
+              >
+                {unsubmitMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : t("unsubmit")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

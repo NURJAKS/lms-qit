@@ -1,4 +1,7 @@
 import re
+import json
+import time
+import random
 from app.core.config import settings
 from app.i18n.translations import AI_CHALLENGE_TRANSLATIONS
 
@@ -81,6 +84,34 @@ SYSTEM_PROMPT = """Ты — AI-помощник образовательной �
 - Data Science
 
 Ты работаешь 24/7 как помощник студентов. Будь дружелюбным, полезным и профессиональным, но строго соблюдай правила безопасности и против списывания."""
+
+
+CHALLENGE_OPPONENT_PROMPT = """You are an AI opponent in a coding/IT quiz game "AI vs Student".
+Your goal is to play at a specific "{level}" level.
+
+LEVEL INSTRUCTIONS:
+- expert: You are a pro. You answer 100% correctly and very fast.
+- intermediate: You are a good student. You answer ~90% correctly and take some time to think.
+- beginner: You are a novice. You answer ~60-70% correctly and take significant time to think.
+
+For each question provided, you must:
+1. Provide the correct answer (a, b, c, or d) or the actual answer text/code if it's a specialty mode.
+2. Determine if you "made a mistake" based on your level.
+3. Provide a realistic "thinking_time" in seconds for this specific question.
+
+RESPONSE FORMAT (Strict JSON):
+[
+  {{
+    "id": "question_id",
+    "answer": "your_answer",
+    "is_correct": true/false,
+    "thinking_time": 2.5
+  }},
+  ...
+]
+
+Return ONLY the JSON array. Do not include any other text."""
+
 
 
 # Подозрительные паттерны, указывающие на попытку получить ответы на тесты/задания
@@ -265,3 +296,178 @@ def get_challenge_recommendations(
         except Exception:
             pass
         return fallback
+
+
+from app.models.ai_challenge_cache import AIChallengeCache
+from sqlalchemy.orm import Session
+import hashlib
+
+
+def solve_quiz_questions(
+    questions: list[dict],
+    ai_level: str = "intermediate",
+    lang: str = "ru",
+    game_mode: str = "quiz",
+    db: Session = None
+) -> list[dict]:
+    """
+    Simulates a real AI opponent by asking an LLM to solve questions.
+    Returns a list of dicts with 'question_id', 'answer', 'is_correct', and 'thinking_time'.
+    """
+    if not questions:
+        return []
+
+    # Fallback to simulation if no API keys
+    has_keys = (USE_GEMINI and bool(settings.GEMINI_API_KEY)) or (not USE_GEMINI and bool(settings.OPENAI_API_KEY))
+    if not has_keys:
+        # Simple simulation as a safety fallback
+        lo, hi = (1.2, 2.0) if ai_level == "expert" else (2.0, 3.0) if ai_level == "intermediate" else (3.0, 4.0)
+        return [
+            {
+                "id": q.get("id"),
+                "answer": q.get("correct_answer") or "a",
+                "is_correct": random.random() < (0.95 if ai_level == "expert" else 0.85 if ai_level == "intermediate" else 0.6),
+                "thinking_time": round(random.uniform(lo, hi), 2)
+            }
+            for q in questions
+        ]
+
+    # 1. Try to get from cache if DB is available
+    q_hash = ""
+    if db:
+        try:
+            # Sort IDs to ensure stable hash for same question set
+            sorted_ids = sorted([str(q.get("id")) for q in questions])
+            q_hash = hashlib.md5(",".join(sorted_ids).encode()).hexdigest()
+            
+            cached = db.query(AIChallengeCache).filter(
+                AIChallengeCache.questions_hash == q_hash,
+                AIChallengeCache.ai_level == ai_level,
+                AIChallengeCache.game_mode == game_mode
+            ).first()
+            
+            if cached:
+                return json.loads(cached.response_json)
+        except Exception as ce:
+            print(f"Error checking AI cache: {ce}")
+
+    # 2. If not in cache, call LLM
+    prompt = "Here is a list of questions for you to solve as a JSON array of objects:\n"
+    simplified_questions = []
+    for q in questions:
+        item = {
+            "id": q.get("id"),
+            "text": q.get("question_text") or q.get("task") or "",
+            "options": {
+                "a": q.get("option_a"),
+                "b": q.get("option_b"),
+                "c": q.get("option_c"),
+                "d": q.get("option_d"),
+            } if "option_a" in q else q.get("options")
+        }
+        if q.get("code"):
+            item["code"] = q["code"]
+        simplified_questions.append(item)
+
+    prompt = f"Mode: {game_mode}\nLevel: {ai_level}\nLanguage: {lang}\nQuestions:\n{json.dumps(simplified_questions, ensure_ascii=False)}"
+    
+    try:
+        if USE_GEMINI:
+            model = _get_gemini_model()
+            response = model.generate_content(
+                f"{CHALLENGE_OPPONENT_PROMPT.format(level=ai_level)}\n\n{prompt}",
+            )
+            raw_content = response.text
+        else:
+            client = get_openai_client()
+            r = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": CHALLENGE_OPPONENT_PROMPT.format(level=ai_level)},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=2000,
+                temperature=0.7,
+            )
+            raw_content = r.choices[0].message.content or "[]"
+        
+        # Robust JSON extraction using regex
+        json_match = re.search(r'\[\s*{.*}\s*\]', raw_content, re.DOTALL)
+        if json_match:
+            raw_content = json_match.group(0)
+        elif "```json" in raw_content:
+            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_content:
+            raw_content = raw_content.split("```")[1].split("```")[0].strip()
+        
+        results = json.loads(raw_content)
+        
+        # Post-process with strict type casting and fallback values
+        results_map = {}
+        if isinstance(results, list):
+            for r in results:
+                if not isinstance(r, dict): continue
+                qid = str(r.get("id", ""))
+                if not qid: continue
+                
+                # Sanitize fields
+                try:
+                    thinking_time = float(r.get("thinking_time", 2.0))
+                except (TypeError, ValueError):
+                    thinking_time = 2.0
+                    
+                is_correct = bool(r.get("is_correct", True))
+                answer = str(r.get("answer", "a")).strip().lower()
+                
+                results_map[qid] = {
+                    "id": qid,
+                    "answer": answer,
+                    "is_correct": is_correct,
+                    "thinking_time": thinking_time
+                }
+        
+        final_results = []
+        for q in questions:
+            qid = str(q.get("id"))
+            if qid in results_map:
+                final_results.append(results_map[qid])
+            else:
+                # Fallback for missing question in AI response
+                lo, hi = (1.2, 2.0) if ai_level == "expert" else (2.0, 3.0) if ai_level == "intermediate" else (3.0, 4.0)
+                final_results.append({
+                    "id": q.get("id"),
+                    "answer": q.get("correct_answer") or "a",
+                    "is_correct": True,
+                    "thinking_time": round(random.uniform(lo, hi), 2)
+                })
+        
+        
+        if db and final_results:
+            try:
+                new_cache = AIChallengeCache(
+                    questions_hash=q_hash,
+                    ai_level=ai_level,
+                    game_mode=game_mode,
+                    response_json=json.dumps(final_results)
+                )
+                db.add(new_cache)
+                db.commit()
+            except Exception as ce:
+                print(f"Error saving to AI cache: {ce}")
+                db.rollback()
+
+        return final_results
+    except Exception as e:
+        print(f"Error in solve_quiz_questions: {e}")
+        # Fallback if AI fails
+        lo, hi = (1.2, 2.0) if ai_level == "expert" else (2.0, 3.0) if ai_level == "intermediate" else (3.0, 4.0)
+        return [
+            {
+                "id": q.get("id"),
+                "answer": q.get("correct_answer") or "a",
+                "is_correct": True,
+                "thinking_time": round(random.uniform(lo, hi), 2)
+            }
+            for q in questions
+        ]
+

@@ -14,6 +14,18 @@
 
 > **Подробная инструкция:** [HOW_TO_RUN.md](HOW_TO_RUN.md) — структура проекта, порты, какая БД где, чек-лист перед запуском (чтобы не запустить не ту БД).
 
+### Демо-режим (быстрый показ, диплом, клиент)
+
+1. **`backend/.env` в репозиторий не попадает** — только шаблон `backend/.env.example`. Один раз скопируйте и при необходимости впишите ключи (для демо без AI можно оставить пустыми `OPENAI_API_KEY` / `GEMINI_API_KEY`):
+
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+2. В репозитории может лежать **небольшая демо-БД** `backend/education.db` и папка **`backend/uploads/`** — чтобы проверяющий открыл проект без длинной цепочки `seed_*`. Если файла БД нет или нужен чистый срез — выполните шаг «Backend» ниже (init + seed).
+
+3. Из корня: **`bash start.sh`** — поднимет backend и frontend (если нет `backend/.env`, скрипт скопирует его из `.env.example`).
+
 ### 1. Клонирование
 
 ```bash
@@ -23,14 +35,14 @@ cd LMS-Platform-client
 
 ### 2. Backend
 
-**Важно:** Бэкенд всегда использует базу `backend/education.db` (путь задаётся в `backend/.env` и не зависит от папки, из которой запущен uvicorn). Запускать можно из корня проекта или из `backend/`.
+**Важно:** Путь к SQLite задаётся в `backend/.env` (`DATABASE_URL`, по умолчанию в `.env.example` — `backend/education.db`). Запускать можно из корня проекта или из `backend/`.
 
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env       # при необходимости отредактировать
+cp .env.example .env       # обязательно перед первым запуском; секреты не коммитить
 python init_db.py
 python seed_data.py
 python seed_shop.py
@@ -96,6 +108,7 @@ Frontend: http://localhost:3000
 
 ## Важно
 
-- Файл `backend/.env` и база **`backend/education.db`** не коммитятся.
-- Для сброса БД повторите команды из шага 2 (init_db, seed_*).
+- **`backend/.env` не коммитится** — в git только `backend/.env.example`; реальные ключи и пароли только у себя локально.
+- **`backend/education.db`** и **`backend/uploads/`** для демо можно держать в репозитории (маленький объём, только тестовые данные, без личных данных реальных людей).
+- Для полного сброса БД повторите команды из шага 2 (init_db, seed_*).
 - **Локальный запуск без Docker:** бэкенд и фронт запускаются отдельно (см. шаги 2 и 3). Docker не обязателен.

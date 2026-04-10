@@ -137,16 +137,16 @@ export function AppDashboardHeader() {
               </div>
             </button>
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-2xl shadow-xl z-50 max-h-80 overflow-auto">
-                <div className="p-3 border-b dark:border-gray-600 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{t("notifications")}</span>
+              <div className="absolute right-0 top-full mt-1 w-[min(20rem,calc(100vw-1.5rem))] max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-2xl shadow-xl z-50 max-h-80 overflow-auto">
+                <div className="p-3 border-b dark:border-gray-600 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-gray-50/50 dark:bg-gray-800/50">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">{t("notifications")}</span>
                   {unread.length > 0 && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         markAllRead();
                       }}
-                      className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline"
+                      className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline text-left sm:text-right leading-snug whitespace-normal"
                     >
                       {t("markAllAsRead")}
                     </button>

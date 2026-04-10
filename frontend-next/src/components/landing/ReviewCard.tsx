@@ -6,7 +6,7 @@ import { MagicCard } from "@/components/ui/magic-card";
 import { cn } from "@/lib/utils";
 import type { PublicReview } from "@/types/publicReview";
 import { useLanguage } from "@/context/LanguageContext";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 interface ReviewCardProps {
   review: PublicReview;
@@ -89,7 +89,7 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
 
       {!review.admin_reply && review.created_at && (
         <div className="mt-4 text-[9px] text-gray-400 dark:text-gray-600 text-right">
-          {formatDateLocalized(review.created_at, lang, { day: "2-digit", month: "2-digit", year: "numeric" })}
+          {formatLocalizedDate(review.created_at, lang, t)}
         </div>
       )}
     </MagicCard>

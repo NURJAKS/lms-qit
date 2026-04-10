@@ -6,7 +6,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { getDashboardCardStyle, getTextColors } from "@/utils/themeStyles";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 type Achievement = {
@@ -43,7 +43,7 @@ function formatDate<K extends string>(dateStr: string, t: (k: K) => string, lang
   if (diffDays === 0) return T("today");
   if (diffDays === 1) return T("yesterday");
   if (diffDays < 7) return T("daysAgo").replace("{count}", String(diffDays));
-  return formatDateLocalized(dateStr, lang, { day: "numeric", month: "short" });
+  return formatLocalizedDate(dateStr, lang as any, t);
 
 }
 

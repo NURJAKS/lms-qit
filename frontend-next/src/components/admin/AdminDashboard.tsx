@@ -31,7 +31,7 @@ import { MagicCard } from "@/components/ui/magic-card";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { useAuthStore } from "@/store/authStore";
 import { getGlassCardStyle, getTextColors } from "@/utils/themeStyles";
-import { formatDateTimeLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 import Link from "next/link";
 import {
   AreaChart,
@@ -798,12 +798,7 @@ export function AdminDashboard() {
                       </p>
                       {log.created_at && (
                         <p className="text-xs mt-0.5 leading-tight" style={{ color: textColors.secondary }}>
-                          {formatDateTimeLocalized(log.created_at, lang, {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatLocalizedDate(log.created_at, lang as any, t, { includeTime: true })}
                         </p>
                       )}
                     </div>

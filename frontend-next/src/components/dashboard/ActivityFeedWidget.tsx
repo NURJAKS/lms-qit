@@ -45,6 +45,7 @@ export function ActivityFeedWidget() {
         if (teacherMode) {
           const { data } = await withTimeout(api.get<Array<{
             id: number;
+            student_id: number;
             student_name: string;
             assignment_id: number;
             assignment_title: string;
@@ -59,7 +60,7 @@ export function ActivityFeedWidget() {
             subtext: `${t("activitySubtext_submitted")} ${s.assignment_title}`,
             group: s.group_name,
             time: s.submitted_at,
-            link: `/app/teacher/view-answers/${s.assignment_id}?tab=submissions`
+            link: `/app/teacher/view-answers/${s.assignment_id}?tab=submissions&studentId=${s.student_id}`,
           }));
         } else {
           const { data } = await withTimeout(api.get<Array<any>>("/dashboard/events"), 7000);

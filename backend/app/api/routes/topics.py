@@ -41,7 +41,7 @@ def _check_enrollment(db: Session, current_user: User, course_id: int) -> None:
 
 
 def _theory_unlocked(db: Session, user_id: int, topic: CourseTopic) -> bool:
-    """Теория (description) для видео-тем — только после 90% просмотра или завершения темы."""
+    """Теория (description) для видео-тем — только после 100% просмотра или завершения темы."""
     if not (topic.video_url or "").strip():
         return True
     prog = db.query(StudentProgress).filter(
@@ -54,7 +54,7 @@ def _theory_unlocked(db: Session, user_id: int, topic: CourseTopic) -> bool:
     if effective_duration <= 0:
         return True
     watched = (prog.video_watched_seconds if prog else 0) or 0
-    return watched / effective_duration >= 0.9
+    return watched / effective_duration >= 0.99
 
 
 def _sanitize_synopsis_url(raw: str) -> str:
@@ -88,6 +88,8 @@ def _extract_latest_note(rows: list[TopicSynopsisSubmission]) -> str | None:
 
 def _serialize_topic_synopsis_list(rows: list[TopicSynopsisSubmission]) -> dict:
     latest_note = _extract_latest_note(rows)
+    # Pick the latest grade/comment if multiple rows exist
+    latest_row = rows[0] if rows else None
     files = [
         {
             "id": row.id,
@@ -102,6 +104,9 @@ def _serialize_topic_synopsis_list(rows: list[TopicSynopsisSubmission]) -> dict:
         "files": files,
         "note_text": latest_note,
         "max_files": 5,
+        "grade": float(latest_row.grade) if latest_row and latest_row.grade is not None else None,
+        "teacher_comment": latest_row.teacher_comment if latest_row else None,
+        "graded_at": latest_row.graded_at.isoformat() if latest_row and latest_row.graded_at else None,
     }
 
 
@@ -201,7 +206,7 @@ async def upload_topic_synopsis_file(
     if not _theory_unlocked(db, current_user.id, topic):
         raise HTTPException(
             status_code=403,
-            detail="Конспект доступен после просмотра не менее 90% видео по теме.",
+            detail="Конспект доступен после просмотра 100% видео по теме.",
         )
     if not file.filename:
         raise HTTPException(status_code=400, detail="Файл не выбран")
@@ -238,7 +243,7 @@ def save_topic_synopsis(
     if not _theory_unlocked(db, current_user.id, topic):
         raise HTTPException(
             status_code=403,
-            detail="Конспект доступен после просмотра не менее 90% видео по теме.",
+            detail="Конспект доступен после просмотра 100% видео по теме.",
         )
     file_url = _sanitize_synopsis_url(body.file_url)
     rows = _get_topic_synopsis_rows(db, current_user.id, topic_id)

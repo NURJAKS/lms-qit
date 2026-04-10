@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
+import { toast } from "@/store/notificationStore";
 import type { TranslationKey } from "@/i18n/translations";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { 
@@ -59,6 +60,15 @@ export default function MyProfilePage() {
   const [kinshipDegree, setKinshipDegree] = useState("");
   const [educationalProcessRole, setEducationalProcessRole] = useState("");
   const [academicDegree, setAcademicDegree] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [description, setDescription] = useState("");
+  const [gender, setGender] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [country, setCountry] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [phoneAlternative, setPhoneAlternative] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const userId = user?.id;
 
@@ -147,6 +157,13 @@ export default function MyProfilePage() {
     setKinshipDegree(u.kinship_degree ?? "");
     setEducationalProcessRole(u.educational_process_role ?? "");
     setAcademicDegree(u.academic_degree ?? "");
+    setBirthDate(u.birth_date ?? "");
+    setDescription(u.description ?? "");
+    setGender(u.gender ?? "");
+    setNationality(u.nationality ?? "");
+    setCountry(u.country ?? "");
+    setPostalCode(u.postal_code ?? "");
+    setPhoneAlternative(u.phone_alternative ?? "");
     setEditOpen(true);
   };
 
@@ -156,6 +173,13 @@ export default function MyProfilePage() {
       phone: phone.trim() || null,
       city: city.trim() || null,
       address: address.trim() || null,
+      birth_date: birthDate || null,
+      description: description.trim() || null,
+      gender: gender.trim() || null,
+      nationality: nationality.trim() || null,
+      country: country.trim() || null,
+      postal_code: postalCode.trim() || null,
+      phone_alternative: phoneAlternative.trim() || null,
     };
     if (u.role === "parent") {
       body.work_place = workPlace.trim() || null;
@@ -164,6 +188,22 @@ export default function MyProfilePage() {
       body.academic_degree = academicDegree.trim() || null;
     }
     updateProfileMutation.mutate(body);
+  };
+  
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      await api.post("/users/me/photo", formData);
+      queryClient.invalidateQueries({ queryKey: ["profile-self"] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || t("profilePhotoUploadFailed"));
+    } finally {
+      setUploading(false);
+    }
   };
   const enrollments = data.enrollments ?? [];
   const completedCount = certificates.length;
@@ -289,37 +329,119 @@ export default function MyProfilePage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {editOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t("profileEdit")}</h2>
-              <button type="button" onClick={() => setEditOpen(false)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-xl h-[100dvh] sm:h-auto sm:max-h-[min(90dvh,900px)] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-gray-800 border-0 sm:border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 pr-2">{t("profileEdit")}</h2>
+              <button type="button" onClick={() => setEditOpen(false)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 shrink-0" aria-label={t("cancel")}>
                 <X className="w-5 h-5" />
               </button>
             </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4">
+            <div className="flex flex-col items-center mb-6">
+              <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                <div className="w-24 h-24 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 group-hover:border-[var(--qit-primary)] transition-colors">
+                  {u.photo_url ? (
+                    <img src={u.photo_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-gray-400 text-sm text-center px-2">{uploading ? t("loading") : t("profileChangePhoto")}</span>
+                  )}
+                </div>
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                  <span className="text-white text-xs font-medium">{t("profileChangePhoto")}</span>
+                </div>
+              </div>
+              <input type="file" ref={fileInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("city")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileFullName")}</label>
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePhone")}</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePhoneAlternative")}</label>
+                <input value={phoneAlternative} onChange={(e) => setPhoneAlternative(e.target.value)} placeholder={t("profilePhoneAlternative")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileBirthDate")}</label>
+                <input
+                  type="date"
+                  lang={lang === "kk" ? "kk" : lang === "en" ? "en" : "ru"}
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+                  title={t("profileBirthDateHint")}
+                />
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 ml-1">{t("profileBirthDateHint")}</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileGender")}</label>
+                <select value={gender} onChange={(e) => setGender(e.target.value)} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                  <option value="Мужской">{t("profileGenderMale")}</option>
+                  <option value="Женский">{t("profileGenderFemale")}</option>
+                  <option value="Другое">{t("profileGenderOther")}</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileNationality")}</label>
+                <input value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder={t("profileNationality")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileCountry")}</label>
+                <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("profileCountry")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileCity")}</label>
+                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("city")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePostalCode")}</label>
+                <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("profilePostalCode")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileAddress")}</label>
+                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="md:col-span-2 flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileDescription")}</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("profileDescriptionPlaceholder")} rows={3} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+              </div>
               {u.role === "parent" && (
                 <>
-                  <input value={workPlace} onChange={(e) => setWorkPlace(e.target.value)} placeholder={t("profileWorkPlace")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  <input value={kinshipDegree} onChange={(e) => setKinshipDegree(e.target.value)} placeholder={t("profileKinshipDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  <input value={educationalProcessRole} onChange={(e) => setEducationalProcessRole(e.target.value)} placeholder={t("profileEducationalProcessRole")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm md:col-span-2" />
-                  <input value={academicDegree} onChange={(e) => setAcademicDegree(e.target.value)} placeholder={t("profileAcademicDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm md:col-span-2" />
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileWorkPlace")}</label>
+                    <input value={workPlace} onChange={(e) => setWorkPlace(e.target.value)} placeholder={t("profileWorkPlace")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileKinshipDegree")}</label>
+                    <input value={kinshipDegree} onChange={(e) => setKinshipDegree(e.target.value)} placeholder={t("profileKinshipDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                  </div>
+                  <div className="md:col-span-2 flex flex-col gap-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileEducationalProcessRole")}</label>
+                    <input value={educationalProcessRole} onChange={(e) => setEducationalProcessRole(e.target.value)} placeholder={t("profileEducationalProcessRole")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                  </div>
+                  <div className="md:col-span-2 flex flex-col gap-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileAcademicDegree")}</label>
+                    <input value={academicDegree} onChange={(e) => setAcademicDegree(e.target.value)} placeholder={t("profileAcademicDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                  </div>
                 </>
               )}
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600">
+            </div>
+            <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <button type="button" onClick={() => setEditOpen(false)} className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium">
                 {t("cancel")}
               </button>
               <button
                 type="button"
                 onClick={saveEdit}
                 disabled={updateProfileMutation.isPending}
-                className="px-4 py-2 rounded-lg text-white disabled:opacity-60"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)" }}
               >
                 {updateProfileMutation.isPending ? t("loading") : t("save")}

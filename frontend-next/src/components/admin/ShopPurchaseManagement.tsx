@@ -11,7 +11,7 @@ import { getGlassCardStyle, getTextColors, getModalStyle, getInputStyle } from "
 import { Package, Truck, CheckCircle, Clock, Search, Filter, UserPlus, X } from "lucide-react";
 import { CourierListView } from "./CourierListView";
 import { cn } from "@/lib/utils";
-import { formatDateLocalized } from "@/lib/dateUtils";
+import { formatLocalizedDate } from "@/utils/dateUtils";
 
 
 type Purchase = {
@@ -414,7 +414,7 @@ export function ShopPurchaseManagement() {
                   </td>
                   <td className="px-4 py-3 text-sm" style={{ color: textColors.secondary }}>
                     {purchase.purchased_at
-                      ? formatDateLocalized(purchase.purchased_at, lang)
+                      ? formatLocalizedDate(purchase.purchased_at, lang as any, t)
                       : "-"}
 
                   </td>
@@ -437,11 +437,7 @@ export function ShopPurchaseManagement() {
                       <div className="flex items-center gap-1.5">
                         <CheckCircle className="w-3.5 h-3.5" style={{ color: "#10B981" }} />
                         <span className="text-sm" style={{ color: "#10B981" }}>
-                          {formatDateLocalized(purchase.delivered_at, lang, {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
+                          {formatLocalizedDate(purchase.delivered_at, lang as any, t)}
                         </span>
 
                       </div>
@@ -449,11 +445,7 @@ export function ShopPurchaseManagement() {
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" style={{ color: textColors.secondary }} />
                         <span className="text-sm" style={{ color: textColors.secondary }}>
-                          {t("adminShopExpected")} {formatDateLocalized(purchase.estimated_delivery_date, lang, {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
+                          {t("adminShopExpected")} {formatLocalizedDate(purchase.estimated_delivery_date, lang as any, t)}
                         </span>
 
                       </div>
@@ -485,7 +477,7 @@ export function ShopPurchaseManagement() {
                         </button>
                         {purchase.delivery_status === "delivered" && purchase.delivered_at && (
                           <div className="text-xs" style={{ color: textColors.secondary }}>
-                            {t("adminShopDeliveredOn")} {formatDateLocalized(purchase.delivered_at, lang)}
+                            {t("adminShopDeliveredOn")} {formatLocalizedDate(purchase.delivered_at, lang as any, t)}
                           </div>
 
                         )}

@@ -33,6 +33,7 @@ import { StaggeredAnimation } from "./StaggeredAnimation";
 import { GlareEffect } from "./GlareEffect";
 import { CourseStatsChart } from "./CourseStatsChart";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { toast } from "@/store/notificationStore";
 
 type CourseStat = {
   course_id: number;
@@ -159,6 +160,23 @@ export function AdminAnalytics() {
     return result;
   }, [newUsersData?.data]);
 
+  const sparseDayTicks = useMemo(() => {
+    const pick = (data: TimeSeriesPoint[]) => {
+      if (data.length <= 8) return undefined as string[] | undefined;
+      const target = 6;
+      const step = Math.max(1, Math.floor((data.length - 1) / (target - 1)));
+      const ticks: string[] = [];
+      for (let i = 0; i < data.length; i += step) ticks.push(data[i].date);
+      const last = data[data.length - 1].date;
+      if (ticks[ticks.length - 1] !== last) ticks.push(last);
+      return ticks;
+    };
+    return {
+      completions: pick(completionsChartData),
+      newUsers: pick(newUsersChartData),
+    };
+  }, [completionsChartData, newUsersChartData]);
+
   const totalEnrollments = courseStats.reduce((s, c) => s + c.enrollments, 0);
   const totalCompleted = courseStats.reduce(
     (s, c) => s + c.completed_topics,
@@ -180,7 +198,7 @@ export function AdminAnalytics() {
       console.error("Failed to export Excel:", error);
       const err = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
       const errorMessage = err?.response?.data?.detail || err?.message || t("excelExportError");
-      alert(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -238,16 +256,16 @@ export function AdminAnalytics() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? "text-white" : "text-gray-900"}`}>
-          <BarChart3 className="w-8 h-8" style={{ color: "#8B5CF6" }} />{" "}
-          {t("adminAnalyticsTitle")}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        <h1 className={`text-2xl sm:text-3xl font-bold flex items-center gap-2 min-w-0 ${isDark ? "text-white" : "text-gray-900"}`}>
+          <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" style={{ color: "#8B5CF6" }} />{" "}
+          <span className="min-w-0">{t("adminAnalyticsTitle")}</span>
         </h1>
         <Link
           href="/app/leaderboard"
-          className="flex items-center gap-1 py-2 px-4 rounded-lg bg-blue-600 dark:bg-qit-primary text-white hover:bg-blue-700 dark:hover:bg-qit-primary-light transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg bg-blue-600 dark:bg-qit-primary text-white hover:bg-blue-700 dark:hover:bg-qit-primary-light transition-colors text-sm shrink-0 w-full sm:w-auto text-center whitespace-normal leading-tight"
         >
-          <Trophy className="w-4 h-4" /> {t("adminAnalyticsLeaderboardPage")}
+          <Trophy className="w-4 h-4 shrink-0" /> {t("adminAnalyticsLeaderboardPage")}
         </Link>
       </div>
 
@@ -383,8 +401,24 @@ export function AdminAnalytics() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }} tickFormatter={(v) => v.slice(5)} stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
-                <YAxis tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }} stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  tickFormatter={(v) => String(v).slice(5)}
+                  stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"}
+                  angle={-40}
+                  textAnchor="end"
+                  height={52}
+                  {...(sparseDayTicks.completions
+                    ? { ticks: sparseDayTicks.completions, interval: 0 as const }
+                    : { interval: "preserveStartEnd" as const })}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"}
+                  allowDecimals={false}
+                  tickCount={6}
+                />
                 <Tooltip
                   contentStyle={{ 
                     backgroundColor: isDark ? "rgba(26, 34, 56, 0.95)" : "rgba(255, 255, 255, 0.98)", 
@@ -437,8 +471,24 @@ export function AdminAnalytics() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }} tickFormatter={(v) => v.slice(5)} stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
-                <YAxis tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }} stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  tickFormatter={(v) => String(v).slice(5)}
+                  stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"}
+                  angle={-40}
+                  textAnchor="end"
+                  height={52}
+                  {...(sparseDayTicks.newUsers
+                    ? { ticks: sparseDayTicks.newUsers, interval: 0 as const }
+                    : { interval: "preserveStartEnd" as const })}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  stroke={isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"}
+                  allowDecimals={false}
+                  tickCount={6}
+                />
                 <Tooltip
                   contentStyle={{ 
                     backgroundColor: isDark ? "rgba(26, 34, 56, 0.95)" : "rgba(255, 255, 255, 0.98)", 
