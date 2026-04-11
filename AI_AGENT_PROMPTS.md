@@ -14,7 +14,7 @@
 Ты работаешь над LMS-платформой (FastAPI + SQLAlchemy).
 
 КОНТЕКСТ ПРОЕКТА:
-- Бэкенд: /home/nurjaks/Development/LMS platform - order/backend/
+- Бэкенд: `<репозиторий>/backend/`
 - Файл роутов учителя: backend/app/api/routes/teacher.py (prefix="/teacher")
 - Модели: TeacherGroup (teacher_groups), TeacherAssignment (teacher_assignments), AssignmentSubmission (assignment_submissions), GroupStudent (group_students)
 - Авторизация: get_current_teacher_user из app.api.deps
@@ -91,7 +91,7 @@ Query-параметры:
 Ты работаешь над LMS-платформой на Next.js 14 (App Router) + TypeScript.
 
 КОНТЕКСТ:
-- Проект: /home/nurjaks/Development/LMS platform - order/frontend-next/
+- Проект: `<репозиторий>/frontend-next/`
 - Сайдбар: src/components/dashboard/AppDashboardSidebar.tsx
 - Мобильная навигация: src/components/dashboard/MobileBottomNav.tsx
 - Переводы: src/i18n/translations.ts (три языка: ru, kk, en)
@@ -281,7 +281,7 @@ import { LayoutDashboard, BookOpen, Trophy, User, Users } from "lucide-react";
 Ты работаешь над LMS-платформой на Next.js 14 (App Router) + TypeScript + Tailwind CSS.
 
 КОНТЕКСТ ПРОЕКТА:
-- Проект: /home/nurjaks/Development/LMS platform - order/frontend-next/
+- Проект: `<репозиторий>/frontend-next/`
 - API клиент: import { api } from "@/api/client" — axios instance, baseURL="/api"
 - Запросы: @tanstack/react-query (useQuery, useMutation, useQueryClient)
 - Тема: useTheme() из @/context/ThemeContext — возвращает { theme: "light" | "dark", toggleTheme }
@@ -429,7 +429,7 @@ import { Plus, FileText, ChevronDown, ChevronRight, BarChart3, FolderOpen, MoreV
 Ты работаешь над LMS-платформой на Next.js 14 (App Router) + TypeScript + Tailwind CSS.
 
 КОНТЕКСТ ПРОЕКТА (такой же как в Задаче 3):
-- Проект: /home/nurjaks/Development/LMS platform - order/frontend-next/
+- Проект: `<репозиторий>/frontend-next/`
 - API: import { api } from "@/api/client" (axios, baseURL="/api")
 - React Query: useQuery, useMutation
 - Тема: useTheme() → { theme, toggleTheme }; стили из @/utils/themeStyles
@@ -536,7 +536,7 @@ courseStream, courseClasswork, coursePeople, courseGrades, courseCode, upcoming,
 Ты работаешь над LMS-платформой на Next.js 14 (App Router) + TypeScript + Tailwind CSS.
 
 КОНТЕКСТ:
-- Проект: /home/nurjaks/Development/LMS platform - order/frontend-next/
+- Проект: `<репозиторий>/frontend-next/`
 - Сайдбар: src/components/dashboard/AppDashboardSidebar.tsx
 - Существующая страница курсов студента: src/app/app/courses/page.tsx — показывает записанные курсы
 - Страница курса: src/app/app/courses/[courseId]/page.tsx — детали курса

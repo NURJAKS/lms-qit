@@ -1,10 +1,9 @@
-
-import os
 import sys
-from datetime import datetime
+from pathlib import Path
 
-# Add the project root to sys.path to find 'app'
-sys.path.insert(0, '/home/nurjaks/Dev/LMS platform - order/backend')
+# Корень backend (рядом с app/)
+_backend = Path(__file__).resolve().parent
+sys.path.insert(0, str(_backend))
 
 from app.core.database import SessionLocal
 from app.models.teacher_assignment import TeacherAssignment

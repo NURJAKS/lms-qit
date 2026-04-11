@@ -2,6 +2,7 @@
   "name": "frontend-next",
   "version": "0.1.0",
   "private": true,
+  "author": "Жандос Сахиев",
   "engines": {
     "node": ">=20.9.0"
   },

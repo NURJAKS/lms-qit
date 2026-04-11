@@ -1,6 +1,6 @@
-
 import os
 import re
+from pathlib import Path
 
 def extract_keys_from_src(src_path):
     # Regex to find t("key") or t('key') or t(`key`)
@@ -40,7 +40,7 @@ def get_keys_from_translations(translations_path):
     return keys
 
 if __name__ == "__main__":
-    src_dir = "/home/nurjaks/Dev/LMS platform - order/frontend-next/src"
+    src_dir = str(Path(__file__).resolve().parent / "src")
     trans_file = os.path.join(src_dir, "i18n/translations.ts")
     
     used_findings = extract_keys_from_src(src_dir)

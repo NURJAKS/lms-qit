@@ -2,6 +2,10 @@
 
 Образовательная платформа (MVP) с AI-помощником и геймификацией.
 
+**Автор учебного проекта:** Жандос Сахиев.
+
+**Готовая коробка для проверки:** в репозитории уже есть демо-БД (`backend/education.db`) и `backend/uploads/`; секретный `backend/.env` не в git — при первом запуске копируется из `backend/.env.example`. Достаточно установить Python и Node, затем запустить проект (см. ниже) — отдельно поднимать БД и долгий `seed_*` не обязательно.
+
 **Стек:** Backend — Python (FastAPI, SQLAlchemy, SQLite). Frontend — Next.js 16, React 19, TypeScript, Tailwind CSS.
 
 ---
