@@ -2,15 +2,19 @@
 # Перед запуском: cp env.deploy.example .env.deploy && отредактируйте секреты и URL.
 # Запуск: docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
 #
-# Сайт (Next.js): порт 3000 · API (FastAPI): 8000, Swagger: :8000/docs — см. также deploy/nginx-qazaqitacademy.example.conf
+# Сайт на хосте: порт 3000 (Next.js). Бэкенд слушает 8000 только ВНУТРИ сети compose — на хост :8000 не пробрасываем,
+# чтобы не пересекаться с другим проектом на VPS. Swagger из браузера: через /api на том же домене (прокси Next).
+# См. deploy/nginx-qazaqitacademy.example.conf · при занятом :3000 используйте override (ниже).
 # Данные сохраняются в именованных томах Docker (БД и uploads).
 
 services:
   backend:
     build: ./backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # Не публикуем 8000 на хост — иначе конфликт с другим сервисом на VPS. Доступ к API: контейнер frontend → backend:8000.
+    # Раскомментируйте только если нужен прямой доступ к API с хоста (подберите свободный порт, не 8000):
+    # ports:
+    #   - "8010:8000"
     environment:
       DATABASE_URL: sqlite:////data/education.db
       LMS_DATA_DIR: /data
@@ -30,6 +34,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
+      # Если на сервере занят 3000 — замените на "3010:3000" и в Nginx proxy_pass на 3010
       - "3000:3000"
     environment:
       BACKEND_URL: http://backend:8000
