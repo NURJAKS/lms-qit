@@ -37,9 +37,11 @@ nano .env.deploy
 | `ALLOWED_ORIGINS` | `https://qazaqitacademy-edu.pp.ua,https://www.qazaqitacademy-edu.pp.ua` (при отладке можно добавить `,http://localhost:3000`) |
 | `FRONTEND_PUBLIC_URL` | `https://qazaqitacademy-edu.pp.ua` |
 
-Ключи `OPENAI_API_KEY` / `GEMINI_API_KEY` — по желанию.
+Ключи `OPENAI_API_KEY` / `GEMINI_API_KEY` — по желанию. Блок **SMTP_**\* — если нужна почта (после `git pull` с актуальным `docker-compose.vps.yml`).
 
-Файл `.env.deploy` **не коммитьте** (уже в `.gitignore`).
+В `docker-compose.vps.yml` уже заданы `DATABASE_URL` и `DEBUG=false` для бэкенда — строки **`DATABASE_URL`**, **`DEBUG`** в `.env.deploy` для контейнера **не используются** (их можно не писать). **`UPLOAD_DIR`** в контейнере не задаётся через compose — пути к загрузкам в коде фиксированы.
+
+Файл `.env.deploy` **не коммитьте** и **не публикуйте** (уже в `.gitignore`).
 
 ---
 
