@@ -12,7 +12,8 @@
 
 ## Установка и запуск
 
-> **Подробная инструкция:** [HOW_TO_RUN.md](HOW_TO_RUN.md) — структура проекта, порты, какая БД где, чек-лист перед запуском (чтобы не запустить не ту БД).
+> **Подробная инструкция:** [HOW_TO_RUN.md](HOW_TO_RUN.md) — структура проекта, порты, какая БД где, чек-лист перед запуском (чтобы не запустить не ту БД).  
+> **Windows (git или zip):** [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) — `start-windows.cmd` / `start-windows.ps1`, восстановление SQLite, ключи ИИ.
 
 ### Демо-режим (быстрый показ, диплом, клиент)
 
@@ -24,7 +25,9 @@
 
 2. В репозитории может лежать **небольшая демо-БД** `backend/education.db` и папка **`backend/uploads/`** — чтобы проверяющий открыл проект без длинной цепочки `seed_*`. Если файла БД нет или нужен чистый срез — выполните шаг «Backend» ниже (init + seed).
 
-3. Из корня: **`bash start.sh`** — поднимет backend и frontend (если нет `backend/.env`, скрипт скопирует его из `.env.example`).
+3. Из корня:
+   - **Linux / macOS / Git Bash:** **`bash start.sh`** — поднимет backend и frontend (если нет `backend/.env`, скрипт скопирует его из `.env.example`).
+   - **Windows (PowerShell):** **`start-windows.cmd`** или `powershell -ExecutionPolicy Bypass -File .\start-windows.ps1` (см. [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)).
 
 ### 1. Клонирование
 
@@ -71,10 +74,14 @@ npm run dev
 
 ### Быстрый запуск (из корня проекта)
 
+**Linux / macOS / Git Bash:**
+
 ```bash
 ./run-backend.sh    # в одном терминале
 ./run-frontend.sh   # в другом терминале
 ```
+
+**Windows:** см. [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) — `start-windows.cmd` или пара скриптов `start-backend-windows.ps1` + `start-frontend-windows.ps1`.
 
 Бэкенд будет использовать `backend/.venv` и базу **`backend/education.db`** независимо от того, из какой папки запущен.
 
@@ -109,6 +116,6 @@ Frontend: http://localhost:3000
 ## Важно
 
 - **`backend/.env` не коммитится** — в git только `backend/.env.example`; реальные ключи и пароли только у себя локально.
-- **`backend/education.db`** и **`backend/uploads/`** для демо можно держать в репозитории (маленький объём, только тестовые данные, без личных данных реальных людей).
+- **`backend/education.db`** и **`backend/uploads/`** для демо можно держать в репозитории (маленький объём, только тестовые данные, без личных данных реальных людей). После **`git clone`** у коллеги будут **те же** закоммиченные БД и вложения, что в последнем пуше; локальный **`backend/.env`** с вашими ключами в репозиторий не попадает — он копируется из `.env.example` при первом запуске.
 - Для полного сброса БД повторите команды из шага 2 (init_db, seed_*).
 - **Локальный запуск без Docker:** бэкенд и фронт запускаются отдельно (см. шаги 2 и 3). Docker не обязателен.

@@ -515,10 +515,22 @@ export default function TeacherCourseGroupPage() {
   });
 
   const topicSections = useMemo(() => {
+    const byId = new Map<number, Assignment>();
+    for (const a of localAssignments) {
+      byId.set(a.id, a);
+    }
+    const uniqueAssignments = Array.from(byId.values());
+
+    const topicIdSet = new Set(localTopics.map((tp) => tp.id));
+
     const filtered = (arr: Assignment[]) =>
       topicFilter === "all" ? arr : arr.filter((a) => a.topic_id === topicFilter);
 
-    const uncategorized = filtered(localAssignments.filter((a) => a.topic_id == null));
+    const uncategorized = filtered(
+      uniqueAssignments.filter(
+        (a) => a.topic_id == null || !topicIdSet.has(a.topic_id as number)
+      )
+    );
 
     const sections: { key: string; topicId: number | null; title: string; items: Assignment[] }[] = [];
 
@@ -536,7 +548,7 @@ export default function TeacherCourseGroupPage() {
         key: `t-${tp.id}`,
         topicId: tp.id,
         title: tp.title,
-        items: filtered(localAssignments.filter((a) => a.topic_id === tp.id)),
+        items: filtered(uniqueAssignments.filter((a) => a.topic_id === tp.id)),
       });
     }
 

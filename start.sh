@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Одна команда: backend (8000) + frontend (3000). Запускайте из любой папки:
-#   ./start.sh
-#   npm start
+# Одна команда: backend (8000) + frontend (3000). Запускайте из корня репозитория:
+#   ./start.sh        (Linux / macOS / Git Bash на Windows)
+#   См. также start-windows.cmd для чистого PowerShell.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,31 +19,43 @@ if [ ! -d "backend" ] || [ ! -d "frontend-next" ]; then
   exit 1
 fi
 
-check_port() {
-  lsof -Pi :"$1" -sTCP:LISTEN -t >/dev/null 2>&1
-}
-
-if check_port 8000; then
-  echo -e "${YELLOW}⚠️  Порт 8000 занят (backend уже запущен?).${NC}"
+# Python: python3 или python (Windows / Git Bash)
+if command -v python3 >/dev/null 2>&1; then
+  PYBIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYBIN="python"
+else
+  echo "❌ Не найден python3/python. Установите Python 3.12+."
+  exit 1
 fi
-if check_port 3000; then
-  echo -e "${YELLOW}⚠️  Порт 3000 занят (frontend уже запущен?).${NC}"
-fi
 
+# venv: Linux/macOS — bin/python; Windows — Scripts/python.exe
 VENV_PY="$SCRIPT_DIR/backend/.venv/bin/python"
 VENV_PIP="$SCRIPT_DIR/backend/.venv/bin/pip"
-
-if [ ! -x "$VENV_PY" ]; then
-  echo -e "${BLUE}📦 Создаю backend/.venv …${NC}"
-  (cd "$SCRIPT_DIR/backend" && python3 -m venv .venv)
-  echo -e "${BLUE}📥 pip install (backend) …${NC}"
-  "$VENV_PIP" install --upgrade pip
-  "$VENV_PIP" install -r "$SCRIPT_DIR/backend/requirements.txt"
+if [ -f "$SCRIPT_DIR/backend/.venv/Scripts/python.exe" ]; then
+  VENV_PY="$SCRIPT_DIR/backend/.venv/Scripts/python.exe"
+  VENV_PIP="$SCRIPT_DIR/backend/.venv/Scripts/pip.exe"
 fi
+
+if [ ! -x "$VENV_PY" ] && [ ! -f "$VENV_PY" ]; then
+  echo -e "${BLUE}📦 Создаю backend/.venv …${NC}"
+  (cd "$SCRIPT_DIR/backend" && "$PYBIN" -m venv .venv)
+  if [ -f "$SCRIPT_DIR/backend/.venv/Scripts/python.exe" ]; then
+    VENV_PY="$SCRIPT_DIR/backend/.venv/Scripts/python.exe"
+    VENV_PIP="$SCRIPT_DIR/backend/.venv/Scripts/pip.exe"
+  else
+    VENV_PY="$SCRIPT_DIR/backend/.venv/bin/python"
+    VENV_PIP="$SCRIPT_DIR/backend/.venv/bin/pip"
+  fi
+fi
+
+echo -e "${BLUE}📥 pip install (backend) …${NC}"
+"$VENV_PY" -m pip install --upgrade pip -q
+"$VENV_PY" -m pip install -r "$SCRIPT_DIR/backend/requirements.txt"
 
 if ! "$VENV_PY" -c "import uvicorn" 2>/dev/null; then
   echo -e "${BLUE}📥 Установка зависимостей backend…${NC}"
-  "$VENV_PIP" install -r "$SCRIPT_DIR/backend/requirements.txt"
+  "$VENV_PY" -m pip install -r "$SCRIPT_DIR/backend/requirements.txt"
 fi
 
 if [ ! -f "$SCRIPT_DIR/backend/.env" ]; then

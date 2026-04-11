@@ -92,6 +92,17 @@ def _deadline_to_iso_utc(deadline: datetime | None) -> str | None:
     return deadline.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _dt_to_utc_z(dt: datetime | None) -> str | None:
+    """Serialize datetimes for the client as UTC with a Z suffix so browsers apply local TZ."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 def _submission_has_student_work(r: AssignmentSubmission) -> bool:
     """True if the student actually turned in text or files (not a teacher-only placeholder row)."""
     if r.submission_text and str(r.submission_text).strip():
@@ -619,7 +630,7 @@ def get_submissions_inbox(
             "course_id": a.course_id,
             "course_title": a.course.title if a.course else "",
             "deadline": _deadline_to_iso_utc(a.deadline),
-            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "created_at": _dt_to_utc_z(a.created_at) if a.created_at else None,
             "submitted_count": int(submitted_count),
             "total_students": total_students,
             "graded_count": int(graded_count)
@@ -1212,7 +1223,7 @@ def get_group_gradebook(
             "topic_title": (a.topic.title if getattr(a, "topic", None) else None),
             "deadline": _deadline_to_iso_utc(a.deadline),
             "max_points": a.max_points or 100,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "created_at": _dt_to_utc_z(a.created_at) if a.created_at else None,
         }
         for a in assignments
     ]
@@ -1474,9 +1485,9 @@ def list_assignments(
             "title": r.title,
             "description": r.description,
             "deadline": _deadline_to_iso_utc(r.deadline),
-            "closed_at": closed_at.isoformat() if closed_at else None,
+            "closed_at": _dt_to_utc_z(closed_at) if closed_at else None,
             "is_closed": _is_assignment_closed(r),
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": _dt_to_utc_z(r.created_at) if r.created_at else None,
             "is_synopsis": bool(getattr(r, "is_synopsis", False)),
         })
 
@@ -1494,7 +1505,7 @@ def list_assignments(
             "deadline": None,
             "closed_at": None,
             "is_closed": False,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": _dt_to_utc_z(r.created_at) if r.created_at else None,
         })
 
     for r in questions:
@@ -1511,7 +1522,7 @@ def list_assignments(
             "deadline": None,
             "closed_at": None,
             "is_closed": False,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": _dt_to_utc_z(r.created_at) if r.created_at else None,
         })
 
     # Sort by created_at desc

@@ -2,6 +2,17 @@ import type { Lang, TranslationKey } from "@/i18n/translations";
 
 type TFunction = (key: TranslationKey) => string;
 
+/** ISO datetime without timezone — treat as UTC (matches API `_dt_to_utc_z`). */
+const NAIVE_ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
+export function parseAppDateTime(iso: string): Date {
+  const s = iso.trim();
+  if (NAIVE_ISO_DATETIME.test(s)) {
+    return new Date(`${s}Z`);
+  }
+  return new Date(s);
+}
+
 const WEEKDAY_FULL_KEYS = [
   "weekdaySun",
   "weekdayMon",
@@ -27,7 +38,7 @@ export function formatLocalizedDate(
   if (!iso) return "";
 
   try {
-    const date = new Date(iso);
+    const date = parseAppDateTime(iso);
     if (isNaN(date.getTime())) return iso;
 
     const now = new Date();
@@ -80,7 +91,7 @@ export function formatWeekdayLongAndTime(
   t: TFunction,
   options: { use24h?: boolean } = {}
 ): string {
-  const date = new Date(iso);
+  const date = parseAppDateTime(iso);
   if (isNaN(date.getTime())) return iso;
   const wd = t(WEEKDAY_FULL_KEYS[date.getDay()]);
   const timeStr = formatTime(date, lang, t, options.use24h);
@@ -107,7 +118,7 @@ export function formatRelativeDate(
   t: TFunction
 ): string {
   try {
-    const date = new Date(iso);
+    const date = parseAppDateTime(iso);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
