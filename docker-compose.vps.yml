@@ -24,21 +24,16 @@ services:
       FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     volumes:
       - lms_sqlite_data:/data
       - lms_uploads:/app/uploads
+    # Проверка, что порт 8000 слушается (надёжнее, чем HTTP /docs через urllib в slim-образе).
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=5).read()\""]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8000),timeout=3); s.close()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
 
   frontend:
     build:

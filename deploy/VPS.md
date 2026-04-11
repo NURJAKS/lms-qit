@@ -37,11 +37,9 @@ nano .env.deploy
 | `ALLOWED_ORIGINS` | `https://qazaqitacademy-edu.pp.ua,https://www.qazaqitacademy-edu.pp.ua` (при отладке можно добавить `,http://localhost:3000`) |
 | `FRONTEND_PUBLIC_URL` | `https://qazaqitacademy-edu.pp.ua` |
 
-Ключи `OPENAI_API_KEY` / `GEMINI_API_KEY` — по желанию. Блок **SMTP_**\* — если нужна почта (после `git pull` с актуальным `docker-compose.vps.yml`).
+Ключи `OPENAI_API_KEY` / `GEMINI_API_KEY` — по желанию.
 
-В `docker-compose.vps.yml` уже заданы `DATABASE_URL` и `DEBUG=false` для бэкенда — строки **`DATABASE_URL`**, **`DEBUG`** в `.env.deploy` для контейнера **не используются** (их можно не писать). **`UPLOAD_DIR`** в контейнере не задаётся через compose — пути к загрузкам в коде фиксированы.
-
-Файл `.env.deploy` **не коммитьте** и **не публикуйте** (уже в `.gitignore`).
+Файл `.env.deploy` **не коммитьте** (уже в `.gitignore`).
 
 ---
 
@@ -152,10 +150,12 @@ docker compose --env-file .env.deploy -f docker-compose.vps.yml logs -f frontend
 
 | Симптом | Что проверить |
 |---------|----------------|
+| `dependency failed to start: container … backend … is unhealthy` | Логи бэкенда: `docker compose --env-file .env.deploy -f docker-compose.vps.yml logs backend --tail=200`. Часто — пустой/битый `.env.deploy`, нет `SECRET_KEY`, или ошибка SQLite. После правок: `docker compose … up -d --force-recreate backend`. |
 | CORS / «blocked by CORS» | `ALLOWED_ORIGINS` содержит **точный** origin из адресной строки (с `https://` и при необходимости `www`). |
 | 502 Bad Gateway | Контейнер фронта не слушает: `docker compose ps`, `curl 127.0.0.1:3000`. Порт в Nginx = порт в compose. |
 | Другой проект на :8000 | Нормально: бэкенд LMS не публикует 8000 на хост. |
 | Swagger | Откройте `https://ваш-домен/docs` — запрос идёт через фронт/прокси к API. |
+| `buildx isn't installed` | Предупреждение можно игнорировать или: `apt install -y docker-buildx-plugin`. |
 
 ---
 
