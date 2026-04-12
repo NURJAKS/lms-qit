@@ -7,9 +7,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+from app.core.rate_limit import limiter
 
 from app.core.database import engine, Base
 from app.core.migrations import run_migrations
@@ -20,8 +20,6 @@ from app.api.routes import analytics_student as analytics_student_insights
 from app.jobs.daily_rewards import run_daily_leaderboard_rewards
 
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address)
 
 docs_kwargs = {}
 if not settings.DEBUG:

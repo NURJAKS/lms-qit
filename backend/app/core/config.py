@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
     SMTP_USE_TLS: bool = True
+    # slowapi: лимит попыток входа с одного IP (раньше было 5/min — быстро упирались при тестах)
+    AUTH_LOGIN_RATELIMIT: str = "60/minute"
+    AUTH_REGISTER_RATELIMIT: str = "10/minute"
 
     class Config:
         env_file = str(_BACKEND_ROOT / ".env")

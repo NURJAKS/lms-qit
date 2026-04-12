@@ -7,10 +7,8 @@ from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from app.api.deps import get_current_admin_user, get_current_user
+from app.core.rate_limit import limiter
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_password_hash
@@ -27,7 +25,6 @@ from app.services.email_sender import (
 )
 
 router = APIRouter(prefix="/applications", tags=["applications"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 def _generate_password(length: int = 10) -> str:

@@ -20,6 +20,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres_password_123@db:5432/education_platform
       SECRET_KEY: change-me-in-production-secret-key-123
       DEBUG: "False"
+      AUTH_LOGIN_RATELIMIT: "60/minute"
     depends_on:
       - db
     volumes:
