@@ -199,6 +199,36 @@ def _sync_sequences(pg_session: Session, pg_engine) -> None:
     pg_session.commit()
 
 
+def _sqlite_column_names(sqlite_insp, table_name: str) -> set[str]:
+    if not sqlite_insp.has_table(table_name):
+        return set()
+    return {c["name"] for c in sqlite_insp.get_columns(table_name)}
+
+
+def _copy_rows_sqlite_compat(
+    sqlite_db: Session,
+    postgres_db: Session,
+    model,
+    sqlite_cols: set[str],
+) -> int:
+    """
+    Копирует строки без ORM SELECT по SQLite: старые БД могут не иметь колонок,
+    которые уже есть в модели (например topic_synopsis_submissions.grade).
+    """
+    table_name = model.__tablename__
+    model_col_names = [c.name for c in model.__table__.columns]
+    select_cols = [n for n in model_col_names if n in sqlite_cols]
+    if not select_cols:
+        return 0
+    quoted = ", ".join(f'"{c}"' for c in select_cols)
+    rows = sqlite_db.execute(text(f'SELECT {quoted} FROM "{table_name}"')).mappings().all()
+    for row in rows:
+        row_dict = dict(row)
+        data = {c.name: row_dict.get(c.name) for c in model.__table__.columns}
+        postgres_db.add(model(**data))
+    return len(rows)
+
+
 def migrate(sqlite_url: str, postgres_url: str, *, force: bool) -> bool:
     sqlite_url = _resolve_sqlite_url(sqlite_url)
     print(f"Источник (SQLite): {sqlite_url}")
@@ -232,24 +262,17 @@ def migrate(sqlite_url: str, postgres_url: str, *, force: bool) -> bool:
         print("Режим вставки: session_replication_role = replica (FK временно не проверяются)")
         postgres_db.execute(text("SET session_replication_role = 'replica'"))
 
+        sinsp = inspect(sqlite_engine)
         for model in MIGRATION_MODELS:
             table_name = model.__tablename__
-            sinsp = inspect(sqlite_engine)
             if not sinsp.has_table(table_name):
                 print(f"  Пропуск (нет в SQLite): {table_name}")
                 continue
 
-            items = sqlite_db.query(model).all()
-            if not items:
-                print(f"  {table_name}: 0 строк")
-                continue
-
-            for item in items:
-                data = {c.name: getattr(item, c.name) for c in item.__table__.columns}
-                postgres_db.add(model(**data))
-
+            sqlite_cols = _sqlite_column_names(sinsp, table_name)
+            n = _copy_rows_sqlite_compat(sqlite_db, postgres_db, model, sqlite_cols)
             postgres_db.commit()
-            print(f"  {table_name}: {len(items)} строк")
+            print(f"  {table_name}: {n} строк")
 
         postgres_db.execute(text("SET session_replication_role = 'origin'"))
         postgres_db.commit()
