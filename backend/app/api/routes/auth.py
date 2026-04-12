@@ -20,6 +20,11 @@ from app.services.activity_log import log_activity
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
 
+# Частая опечатка при входе: в БД email с «sahiev», вводят «sahlev».
+_LOGIN_EMAIL_TYPOS: dict[str, str] = {
+    "zhandossahlev@gmail.com": "zhandossahiev@gmail.com",
+}
+
 
 @router.post("/register", response_model=RegisterResponse)
 @limiter.limit("5/minute")
@@ -34,6 +39,7 @@ def register(request: Request, data: UserRegister, db: Session = Depends(get_db)
 @limiter.limit("5/minute")
 def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
     email = (data.email or "").strip().lower()
+    email = _LOGIN_EMAIL_TYPOS.get(email, email)
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
