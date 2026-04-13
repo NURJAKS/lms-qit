@@ -1,5 +1,22 @@
+import json as _json
+
 from datetime import date, datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _ensure_list(v):
+    """Parse stringified JSON lists from SQLite (e.g. '[]' stored as text)."""
+    if v is None:
+        return v
+    if isinstance(v, str):
+        v = v.strip()
+        if v.startswith("["):
+            try:
+                return _json.loads(v)
+            except (ValueError, _json.JSONDecodeError):
+                pass
+        return None  # invalid string → treat as empty
+    return v
 
 
 class UserBase(BaseModel):
@@ -60,6 +77,16 @@ class UserBase(BaseModel):
     can_edit_courses: bool | None = None
     can_view_analytics: bool | None = None
     can_configure_system: bool | None = None
+
+    # Auto-parse stringified JSON lists coming from SQLite-backed columns
+    @field_validator(
+        "permissions", "areas_of_responsibility", "curated_courses",
+        "subjects_taught", "student_counts",
+        mode="before",
+    )
+    @classmethod
+    def _parse_json_list(cls, v):
+        return _ensure_list(v)
 
 
 class UserCreate(BaseModel):

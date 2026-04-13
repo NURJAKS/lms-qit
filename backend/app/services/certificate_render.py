@@ -1,4 +1,7 @@
-"""Персонализированный PNG-сертификат на основе uploads/certificates/certification.png."""
+"""Персонализированный PNG-сертификат на основе uploads/certificates/certification-template.png.
+
+Шаблон без пунктиров: имя и курс — белый обычный шрифт по центру; дата снизу справа, слева от метки даты на макете.
+"""
 
 from __future__ import annotations
 
@@ -12,35 +15,24 @@ from PIL import Image, ImageDraw, ImageFont
 logger = logging.getLogger(__name__)
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_PATH = BACKEND_ROOT / "uploads" / "certificates" / "certification.png"
-SIGNATURE_PATH = BACKEND_ROOT / "uploads" / "certificates" / "image-removebg-preview.png"
+TEMPLATE_PATH = BACKEND_ROOT / "uploads" / "certificates" / "certification-template.png"
 ISSUED_DIR = BACKEND_ROOT / "uploads" / "certificates" / "issued"
 
-# Макет (координаты для эталона 1024×724); позиции масштабируются под фактический размер файла.
+# Эталон для кегля (ширина) и межстрочных интервалов (высота).
 DESIGN_W = 1024
-DESIGN_H = 724
+DESIGN_H_REF = 724
 
-# Координаты в системе макета 1024×724; anchor "mm" — геометрический центр текста в точке (X,Y).
-# Имя: Y чуть ниже, чтобы сесть на верхнюю линию, не заходя на фразу выше.
-NAME_CENTER = (512, 345)
-COURSE_CENTER = (512, 470)
-# Дата: над линией и подписью «Дата»; меньше Y — выше на листе.
-DATE_POS = (195, 575)
-# Подпись (PNG с альфой): центр вставки в координатах макета; max — доля ширины сертификата.
-SIGNATURE_CENTER = (838, 572)
-SIGNATURE_MAX_WIDTH_FRAC = 0.22
+# Доли (0–1). Имя/курс: anchor "mm". Дата: anchor "rs" (правый край строки на базовой линии).
+NAME_CENTER_FRAC = (0.645, 0.35)
+COURSE_CENTER_FRAC = (0.57, 0.47)
+# Правый край строки даты (X) и базовая линия (Y) в долях; anchor rs. Меньше X — дата левее; меньше Y — выше.
+DATE_RIGHT_BASELINE_FRAC = (0.84, 0.828)
 
-NAME_PT_DESIGN = 45
-COURSE_PT_DESIGN = 32
-DATE_PT_DESIGN = 22
+NAME_PT_DESIGN = 40
+COURSE_PT_DESIGN = 30
+DATE_PT_DESIGN = 20
 
-TEXT_COLOR = (51, 51, 51)
-
-_FONT_BOLD: Iterable[str] = (
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-)
+TEXT_COLOR = (255, 255, 255)
 
 _FONT_REGULAR: Iterable[str] = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -95,42 +87,8 @@ def _wrap_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont,
     return lines if lines else [text]
 
 
-def _scale_xy(x: float, y: float, img_w: int, img_h: int) -> tuple[float, float]:
-    return (x * img_w / DESIGN_W, y * img_h / DESIGN_H)
-
-
-def _paste_signature_rgba(
-    base: Image.Image,
-    sig_path: Path,
-    center_design: tuple[float, float],
-    iw: int,
-    ih: int,
-    max_width_frac: float,
-) -> None:
-    if not sig_path.is_file():
-        logger.warning("Файл подписи не найден: %s", sig_path)
-        return
-    try:
-        sig = Image.open(sig_path).convert("RGBA")
-    except OSError:
-        logger.warning("Не удалось открыть подпись: %s", sig_path)
-        return
-    max_w = max(40, int(iw * max_width_frac))
-    w0, h0 = sig.size
-    if w0 <= 0 or h0 <= 0:
-        return
-    if w0 > max_w:
-        ratio = max_w / w0
-        new_w = max_w
-        new_h = max(1, int(round(h0 * ratio)))
-        sig = sig.resize((new_w, new_h), Image.Resampling.LANCZOS)
-    w, h = sig.size
-    cx, cy = _scale_xy(center_design[0], center_design[1], iw, ih)
-    left = int(round(cx - w / 2))
-    top = int(round(cy - h / 2))
-    left = max(0, min(left, iw - w))
-    top = max(0, min(top, ih - h))
-    base.paste(sig, (left, top), sig)
+def _frac_xy(fx: float, fy: float, img_w: int, img_h: int) -> tuple[float, float]:
+    return (fx * img_w, fy * img_h)
 
 
 def render_certificate_png(
@@ -159,25 +117,24 @@ def render_certificate_png(
     iw, ih = img.size
 
     sx = iw / DESIGN_W
-    sy = ih / DESIGN_H
+    sy = ih / DESIGN_H_REF
 
-    bold_path = _pick_existing(_FONT_BOLD)
     regular_path = _pick_existing(_FONT_REGULAR)
 
-    # Имя: полужирный, уменьшать размер если не помещается в ~85% ширины; длинные ФИО — чуть меньший стартовый кегль
+    # Имя: обычный начертание, по центру очищенного поля
     max_name_w = int(iw * 0.85)
     name_size = max(18, int(round(NAME_PT_DESIGN * sx)))
     if len(name) > 20:
         name_size = max(18, name_size - 6)
-    font_name = _truetype(bold_path, name_size)
+    font_name = _truetype(regular_path, name_size)
     while name_size > 18 and _text_width(draw, name, font_name) > max_name_w:
         name_size -= 2
-        font_name = _truetype(bold_path, name_size)
+        font_name = _truetype(regular_path, name_size)
 
-    nx, ny = _scale_xy(*NAME_CENTER, iw, ih)
+    nx, ny = _frac_xy(*NAME_CENTER_FRAC, iw, ih)
     draw.text((nx, ny), name, fill=TEXT_COLOR, font=font_name, anchor="mm")
 
-    # Название курса: перенос строк, центр блока у COURSE_CENTER
+    # Название курса: перенос строк, центр блока по COURSE_CENTER_FRAC
     course_size = max(16, int(round(COURSE_PT_DESIGN * sx)))
     font_course = _truetype(regular_path, course_size)
     max_course_w = int(iw * 0.88)
@@ -190,29 +147,30 @@ def render_certificate_png(
         font_course = _truetype(regular_path, course_size)
     lines = _wrap_lines(draw, course, font_course, max_course_w)
 
-    cx, cy = _scale_xy(*COURSE_CENTER, iw, ih)
+    cx, cy = _frac_xy(*COURSE_CENTER_FRAC, iw, ih)
     line_gap = max(4, int(round(8 * sy)))
-    heights: list[int] = []
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font_course)
-        heights.append(bbox[3] - bbox[1])
-    total_h = sum(heights) + line_gap * max(0, len(lines) - 1)
-    y_top = cy - total_h / 2
-    for line, h in zip(lines, heights):
-        draw.text((cx, y_top + h / 2), line, fill=TEXT_COLOR, font=font_course, anchor="mm")
-        y_top += h + line_gap
+    if len(lines) == 1:
+        draw.text((cx, cy), lines[0], fill=TEXT_COLOR, font=font_course, anchor="mm")
+    else:
+        heights: list[int] = []
+        for line in lines:
+            bbox = draw.textbbox((0, 0), line, font=font_course)
+            heights.append(bbox[3] - bbox[1])
+        total_h = sum(heights) + line_gap * max(0, len(lines) - 1)
+        y_top = cy - total_h / 2
+        for line, h in zip(lines, heights):
+            draw.text((cx, y_top + h / 2), line, fill=TEXT_COLOR, font=font_course, anchor="mm")
+            y_top += h + line_gap
 
-    # Дата: центр строки в точке DATE_POS; поджимаем к холсту, если шрифт/макет у края
+    # Дата: правый край на базовой линии — строка уходит влево, зазор до подписи «Күні» справа
     date_size = max(14, int(round(DATE_PT_DESIGN * sx)))
     font_date = _truetype(regular_path, date_size)
-    dx, dy = _scale_xy(*DATE_POS, iw, ih)
-    pad = max(6, date_size // 2)
-    dx = float(min(max(dx, pad), iw - pad))
+    dx, dy = _frac_xy(*DATE_RIGHT_BASELINE_FRAC, iw, ih)
+    tw = _text_width(draw, date_str, font_date)
+    pad = max(8, date_size // 2)
+    dx = float(min(max(dx, pad + tw), iw - pad))
     dy = float(min(max(dy, pad), ih - pad))
-    draw.text((dx, dy), date_str, fill=TEXT_COLOR, font=font_date, anchor="mm")
-
-    # Подпись директора поверх шаблона (после текста)
-    _paste_signature_rgba(img, SIGNATURE_PATH, SIGNATURE_CENTER, iw, ih, SIGNATURE_MAX_WIDTH_FRAC)
+    draw.text((dx, dy), date_str, fill=TEXT_COLOR, font=font_date, anchor="rs")
 
     img.convert("RGB").save(out_path, format="PNG", optimize=True)
     return f"/uploads/certificates/issued/cert_{cert_id}.png"

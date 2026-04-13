@@ -323,7 +323,7 @@ def submit_test(
                     test.course_id,
                     current_user.id,
                 )
-                cert.certificate_url = "/uploads/certificates/certification.png"
+                cert.certificate_url = "/uploads/certificates/certification-template.png"
             n_cert = Notification(
                 user_id=current_user.id,
                 type="certificate_issued",

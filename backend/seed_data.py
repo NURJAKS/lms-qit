@@ -15,6 +15,9 @@ removes Web course «Жобалық қолданбалар» (module 4) and its 
   python seed_data.py --refresh-web-tests
 replaces Web course per-topic test questions with QUESTIONS_WEB_TOPIC_* from this file (keeps topic ids).
 
+  python seed_data.py --refresh-python-web-final-tests
+replaces Python and Web final exam questions from PYTHON_FINAL_QUESTIONS / WEB_FINAL_QUESTIONS and sets time limit.
+
   python scripts/add_web_html_intro_topic.py
 inserts «HTML дегеніміз не?» as Web course topic order 1 when the DB still has the old 9-topic layout (first topic «HTML тегтері»).
 
@@ -171,7 +174,7 @@ PYTHON_FINAL_QUESTIONS = [
     ("Python-та isinstance(obj, tuple) не тексереді?", "b", "obj сан ба?", "obj кортеж немесе одан туынды тип па", "obj тізім бе", "obj жол ба"),
     ("Итератор протоколында қандай әдістер болуы керек?", "a", "__iter__ және __next__ (немесе сәйкес протокол)", "Тек append", "Тек len", "Тек sort"),
     ("JSON деректерін Python-та десериализациялау үшін қай модуль?", "c", "xml", "csv", "json", "sqlite3"),
-    ("SQL инъекциясына қарсы parameterized query не үшін қолданылады?", "d", "Кестені жою", "Индексті күшейту", "Тек көріністі", "Пайдаланушы кірісін SQL бөлшектерінен бөліп, қауіпсіз байлау"),
+    ("Тізімдік түсінік [x ** 2 for x in range(3)] қандай тізімді береді?", "a", "[0, 1, 4]", "[1, 4, 9]", "[0, 1, 2]", "[9, 4, 1]"),
     ("Python-та pathlib.Path пайдаланудың артықшылығы неде?", "b", "Тек Windows жұмыс істейді", "Жолдармен жұмысты платформаға тәуелсіз ыңғайлы ету", "Тек HTTP сұраныстар", "Тек уақыт белгілері"),
     ("pytest сияқты тест фреймворкінде assert не істейді?", "c", "Ештеңе", "Тек лог жазады", "Шарт орындалмаса тестті сәтсіз деп белгілейді", "Файлды сақтайды"),
     ("Python-да @classmethod декораторы әдісіне бірінші реттік аргумент ретінде не беріледі?", "b", "self", "cls (сынып нысаны)", "module", "args"),
@@ -274,6 +277,7 @@ WEB_FINAL_QUESTIONS = [
     ("Браузер кэшін басқару үшін Cache-Control тақырыбы не істейді?", "b", "Тек cookie орнатады", "Ресурсты қанша уақыт сақтау керектігін көрсетеді", "Тек MIME түрін", "Тек қысу"),
     ("Reflected XSS қай кезде пайда болады?", "d", "Тек дерекқорда", "Тек CSS файлында", "Тек WebSocket-та", "Зиянды жүктеме URL немесе параметр арқылы дереу жауапқа кіргізіледі"),
     ("JavaScript модулі (import/export) не береді?", "c", "Тек суреттер", "Тек стильдер", "Кодты файлдарға бөлу және тәуелділіктерді нақты импорттау", "Тек HTML"),
+    ("DOM құжатында CSS селекторы бойынша алғашқы сәйкес элементті табу үшін қай әдіс қолданылады?", "b", "document.getElementById() тек id бойынша", "document.querySelector()", "document.write()", "window.alert()"),
 ]
 
 # Информатика / жалпы ИТ (Python синтаксисі емес): құрылғы, ОЖ, желі, кодтау, деректер, қауіпсіздік
@@ -429,6 +433,35 @@ def _add_questions_to_test(db, test_id, questions_list):
         db.add(TestQuestion(test_id=test_id, question_text=q[0], correct_answer=q[1], option_a=q[2], option_b=q[3], option_c=q[4], option_d=q[5], order_number=i + 1))
 
 
+# Қорытынды тесттер үшін уақыт шегі (секунд): ~20 сұрақ
+FINAL_TEST_TIME_LIMIT_SECONDS = 1800
+
+PYTHON_COURSE_TITLE = "Python программалау негіздері"
+WEB_COURSE_TITLE = "Web-әзірлеу негіздері"
+
+
+def refresh_python_web_final_tests(db) -> None:
+    """Python және Web курстарының қорытынды тест сұрақтарын кодтағы тізімдер бойынша жаңартады."""
+    for title, qs in (
+        (PYTHON_COURSE_TITLE, PYTHON_FINAL_QUESTIONS),
+        (WEB_COURSE_TITLE, WEB_FINAL_QUESTIONS),
+    ):
+        c = db.query(Course).filter(Course.title == title).first()
+        if not c:
+            print(f"Course not found: {title!r}")
+            continue
+        final = db.query(Test).filter(Test.course_id == c.id, Test.is_final == 1).first()
+        if not final:
+            print(f"No final test for course id={c.id} ({title!r})")
+            continue
+        db.query(TestQuestion).filter(TestQuestion.test_id == final.id).delete()
+        _add_questions_to_test(db, final.id, qs)
+        final.question_count = len(qs)
+        final.time_limit_seconds = FINAL_TEST_TIME_LIMIT_SECONDS
+        print(f"Final test id={final.id} ({title!r}): {len(qs)} questions, time_limit={FINAL_TEST_TIME_LIMIT_SECONDS}s")
+    db.commit()
+
+
 COURSE_CATEGORIES = [
     ("Программалау", "Программирование", "💻"),
     ("Web-әзірлеу", "Веб-разработка", "🌐"),
@@ -488,7 +521,7 @@ def _populate_python_modules_topics_tests(db, course_id: int) -> None:
         db.add(test)
         db.flush()
         _add_questions_to_test(db, test.id, qs)
-    final1 = Test(topic_id=None, course_id=course_id, title="Python негіздері - Қорытынды тест", passing_score=70, question_count=len(PYTHON_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    final1 = Test(topic_id=None, course_id=course_id, title="Python негіздері - Қорытынды тест", passing_score=70, question_count=len(PYTHON_FINAL_QUESTIONS), is_final=1, time_limit_seconds=FINAL_TEST_TIME_LIMIT_SECONDS)
     db.add(final1)
     db.flush()
     _add_questions_to_test(db, final1.id, PYTHON_FINAL_QUESTIONS)
@@ -527,7 +560,7 @@ def _populate_web_modules_topics_tests(db, course_id: int) -> None:
         db.add(test)
         db.flush()
         _add_questions_to_test(db, test.id, qs)
-    final2 = Test(topic_id=None, course_id=course_id, title="Web негіздері - Қорытынды тест", passing_score=70, question_count=len(WEB_FINAL_QUESTIONS), is_final=1, time_limit_seconds=1200)
+    final2 = Test(topic_id=None, course_id=course_id, title="Web негіздері - Қорытынды тест", passing_score=70, question_count=len(WEB_FINAL_QUESTIONS), is_final=1, time_limit_seconds=FINAL_TEST_TIME_LIMIT_SECONDS)
     db.add(final2)
     db.flush()
     _add_questions_to_test(db, final2.id, WEB_FINAL_QUESTIONS)
@@ -881,6 +914,9 @@ def seed():
                 return
             if "--refresh-web-tests" in sys.argv:
                 refresh_web_course_test_questions(db)
+                return
+            if "--refresh-python-web-final-tests" in sys.argv:
+                refresh_python_web_final_tests(db)
                 return
             if "--repair-video-urls" in sys.argv:
                 repair_topic_video_urls(db)

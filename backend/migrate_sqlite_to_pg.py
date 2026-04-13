@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import json as _json
 import os
 import sys
 from pathlib import Path
@@ -205,6 +206,32 @@ def _sqlite_column_names(sqlite_insp, table_name: str) -> set[str]:
     return {c["name"] for c in sqlite_insp.get_columns(table_name)}
 
 
+# Columns declared as JSON in the model — values may arrive as plain strings
+# from SQLite (e.g. '[]' or '{"key": "val"}').  Parse them so Postgres stores
+# them as proper JSON arrays/objects, not as double-encoded JSON strings.
+from sqlalchemy.types import JSON as _SA_JSON
+
+def _json_column_names(model) -> set[str]:
+    """Return column names declared with a JSON type."""
+    return {
+        c.name
+        for c in model.__table__.columns
+        if isinstance(c.type, _SA_JSON)
+    }
+
+def _maybe_parse_json(value):
+    """If *value* is a string that looks like JSON array/object, parse it."""
+    if not isinstance(value, str):
+        return value
+    s = value.strip()
+    if (s.startswith("[") and s.endswith("]")) or (s.startswith("{") and s.endswith("}")):
+        try:
+            return _json.loads(s)
+        except (ValueError, _json.JSONDecodeError):
+            pass
+    return value
+
+
 def _copy_rows_sqlite_compat(
     sqlite_db: Session,
     postgres_db: Session,
@@ -214,17 +241,23 @@ def _copy_rows_sqlite_compat(
     """
     Копирует строки без ORM SELECT по SQLite: старые БД могут не иметь колонок,
     которые уже есть в модели (например topic_synopsis_submissions.grade).
+    JSON-столбцы парсятся из строк (SQLite хранит JSON как TEXT).
     """
     table_name = model.__tablename__
     model_col_names = [c.name for c in model.__table__.columns]
     select_cols = [n for n in model_col_names if n in sqlite_cols]
     if not select_cols:
         return 0
+    json_cols = _json_column_names(model)
     quoted = ", ".join(f'"{c}"' for c in select_cols)
     rows = sqlite_db.execute(text(f'SELECT {quoted} FROM "{table_name}"')).mappings().all()
     for row in rows:
         row_dict = dict(row)
         data = {c.name: row_dict.get(c.name) for c in model.__table__.columns}
+        # Parse string-encoded JSON values so Postgres stores proper JSON types
+        for col_name in json_cols:
+            if col_name in data and data[col_name] is not None:
+                data[col_name] = _maybe_parse_json(data[col_name])
         postgres_db.add(model(**data))
     return len(rows)
 

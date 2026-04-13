@@ -435,7 +435,7 @@ def link_parent_to_student(
     return {"ok": True, "student_id": student_id}
 
 
-CERTIFICATE_IMAGE_URL = "/uploads/certificates/certification.png"
+CERTIFICATE_IMAGE_URL = "/uploads/certificates/certification-template.png"
 
 
 def _certificate_display_url(url: str | None) -> str | None:
