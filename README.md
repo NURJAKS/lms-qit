@@ -99,14 +99,54 @@ powershell -ExecutionPolicy Bypass -File .\start-frontend-windows.ps1
 
 ---
 
+## Docker: локально как прод (PostgreSQL)
+
+Полный стек **как на VPS**, но на вашем компьютере. SQLite `education.db` автоматически импортируется в PostgreSQL при каждом `up`.
+
+```bash
+# 1. Создать .env.local-prod (один раз):
+cp env.local-prod.example .env.local-prod
+
+# 2. Запуск (сборка + импорт SQLite → PG + backend + frontend):
+docker compose -p lms-local --env-file .env.local-prod \
+  -f docker-compose.vps.yml -f docker-compose.local-prod.yml up -d --build
+
+# 3. Открыть:
+#    http://localhost:3000      — сайт
+#    http://localhost:8001/docs — Swagger API (DEBUG=true)
+```
+
+Логин: **email** + пароль (не username!). Пример: `zhandossahiev@gmail.com` / `zhandos123`.
+
+Остановка и очистка:
+```bash
+docker compose -p lms-local --env-file .env.local-prod \
+  -f docker-compose.vps.yml -f docker-compose.local-prod.yml down -v
+```
+
+---
+
 ## VPS (Linux-сервер, Docker)
 
-Пошаговая инструкция: **[deploy/VPS.md](deploy/VPS.md)** — Docker, `.env.deploy`, Nginx, Certbot, файрвол, обновление.  
-Кратко: `cp env.deploy.example .env.deploy` → правки → `docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build` или `./deploy/bootstrap-vps.sh`.
+Подробная пошаговая инструкция: **[deploy/VPS.md](deploy/VPS.md)**
+
+Кратко:
+```bash
+# На VPS:
+git clone https://github.com/NURJAKS/lms-platfrom-localversion.git
+cd lms-platfrom-localversion
+cp env.deploy.example .env.deploy
+nano .env.deploy           # SECRET_KEY, POSTGRES_PASSWORD, ALLOWED_ORIGINS, FRONTEND_PUBLIC_URL
+docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
+```
+
+Или автоматический bootstrap: `chmod +x deploy/bootstrap-vps.sh && ./deploy/bootstrap-vps.sh`
 
 ---
 
 ## Важно
 
-- **`backend/.env`** в репозиторий не добавляйте.
-- После **`git clone`** приходят те же **`education.db`** и **`uploads`**, что в коммите (если они в репозитории).
+- **`backend/.env`** и **`.env.deploy`** в репозиторий не добавляйте (в `.gitignore`).
+- Логин в систему — по **email**, не по username.
+- После **`git clone`** приходят те же **`education.db`** и **`uploads`**, что в коммите.
+- **ИИ**: без ключей `OPENAI_API_KEY` / `GEMINI_API_KEY` чат и AI Challenge работают в демо-режиме.
