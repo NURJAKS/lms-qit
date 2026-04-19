@@ -36,10 +36,19 @@ docker compose version
 
 ## Шаг 2. Клонирование проекта
 
+Репозиторий для развёртывания на сервере: **[lms-platform-deployed](https://github.com/NURJAKS/lms-platform-deployed)** (Docker, Postgres, Nginx — см. ниже).
+
 ```bash
 mkdir -p ~/projects && cd ~/projects
-git clone https://github.com/NURJAKS/lms-platfrom-localversion.git
-cd lms-platfrom-localversion
+git clone https://github.com/NURJAKS/lms-platform-deployed.git
+cd lms-platform-deployed
+```
+
+По SSH:
+
+```bash
+git clone git@github.com:NURJAKS/lms-platform-deployed.git
+cd lms-platform-deployed
 ```
 
 ---
@@ -93,11 +102,11 @@ docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
 
 ```bash
 # 1. Скопируйте education.db на сервер (например через scp):
-# scp education.db root@ваш-ip:~/projects/lms-platfrom-localversion/
+# scp education.db root@ваш-ip:~/projects/lms-platform-deployed/
 
 # 2. Запустите миграцию (поднимет только PostgreSQL, перельёт данные):
 chmod +x deploy/migrate-sqlite-to-pg.sh
-./deploy/migrate-sqlite-to-pg.sh ~/projects/lms-platfrom-localversion/education.db
+./deploy/migrate-sqlite-to-pg.sh ~/projects/lms-platform-deployed/education.db
 
 # 3. Установите пропуск демо-данных в .env.deploy:
 #    LMS_SKIP_ENTRYPOINT_SEED=1
@@ -178,7 +187,7 @@ ufw status
 Когда вы обновили код и запушили в GitHub:
 
 ```bash
-cd ~/projects/lms-platfrom-localversion
+cd ~/projects/lms-platform-deployed
 git pull
 docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
 ```
@@ -230,8 +239,8 @@ docker compose --env-file .env.deploy -f docker-compose.vps.yml down -v
 docker compose --env-file .env.deploy -f docker-compose.vps.yml exec -T db \
   pg_dump -U lms education_platform > ~/lms-backup-$(date +%F).sql
 
-# Бэкап uploads
-docker run --rm -v lms-platfrom-localversion_lms_uploads:/data:ro -v ~:/backup alpine \
+# Бэкап uploads (имя тома начинается с имени каталога проекта; уточните: docker volume ls | grep lms_uploads)
+docker run --rm -v lms-platform-deployed_lms_uploads:/data:ro -v ~:/backup alpine \
   tar czf /backup/lms-uploads-$(date +%F).tar.gz -C /data .
 
 # Восстановление PostgreSQL (при необходимости)

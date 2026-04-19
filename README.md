@@ -127,13 +127,16 @@ docker compose -p lms-local --env-file .env.local-prod \
 
 ## VPS (Linux-сервер, Docker)
 
-Подробная пошаговая инструкция: **[deploy/VPS.md](deploy/VPS.md)**
+Репозиторий для выкладки на сервер: **[NURJAKS/lms-platform-deployed](https://github.com/NURJAKS/lms-platform-deployed)** (тот же код, ориентир на Docker).
+
+- Краткий чеклист: **[DEPLOY.md](DEPLOY.md)**
+- Полная инструкция (Docker, Nginx, HTTPS, бэкапы): **[deploy/VPS.md](deploy/VPS.md)**
 
 Кратко:
 ```bash
 # На VPS:
-git clone https://github.com/NURJAKS/lms-platfrom-localversion.git
-cd lms-platfrom-localversion
+git clone https://github.com/NURJAKS/lms-platform-deployed.git
+cd lms-platform-deployed
 cp env.deploy.example .env.deploy
 nano .env.deploy           # SECRET_KEY, POSTGRES_PASSWORD, ALLOWED_ORIGINS, FRONTEND_PUBLIC_URL
 docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
