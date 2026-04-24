@@ -18,6 +18,7 @@ import type { Course } from "@/types";
 import { getLocalizedCourseDesc, getLocalizedCourseTitle, getCourseBannerUrl } from "@/lib/courseUtils";
 import { StudentCourseClasswork } from "@/components/courses/StudentCourseClasswork";
 import { CourseFeedPanel } from "@/components/courses/CourseFeedPanel";
+import { SupplementaryMaterials } from "@/components/courses/SupplementaryMaterials";
 
 interface Structure {
   course_id: number;
@@ -94,6 +95,7 @@ export default function CourseDetailPage() {
   const [cardCvv, setCardCvv] = useState("123");
   const [paying, setPaying] = useState(false);
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
+  const [courseTestAttemptKey, setCourseTestAttemptKey] = useState(0);
   const [supportMessage, setSupportMessage] = useState("");
   const [supportSubmitting, setSupportSubmitting] = useState(false);
 
@@ -215,16 +217,18 @@ export default function CourseDetailPage() {
   const router = useRouter();
 
   const rawTab = searchParams.get("tab");
-  const courseTab: "tasks" | "people" | "classwork" | "feed" =
+  const courseTab: "tasks" | "people" | "classwork" | "feed" | "supplementary" =
     rawTab === "classwork"
       ? "classwork"
       : rawTab === "people"
         ? "people"
         : rawTab === "feed"
           ? "feed"
-          : "tasks";
+          : rawTab === "supplementary"
+            ? "supplementary"
+            : "tasks";
 
-  const setCourseTab = (next: "tasks" | "people" | "classwork" | "feed") => {
+  const setCourseTab = (next: "tasks" | "people" | "classwork" | "feed" | "supplementary") => {
     const q = new URLSearchParams(searchParams.toString());
     if (next === "tasks") {
       q.delete("tab");
@@ -237,7 +241,7 @@ export default function CourseDetailPage() {
   };
 
   useEffect(() => {
-    const allowed = new Set(["people", "tasks", "classwork", "feed"]);
+    const allowed = new Set(["people", "tasks", "classwork", "feed", "supplementary"]);
     const tab = searchParams.get("tab");
     if (tab && !allowed.has(tab)) {
       const q = new URLSearchParams(searchParams.toString());
@@ -668,6 +672,17 @@ export default function CourseDetailPage() {
             >
               {t("courseFeedTab")}
             </button>
+            <button
+              type="button"
+              onClick={() => setCourseTab("supplementary")}
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                courseTab === "supplementary"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+              }`}
+            >
+              {t("supplementaryMaterialsTab" as TranslationKey)}
+            </button>
           </nav>
           )}
 
@@ -743,6 +758,12 @@ export default function CourseDetailPage() {
             </div>
           )}
 
+          {!waitingForGroup && courseTab === "supplementary" && (
+            <div className="mb-6 min-w-0">
+              <SupplementaryMaterials courseId={id} />
+            </div>
+          )}
+
           {!waitingForGroup && courseTab === "tasks" && (
             <>
               <div className="mb-6">
@@ -780,9 +801,11 @@ export default function CourseDetailPage() {
                       {t("topicBackToCourse")}
                     </button>
                     <TestComponent
+                      key={`${activeTestId}-${courseTestAttemptKey}`}
                       testId={activeTestId}
                       onComplete={() => setActiveTestId(null)}
                       onCancel={() => setActiveTestId(null)}
+                      onRetake={() => setCourseTestAttemptKey((k) => k + 1)}
                     />
                   </div>
                 ) : (

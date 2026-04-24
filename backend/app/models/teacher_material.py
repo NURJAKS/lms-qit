@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -19,6 +19,7 @@ class TeacherMaterial(Base):
     image_urls = Column(Text)  # JSON array
     attachment_urls = Column(Text)  # JSON array of file URLs
     attachment_links = Column(Text)  # JSON array of external links
+    is_supplementary = Column(Boolean, nullable=False, default=False)  # доп. материал
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", foreign_keys=[teacher_id])

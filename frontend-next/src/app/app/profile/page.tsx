@@ -14,7 +14,7 @@ import type { TranslationKey } from "@/i18n/translations";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
 import { 
   BookOpen, Award, Trophy, Star, ChevronRight, Users, 
-  Clock, CheckCircle, ArrowLeft, X
+  Clock, CheckCircle, ArrowLeft, X, Camera, User
 } from "lucide-react";
 import { ProfilePreviewCard } from "@/components/profile/ProfilePreviewCard";
 import { LeaderboardTopAchievementCard } from "@/components/profile/LeaderboardTopAchievementCard";
@@ -67,6 +67,8 @@ export default function MyProfilePage() {
   const [country, setCountry] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [phoneAlternative, setPhoneAlternative] = useState("");
+  const [tgEmail, setTgEmail] = useState("");
+  const [school, setSchool] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -164,6 +166,8 @@ export default function MyProfilePage() {
     setCountry(u.country ?? "");
     setPostalCode(u.postal_code ?? "");
     setPhoneAlternative(u.phone_alternative ?? "");
+    setTgEmail(u.tg_email ?? "");
+    setSchool(u.school ?? "");
     setEditOpen(true);
   };
 
@@ -354,84 +358,175 @@ export default function MyProfilePage() {
               <input type="file" ref={fileInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileFullName")}</label>
-                <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePhone")}</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePhoneAlternative")}</label>
-                <input value={phoneAlternative} onChange={(e) => setPhoneAlternative(e.target.value)} placeholder={t("profilePhoneAlternative")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileBirthDate")}</label>
-                <input
-                  type="date"
-                  lang={lang === "kk" ? "kk" : lang === "en" ? "en" : "ru"}
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
-                  title={t("profileBirthDateHint")}
-                />
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 ml-1">{t("profileBirthDateHint")}</p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileGender")}</label>
-                <select value={gender} onChange={(e) => setGender(e.target.value)} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                  <option value="Мужской">{t("profileGenderMale")}</option>
-                  <option value="Женский">{t("profileGenderFemale")}</option>
-                  <option value="Другое">{t("profileGenderOther")}</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileNationality")}</label>
-                <input value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder={t("profileNationality")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileCountry")}</label>
-                <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("profileCountry")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileCity")}</label>
-                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("city")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profilePostalCode")}</label>
-                <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("profilePostalCode")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileAddress")}</label>
-                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              <div className="md:col-span-2 flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileDescription")}</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("profileDescriptionPlaceholder")} rows={3} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-              </div>
-              {u.role === "parent" && (
-                <>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileWorkPlace")}</label>
-                    <input value={workPlace} onChange={(e) => setWorkPlace(e.target.value)} placeholder={t("profileWorkPlace")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileKinshipDegree")}</label>
-                    <input value={kinshipDegree} onChange={(e) => setKinshipDegree(e.target.value)} placeholder={t("profileKinshipDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  </div>
-                  <div className="md:col-span-2 flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileEducationalProcessRole")}</label>
-                    <input value={educationalProcessRole} onChange={(e) => setEducationalProcessRole(e.target.value)} placeholder={t("profileEducationalProcessRole")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  </div>
-                  <div className="md:col-span-2 flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-400 ml-1">{t("profileAcademicDegree")}</label>
-                    <input value={academicDegree} onChange={(e) => setAcademicDegree(e.target.value)} placeholder={t("profileAcademicDegree")} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                  </div>
-                </>
-              )}
+              <input type="file" ref={fileInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
             </div>
+
+            <div className="space-y-6">
+              {/* Section: Основная информация */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1.5 h-6 rounded-full bg-[var(--qit-primary)]" />
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                    {t("profileMainInfo" as TranslationKey)}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileFullName")}</label>
+                    <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileBirthDate")}</label>
+                    <input
+                      type="date"
+                      lang={lang === "kk" ? "kk" : lang === "en" ? "en" : "ru"}
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileGender")}</label>
+                    <select value={gender} onChange={(e) => setGender(e.target.value)} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all">
+                      <option value="Мужской">{t("profileGenderMale")}</option>
+                      <option value="Женский">{t("profileGenderFemale")}</option>
+                      <option value="Другое">{t("profileGenderOther")}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Контакты */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2 text-blue-500">
+                  <div className="w-1.5 h-6 rounded-full bg-blue-500" />
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                    {t("contacts" as TranslationKey)}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhone")}</label>
+                    <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhoneAlternative")}</label>
+                    <input value={phoneAlternative} onChange={(e) => setPhoneAlternative(e.target.value)} placeholder={t("profilePhoneAlternative")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Местоположение */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2 text-emerald-500">
+                  <div className="w-1.5 h-6 rounded-full bg-emerald-500" />
+                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                    {t("location" as TranslationKey)}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCountry")}</label>
+                    <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("profileCountry")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCity")}</label>
+                    <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("city")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePostalCode")}</label>
+                    <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("profilePostalCode")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileAddress")}</label>
+                    <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col items-center mb-6">
+                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <div className="w-24 h-24 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 group-hover:border-[var(--qit-primary)] transition-colors">
+                    {u.photo_url ? (
+                      <img src={u.photo_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-gray-400 text-sm text-center px-2">{uploading ? t("loading") : t("profileChangePhoto")}</span>
+                    )}
+                  </div>
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                    <Camera className="w-8 h-8 text-white" />
+                  </div>
+                </div>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoChange} />
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t("profileClickToChange")}</p>
+              </div>
+
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
+                    <User className="w-3.5 h-3.5" /> {t("profilePersonalInfo")}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("adminFullName")}</label>
+                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("adminFullName")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileEmail")}</label>
+                      <input value={u.email} disabled className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm cursor-not-allowed text-gray-500" />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
+                    <User className="w-3.5 h-3.5" /> {t("profileContactInfo")}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhone")}</label>
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 (___) ___-__-__" className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileTgEmail")}</label>
+                      <input value={tgEmail} onChange={(e) => setTgEmail(e.target.value)} placeholder="example@gmail.com" className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
+                    <User className="w-3.5 h-3.5" /> {t("profileLocationTitle")}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCity")}</label>
+                      <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("profileCity")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileSchool")}</label>
+                      <input value={school} onChange={(e) => setSchool(e.target.value)} placeholder={t("profileSchool")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                  </div>
+                </section>
+
+                {u.role === "student" && (
+                  <section className="space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
+                      <User className="w-3.5 h-3.5" /> {t("profileParentData")}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileWorkPlace")}</label>
+                        <input value={workPlace} onChange={(e) => setWorkPlace(e.target.value)} placeholder={t("profileWorkPlace")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileKinshipDegree")}</label>
+                        <input value={kinshipDegree} onChange={(e) => setKinshipDegree(e.target.value)} placeholder={t("profileKinshipDegree")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
             </div>
             <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col-reverse sm:flex-row justify-end gap-2">
               <button type="button" onClick={() => setEditOpen(false)} className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium">
@@ -474,34 +569,22 @@ export default function MyProfilePage() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <BookOpen className="w-5 h-5" />
-                <span className="text-sm font-medium">{t("profileEnrolled")}</span>
+            {[
+              { icon: BookOpen, label: t("profileEnrolled"), count: enrollments.length, color: "var(--qit-primary)" },
+              { icon: CheckCircle, label: t("profileCompleted"), count: completedCount, color: "#10b981" },
+              { icon: Clock, label: t("profileStudyHours"), count: studyHoursStr, color: "#00b0ff" },
+              { icon: Award, label: t("profileCertificates"), count: certificates.length, color: "#f59e0b" },
+            ].map(({ icon: Icon, label, count, color }) => (
+              <div key={label} className="bg-white dark:bg-gray-800 rounded-[24px] border border-gray-100 dark:border-gray-700 p-5 shadow-lg shadow-gray-200/20 dark:shadow-none hover:scale-[1.02] transition-transform duration-300 group">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 rounded-xl bg-gray-50 dark:bg-gray-700 group-hover:scale-110 transition-transform">
+                    <Icon className="w-5 h-5" style={{ color }} />
+                  </div>
+                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-tighter">{label}</span>
+                </div>
+                <p className="text-2xl font-black text-gray-900 dark:text-white font-montserrat">{count}</p>
               </div>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">{enrollments.length}</p>
-            </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="text-sm font-medium">{t("profileCompleted")}</span>
-              </div>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">{completedCount}</p>
-            </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <Clock className="w-5 h-5" />
-                <span className="text-sm font-medium">{t("profileStudyHours")}</span>
-              </div>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">{studyHoursStr}</p>
-            </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <Award className="w-5 h-5 text-amber-500" />
-                <span className="text-sm font-medium">{t("profileCertificates")}</span>
-              </div>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">{certificates.length}</p>
-            </div>
+            ))}
           </div>
 
           {(progress_detail?.courses?.length ?? 0) > 0 && (

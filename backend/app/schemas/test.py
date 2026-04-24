@@ -93,3 +93,6 @@ class TestSubmitResponse(BaseModel):
     passed: bool
     correct_count: int
     total_count: int
+    result_tier: str = "passed"  # "failed" (0-50%), "needs_review" (50-80%), "passed" (80-100%)
+    recommendation_message: str | None = None
+    show_supplementary_link: bool = False

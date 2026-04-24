@@ -78,10 +78,10 @@ export default function TopicViewPage() {
   const validTopicId = Number.isFinite(tId) && tId > 0;
   const queryClient = useQueryClient();
   const [showTest, setShowTest] = useState(false);
+  const [testAttemptKey, setTestAttemptKey] = useState(0);
   const [testId, setTestId] = useState<number | null>(null);
   const [showCoinsToast, setShowCoinsToast] = useState(false);
   const [coinsToastMessage, setCoinsToastMessage] = useState<string>("");
-  const [justPassedCompleted, setJustPassedCompleted] = useState(false);
   const [actualVideoDuration, setActualVideoDuration] = useState<number | null>(null);
   const [hasShownTheoryCoinsToast, setHasShownTheoryCoinsToast] = useState(false);
   const [localWatchedSeconds, setLocalWatchedSeconds] = useState<number>(0);
@@ -309,24 +309,7 @@ export default function TopicViewPage() {
       });
   }, [actualVideoDuration, cId, isVideoTopic, localWatchedSeconds, queryClient, tId, userId, validTopicId]);
 
-  const onTestPassed = () => {
-    queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
-    queryClient.invalidateQueries({ queryKey: ["topic", tId] });
-    queryClient.invalidateQueries({ queryKey: ["topic-access", tId] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-    queryClient.invalidateQueries({ queryKey: ["course-structure", cId] });
-    queryClient.invalidateQueries({ queryKey: ["topic-flow", tId] });
-    setCoinsToastMessage(
-      t("topicCoinsComplete")
-        .replace("{coins}", "25")
-    );
-    setShowCoinsToast(true);
-    setTimeout(() => setShowCoinsToast(false), 4000);
-    setShowTest(false);
-    setJustPassedCompleted(true);
-  };
-
-  const onNextTopic = () => {
+  const goToNextTopicOrCourse = useCallback(() => {
     if (!structure?.modules?.length) {
       router.push(`/app/courses/${cId}`);
       return;
@@ -347,6 +330,27 @@ export default function TopicViewPage() {
     } else {
       router.push(`/app/courses/${cId}`);
     }
+  }, [structure, router, cId, tId]);
+
+  const onTestPassed = () => {
+    queryClient.invalidateQueries({ queryKey: ["progress", cId, userId] });
+    queryClient.invalidateQueries({ queryKey: ["topic", tId] });
+    queryClient.invalidateQueries({ queryKey: ["topic-access", tId] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["course-structure", cId] });
+    queryClient.invalidateQueries({ queryKey: ["topic-flow", tId] });
+    setCoinsToastMessage(
+      t("topicCoinsComplete")
+        .replace("{coins}", "25")
+    );
+    setShowCoinsToast(true);
+    setTimeout(() => setShowCoinsToast(false), 4000);
+    setShowTest(false);
+    goToNextTopicOrCourse();
+  };
+
+  const onNextTopic = () => {
+    goToNextTopicOrCourse();
   };
 
   if (!validTopicId) {
@@ -626,7 +630,7 @@ export default function TopicViewPage() {
             </div>
           )}
 
-          {(progress?.is_completed || justPassedCompleted) && (
+          {progress?.is_completed && (
             <div className="mt-8 p-6 rounded-2xl border-2 border-green-200 dark:border-green-900/40 bg-green-50/50 dark:bg-green-900/10 text-center animate-in fade-in zoom-in duration-500">
               <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Sparkles className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -650,7 +654,19 @@ export default function TopicViewPage() {
           )}
         </>
       ) : (
-        currentTestId && <TestComponent testId={currentTestId} onComplete={onTestPassed} onCancel={() => setShowTest(false)} />
+        currentTestId && (
+          <TestComponent
+            key={testAttemptKey}
+            testId={currentTestId}
+            onComplete={onTestPassed}
+            onCancel={() => setShowTest(false)}
+            onRetake={() => {
+              setTestAttemptKey((k) => k + 1);
+              setShowTest(true);
+            }}
+            passedContinueLabelKey="topicFlowNextTopic"
+          />
+        )
       )}
     </div>
   );

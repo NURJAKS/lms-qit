@@ -69,10 +69,11 @@ def _check_all_assignments_completed(db: Session, user_id: int, course_id: int) 
         # Если студент не в группах, считаем что заданий нет - доступ разрешен
         return (True, 0, 0)
     
-    # Получаем все задания для курса из групп студента
+    # Получаем все задания для курса из групп студента (исключая доп. задания)
     assignments = db.query(TeacherAssignment).filter(
         TeacherAssignment.course_id == course_id,
         TeacherAssignment.group_id.in_(group_ids),
+        TeacherAssignment.is_supplementary == False,
     ).all()
     
     if not assignments:
@@ -249,8 +250,48 @@ def submit_test(
             correct += 1
     total = len(questions)
     score = (correct / total * 100) if total else 0
-    passing = test.passing_score or 70
-    passed = score >= passing
+
+    # --- Three-tier scoring for topic tests ---
+    # For topic tests: 0-50% = failed, 50-80% = needs_review, 80-100% = passed
+    # For final tests: use existing passing_score
+    if test.is_final:
+        passing = test.passing_score or 70
+        passed = score >= passing
+        result_tier = "passed" if passed else "failed"
+    else:
+        if score >= 80:
+            result_tier = "passed"
+            passed = True
+        elif score >= 50:
+            result_tier = "needs_review"
+            passed = False
+        else:
+            result_tier = "failed"
+            passed = False
+
+    # --- Build recommendation message based on tier ---
+    recommendation_message = None
+    show_supplementary_link = False
+
+    if result_tier == "failed":
+        show_supplementary_link = True
+        recommendation_message = (
+            "К сожалению, вы не набрали достаточно баллов для прохождения теста. "
+            "Мы рекомендуем вам ознакомиться с дополнительными материалами по этой теме, "
+            "чтобы лучше подготовиться к повторной сдаче. "
+            "Не расстраивайтесь — у вас обязательно получится! "
+            "Зайдите во вкладку «Доп материалы», там вы найдёте видео, конспекты, "
+            "задания и другие полезные ресурсы для подготовки."
+        )
+    elif result_tier == "needs_review":
+        show_supplementary_link = True
+        recommendation_message = (
+            "Неплохой результат! Вы набрали больше половины баллов, "
+            "но для перехода к следующей теме нужно набрать не менее 80%. "
+            "Рекомендуем повторить последние темы, а по желанию — "
+            "заглянуть во вкладку «Доп материалы» для дополнительной подготовки. "
+            "Вы молодец, и через время попробуйте сдать тест ещё раз — у вас обязательно получится!"
+        )
 
     topic_id = test.topic_id
     if topic_id:
@@ -354,4 +395,12 @@ def submit_test(
 
     db.commit()
 
-    return TestSubmitResponse(score=score, passed=passed, correct_count=correct, total_count=total)
+    return TestSubmitResponse(
+        score=score,
+        passed=passed,
+        correct_count=correct,
+        total_count=total,
+        result_tier=result_tier,
+        recommendation_message=recommendation_message,
+        show_supplementary_link=show_supplementary_link,
+    )

@@ -93,15 +93,15 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col py-4 px-3 sm:px-6 sm:items-center sm:justify-center relative overflow-hidden">
       <div className="absolute top-4 right-4 z-20">
         <AppHeader />
       </div>
       <div className="absolute inset-0 bg-[#f5f7ff] dark:bg-gray-900" />
       <div className="absolute inset-0 bg-white/20 dark:bg-black/10 backdrop-blur-2xl" />
       <div className={cn(
-        "relative z-10 w-full max-w-[980px] min-h-[580px] sm:min-h-[620px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col lg:flex-row",
-        isDark ? "flex-col-reverse lg:flex-row-reverse" : ""
+        "relative z-10 w-full max-w-[980px] min-h-0 lg:min-h-[580px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col lg:flex-row",
+        isDark ? "flex-col lg:flex-row" : ""
       )}>
         <motion.div 
           layout

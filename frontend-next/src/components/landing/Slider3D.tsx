@@ -42,9 +42,11 @@ export function Slider3D({ courses = [], onCardClick }: Slider3DProps) {
   const [isClickPaused, setIsClickPaused] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isNarrow, setIsNarrow] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const isPaused = isHovered || isClickPaused;
 
   useEffect(() => {
+    setMounted(true);
     const checkMobile = () => {
       const w = window.innerWidth;
       setIsMobile(w <= 768);
@@ -85,11 +87,20 @@ export function Slider3D({ courses = [], onCardClick }: Slider3DProps) {
   const getCardTransform = useCallback(
     (index: number) => {
       const angle = (360 / quantity) * index;
-      const translateZ = isNarrow ? 160 : isMobile ? 200 : 280; // Меньше на узких экранах
-      const tiltForward = -15; // Наклон вперед (отрицательное значение наклоняет верхний край к зрителю)
+      // Во время гидратации (первый рендер) используем дефолтное значение, которое совпадает с серверным
+      // На сервере window undefined, поэтому используется 353 (что дает translateZ = 110)
+      if (!mounted) {
+        const translateZ = 110;
+        const tiltForward = -15;
+        return `rotateX(${tiltForward}deg) rotateY(${angle}deg) translateZ(${translateZ}px)`;
+      }
+      
+      const w = window.innerWidth;
+      const translateZ = w <= 360 ? 110 : isNarrow ? 140 : isMobile ? 180 : 280;
+      const tiltForward = -15; // Наклон вперед
       return `rotateX(${tiltForward}deg) rotateY(${angle}deg) translateZ(${translateZ}px)`;
     },
-    [quantity, isMobile, isNarrow]
+    [quantity, isMobile, isNarrow, mounted]
   );
 
   return (
@@ -107,7 +118,7 @@ export function Slider3D({ courses = [], onCardClick }: Slider3DProps) {
 
       {/* 3D сцена — текст в центре по глубине, карточки вращаются вокруг */}
       <div
-        className="slider-3d-scene relative w-full min-h-[32vh] flex flex-col items-center justify-center"
+        className="slider-3d-scene relative w-full min-h-[32vh] flex flex-col items-center justify-center overflow-hidden"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >

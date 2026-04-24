@@ -290,10 +290,10 @@ export function AIChatWidget() {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="fixed bottom-[96px] right-4 md:bottom-6 md:right-6 w-12 h-12 md:w-14 md:h-14 rounded-full text-white shadow-lg flex items-center justify-center z-[50] transition-all active:scale-95 hover:scale-105 animate-float"
+        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full text-white shadow-xl flex items-center justify-center z-[50] transition-all active:scale-90 hover:scale-105 active-tap pb-safe"
         style={{ background: "var(--qit-gradient-1)" }}
       >
-        <Bot className="w-6 h-6 md:w-7 md:h-7" />
+        <Bot className="w-6 h-6 sm:w-7 sm:h-7" />
       </button>
       {open && (
         <div
@@ -420,7 +420,7 @@ export function AIChatWidget() {
                 onClick={() => setSuggestionsOpen((v) => !v)}
                 aria-expanded={suggestionsOpen}
                 id="ai-chat-suggestions-toggle"
-                className="inline-flex w-full sm:w-auto items-center justify-center sm:justify-start gap-1 rounded-full border border-[var(--qit-primary)] bg-white dark:bg-gray-700 px-2 py-1 sm:px-2.5 sm:py-1 text-center sm:text-left text-[10px] sm:text-[11px] font-semibold text-[var(--qit-primary)] dark:text-gray-200 shadow-sm transition-colors hover:bg-[var(--qit-primary)] hover:text-white dark:hover:text-white disabled:opacity-50"
+                className="inline-flex w-full sm:w-auto items-center justify-center sm:justify-start gap-1 rounded-full border border-[var(--qit-primary)] bg-white dark:bg-gray-700 px-3 py-1.5 sm:px-2.5 sm:py-1 text-center sm:text-left text-[11px] sm:text-[12px] font-bold text-[var(--qit-primary)] dark:text-gray-200 shadow-sm transition-colors hover:bg-[var(--qit-primary)] hover:text-white dark:hover:text-white disabled:opacity-50"
                 disabled={!isPremium && dailyLimit && !dailyLimit.is_allowed}
               >
                 <span className="leading-tight">{t("aiChatWhatCanIAsk")}</span>
@@ -441,7 +441,7 @@ export function AIChatWidget() {
                       type="button"
                       onClick={() => sendPreset(s)}
                       disabled={loading || (!isPremium && dailyLimit && !dailyLimit.is_allowed)}
-                      className="max-w-[calc(100%-0.25rem)] text-left text-[0.625rem] sm:text-[0.6875rem] leading-snug bg-white dark:bg-gray-700 hover:bg-[var(--qit-primary)] hover:text-white border border-[var(--qit-primary)]/90 dark:border-[var(--qit-primary)] rounded-full px-1.5 py-0.5 text-[var(--qit-primary)] dark:text-gray-200 transition-colors active:scale-[0.98] shadow-sm font-medium disabled:opacity-50 disabled:pointer-events-none"
+                      className="max-w-[calc(100%-0.25rem)] text-left text-[11px] sm:text-[12px] leading-snug bg-white dark:bg-gray-700 hover:bg-[var(--qit-primary)] hover:text-white border border-[var(--qit-primary)]/90 dark:border-[var(--qit-primary)] rounded-full px-2 py-1 text-[var(--qit-primary)] dark:text-gray-200 transition-colors active:scale-[0.98] shadow-sm font-bold disabled:opacity-50 disabled:pointer-events-none"
                     >
                       {s}
                     </button>

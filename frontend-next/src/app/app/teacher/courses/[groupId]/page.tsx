@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +24,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
-  CheckCircle2,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -69,6 +69,7 @@ type Assignment = {
   is_closed: boolean;
   created_at: string | null;
   is_synopsis?: boolean;
+  is_supplementary?: boolean;
 };
 
 type SubmissionInboxRow = {
@@ -599,11 +600,17 @@ export default function TeacherCourseGroupPage() {
     }
 
     for (const tp of localTopics) {
+      const items = filtered(uniqueAssignments.filter((a) => a.topic_id === tp.id))
+        .sort((a, b) => {
+          if (!!a.is_supplementary === !!b.is_supplementary) return 0;
+          return a.is_supplementary ? 1 : -1;
+        });
+
       sections.push({
         key: `t-${tp.id}`,
         topicId: tp.id,
         title: tp.title,
-        items: filtered(uniqueAssignments.filter((a) => a.topic_id === tp.id)),
+        items,
       });
     }
 
@@ -689,10 +696,38 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
+  const openTeacherCreateSynopsis = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ is_supplementary: false, is_synopsis: true });
+    setAssignmentModalOpen(true);
+  };
+
+  const openTeacherCreateSupplementaryAssignment = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ is_supplementary: true, is_synopsis: false });
+    setAssignmentModalOpen(true);
+  };
+
+  const openTeacherCreateSupplementarySynopsis = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ is_supplementary: true, is_synopsis: true });
+    setAssignmentModalOpen(true);
+  };
+
+  const openTeacherCreateSupplementaryMaterial = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("material");
+    setClonedItemData({ is_supplementary: true, is_synopsis: false });
+    setAssignmentModalOpen(true);
+  };
+
   const openCreateAssignmentForTopic = (topicId: number) => {
     setCreateOpen(false);
     setAssignmentModalMode("assignment");
-    setClonedItemData({ topic_id: topicId });
+    setClonedItemData({ topic_id: topicId, is_supplementary: false, is_synopsis: false });
     setAssignmentModalOpen(true);
   };
 
@@ -703,10 +738,10 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
-  const openCreateAssignmentWithCompanionSynopsisForTopic = (topicId: number) => {
+  const openCreateSynopsisForTopic = (topicId: number) => {
     setCreateOpen(false);
     setAssignmentModalMode("assignment");
-    setClonedItemData({ topic_id: topicId, openCompanionSynopsis: true });
+    setClonedItemData({ topic_id: topicId, is_supplementary: false, is_synopsis: true });
     setAssignmentModalOpen(true);
   };
 
@@ -872,22 +907,22 @@ export default function TeacherCourseGroupPage() {
                       style={{ color: textColors.primary }}
                     >
                       <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{tp.title}</span>
-                      {!tp.hasTask && tp.hasSynopsis && (
+                      {!tp.hasSynopsis && (
+                        <button
+                          type="button"
+                          onClick={() => openCreateSynopsisForTopic(tp.id)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
+                        >
+                          + {t("teacherCreateSynopsis")}
+                        </button>
+                      )}
+                      {!tp.hasTask && (
                         <button
                           type="button"
                           onClick={() => openCreateAssignmentForTopic(tp.id)}
                           className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
                         >
-                          {t("teacherCreateAssignmentForTopic")}
-                        </button>
-                      )}
-                      {!tp.hasSynopsis && (
-                        <button
-                          type="button"
-                          onClick={() => openCreateAssignmentWithCompanionSynopsisForTopic(tp.id)}
-                          className="text-xs font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100/50 dark:hover:bg-amber-900/40"
-                        >
-                          {t("teacherCreateSynopsisPair")}
+                          + {t("teacherCreateAssignment")}
                         </button>
                       )}
                     </li>
@@ -921,8 +956,12 @@ export default function TeacherCourseGroupPage() {
                     [
                       "teacherCreateAssignment",
                       "teacherCreateAssignmentWithTest",
+                      "teacherCreateSynopsis",
                       "teacherCreateQuestion",
                       "teacherCreateMaterial",
+                      "teacherCreateSupplementaryAssignment",
+                      "teacherCreateSupplementarySynopsis",
+                      "teacherCreateSupplementaryMaterial",
                       "teacherCreateTopic",
                       "teacherCreateReuse",
                     ] as const
@@ -936,7 +975,11 @@ export default function TeacherCourseGroupPage() {
                       onClick={() => {
                         if (key === "teacherCreateAssignment") openTeacherCreateAssignment();
                         else if (key === "teacherCreateAssignmentWithTest") openTeacherCreateAssignmentWithTest();
+                        else if (key === "teacherCreateSynopsis") openTeacherCreateSynopsis();
                         else if (key === "teacherCreateMaterial") openTeacherCreateMaterial();
+                        else if (key === "teacherCreateSupplementaryAssignment") openTeacherCreateSupplementaryAssignment();
+                        else if (key === "teacherCreateSupplementarySynopsis") openTeacherCreateSupplementarySynopsis();
+                        else if (key === "teacherCreateSupplementaryMaterial") openTeacherCreateSupplementaryMaterial();
                         else if (key === "teacherCreateQuestion") openTeacherCreateQuestion();
                         else if (key === "teacherCreateTopic") openTeacherCreateTopic();
                         else if (key === "teacherCreateReuse") openTeacherReuse();
@@ -1154,359 +1197,370 @@ export default function TeacherCourseGroupPage() {
                                             {t("teacherTopicEmptyHint")}
                                           </li>
                                         ) : null}
-                                        {section.items.map((item, iIndex) => (
-                                          <Draggable key={`${item.type}-${item.id}`} draggableId={`${item.type}-${item.id}`} index={iIndex}>
-                                            {(provided) => (
-                                              <li
-                                                ref={provided.innerRef}
-                                                {...provided.draggableProps}
-                                                className="px-0"
-                                              >
-                                                <div
-                                                  role="button"
-                                                  tabIndex={0}
-                                                  onClick={() => {
-                                                    setExpandedItem((prev) => {
-                                                      if (prev && prev.type === item.type && prev.id === item.id) return null;
-                                                      return { type: item.type, id: item.id };
-                                                    });
-                                                  }}
-                                                  onKeyDown={(e) => {
-                                                    if (e.key !== "Enter" && e.key !== " ") return;
-                                                    e.preventDefault();
-                                                    setExpandedItem((prev) => {
-                                                      if (prev && prev.type === item.type && prev.id === item.id) return null;
-                                                      return { type: item.type, id: item.id };
-                                                    });
-                                                  }}
-                                                  className="flex items-start gap-3 px-4 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] cursor-pointer group"
-                                                >
-                                                  <div
-                                                    {...provided.dragHandleProps}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="p-1 cursor-grab active:cursor-grabbing mt-1"
-                                                    aria-hidden
+                                        {section.items.map((item, iIndex) => {
+                                          const isFirstSupplementary = item.is_supplementary && (iIndex === 0 || !section.items[iIndex - 1].is_supplementary);
+                                          const isFirstMain = !item.is_supplementary && iIndex === 0 && section.items.some(x => x.is_supplementary);
+                                          
+                                          return (
+                                            <Fragment key={`${item.type}-${item.id}`}>
+                                              {isFirstMain && (
+                                                <div className="px-4 py-3 bg-black/[0.02] dark:bg-white/[0.02] border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
+                                                  <span className="text-[10px] font-bold tracking-wider uppercase opacity-50" style={{ color: textColors.primary }}>
+                                                    {t("teacherMainContentsHeading")}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {isFirstSupplementary && (
+                                                <div className="px-4 py-3 bg-purple-500/[0.03] dark:bg-purple-500/[0.05] border-y" style={{ borderColor: isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.1)" }}>
+                                                  <span className="text-[10px] font-bold tracking-wider uppercase text-purple-600 dark:text-purple-400">
+                                                    {t("teacherSupplementaryHeading")}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              <Draggable draggableId={`${item.type}-${item.id}`} index={iIndex}>
+                                                {(provided) => (
+                                                  <li
+                                                    ref={provided.innerRef}
+                                                    {...provided.draggableProps}
+                                                    className="px-0 relative group list-none"
                                                   >
-                                                    <GripVertical className="w-4 h-4 opacity-40" style={{ color: textColors.secondary }} />
-                                                  </div>
+                                                    <div
+                                                      role="button"
+                                                      tabIndex={0}
+                                                      onClick={() => {
+                                                        setExpandedItem((prev) => {
+                                                          if (prev && prev.type === item.type && prev.id === item.id) return null;
+                                                          return { type: item.type, id: item.id };
+                                                        });
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === "Enter" || e.key === " ") {
+                                                          setExpandedItem((prev) => {
+                                                            if (prev && prev.type === item.type && prev.id === item.id) return null;
+                                                            return { type: item.type, id: item.id };
+                                                          });
+                                                        }
+                                                      }}
+                                                      className="flex items-start gap-3 px-4 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] cursor-pointer group"
+                                                    >
+                                                      <div
+                                                        {...provided.dragHandleProps}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="p-1 cursor-grab active:cursor-grabbing mt-1"
+                                                        aria-hidden
+                                                      >
+                                                        <GripVertical className="w-4 h-4 opacity-40" style={{ color: textColors.secondary }} />
+                                                      </div>
 
-                                                  {(() => {
-                                                    let isCompleted = false;
-                                                    if (item.type === "assignment") {
-                                                      const stats = submittedAssignmentMap.get(item.id);
-                                                      isCompleted = !!stats && stats.submitted >= stats.assigned && stats.assigned > 0;
-                                                    } else if (item.type === "question") {
-                                                      const answersCount = submittedQuestionMap.get(item.id) ?? 0;
-                                                      isCompleted = answersCount >= assignedCountForGroup && assignedCountForGroup > 0;
-                                                    }
-                                                    return <TypeIcon type={item.type} isCompleted={isCompleted} isSynopsis={item.is_synopsis} />;
-                                                  })()}
+                                                      {(() => {
+                                                        let isCompleted = false;
+                                                        if (item.type === "assignment") {
+                                                          const stats = submittedAssignmentMap.get(item.id);
+                                                          isCompleted = !!stats && stats.submitted >= stats.assigned && stats.assigned > 0;
+                                                        } else if (item.type === "question") {
+                                                          const answersCount = submittedQuestionMap.get(item.id) ?? 0;
+                                                          isCompleted = answersCount >= assignedCountForGroup && assignedCountForGroup > 0;
+                                                        }
+                                                        return <TypeIcon type={item.type} isCompleted={isCompleted} isSynopsis={item.is_synopsis as boolean} />;
+                                                      })()}
 
-                                                  <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                      {item.type === "assignment" ? (
-                                                        <Link
-                                                          href={`/app/teacher/courses/${groupId}/assignment/${item.id}`}
+                                                      <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                          {item.type === "assignment" ? (
+                                                            <Link
+                                                              href={`/app/teacher/courses/${groupId}/assignment/${item.id}`}
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                              }}
+                                                              className="flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline"
+                                                              style={{ color: textColors.primary }}
+                                                            >
+                                                              {item.title}
+                                                            </Link>
+                                                          ) : item.type === "question" ? (
+                                                            <Link
+                                                              href={`/app/teacher/view-questions/${item.id}`}
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                              }}
+                                                              className="flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline"
+                                                              style={{ color: textColors.primary }}
+                                                            >
+                                                              {item.title}
+                                                            </Link>
+                                                          ) : (
+                                                            <span className="flex-1 min-w-0 font-medium text-sm leading-snug truncate" style={{ color: textColors.primary }}>
+                                                              {item.title}
+                                                            </span>
+                                                          )}
+                                                          <p className="text-xs font-medium px-2 py-0.5 rounded-md hidden sm:block" style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3B82F6" }}>
+                                                            {item.type === "question" ? t("quiz") : item.type === "material" ? t("studentMaterials") : t("courseClasswork")}
+                                                          </p>
+                                                        </div>
+
+                                                        <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
+                                                          {t("teacherPostedAt").replace("{when}", formatLocalizedDate(item.created_at, lang, t, { includeTime: true, shortMonth: true }))}
+                                                        </p>
+
+                                                        {item.type !== "material" ? (
+                                                          <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
+                                                            {item.deadline
+                                                              ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
+                                                              : t("noDueDate")}
+                                                          </p>
+                                                        ) : null}
+                                                      </div>
+
+                                                      <div
+                                                        className="relative shrink-0 mt-1"
+                                                        ref={
+                                                          classworkItemMenu?.id === item.id && classworkItemMenu?.type === item.type
+                                                            ? classworkItemMenuRef
+                                                            : null
+                                                        }
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                                                          aria-label={t("teacherMoreOptions")}
                                                           onClick={(e) => {
                                                             e.stopPropagation();
+                                                            setClassworkItemMenu((prev) =>
+                                                              prev?.id === item.id && prev?.type === item.type
+                                                                ? null
+                                                                : { type: item.type, id: item.id }
+                                                            );
                                                           }}
-                                                          className="flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline"
-                                                          style={{ color: textColors.primary }}
                                                         >
-                                                          {item.title}
-                                                        </Link>
-                                                      ) : item.type === "question" ? (
-                                                        <Link
-                                                          href={`/app/teacher/view-questions/${item.id}`}
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                          }}
-                                                          className="flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline"
-                                                          style={{ color: textColors.primary }}
-                                                        >
-                                                          {item.title}
-                                                        </Link>
-                                                      ) : (
-                                                        <span className="flex-1 min-w-0 font-medium text-sm leading-snug truncate" style={{ color: textColors.primary }}>
-                                                          {item.title}
-                                                        </span>
-                                                      )}
-                                                      <p className="text-xs font-medium px-2 py-0.5 rounded-md hidden sm:block" style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3B82F6" }}>
-                                                        {item.type === "question" ? t("quiz") : item.type === "material" ? t("studentMaterials") : t("courseClasswork")}
-                                                      </p>
+                                                          <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
+                                                        </button>
+                                                        {classworkItemMenu?.id === item.id &&
+                                                          classworkItemMenu?.type === item.type ? (
+                                                            <div
+                                                              className="absolute right-0 top-full mt-1 z-[60] min-w-[200px] max-h-64 overflow-y-auto rounded-xl py-1 shadow-2xl border animate-in fade-in zoom-in duration-100"
+                                                              style={{ ...glassStyle, borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+                                                              role="menu"
+                                                            >
+                                                              <button
+                                                                type="button"
+                                                                role="menuitem"
+                                                                className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 transition-colors"
+                                                                style={{ color: textColors.primary }}
+                                                                onClick={async (e) => {
+                                                                  e.stopPropagation();
+                                                                  setClassworkItemMenu(null);
+                                                                  handleEditItem(item);
+                                                                }}
+                                                              >
+                                                                <Pencil className="w-4 h-4 shrink-0 opacity-60" />
+                                                                {t("edit")}
+                                                              </button>
+                                                              <div className="h-px mx-2 my-1 bg-black/5 dark:bg-white/5" />
+                                                              <button
+                                                                type="button"
+                                                                role="menuitem"
+                                                                className="w-full text-left px-4 py-2.5 text-xs hover:bg-red-500/10 text-red-500 flex items-center gap-2 transition-colors font-medium"
+                                                                disabled={deleteClassworkAssignmentMutation.isPending}
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setClassworkItemMenu(null);
+                                                                  setDeleteAssignmentConfirmId(item.id);
+                                                                }}
+                                                              >
+                                                                <Trash2 className="w-4 h-4 shrink-0" />
+                                                                {t("delete")}
+                                                              </button>
+                                                            </div>
+                                                          ) : null}
+                                                      </div>
                                                     </div>
 
-                                                    <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                                                      {t("teacherPostedAt").replace("{when}", formatLocalizedDate(item.created_at, lang, t, { includeTime: true, shortMonth: true }))}
-                                                    </p>
-
-                                                    {item.type !== "material" ? (
-                                                      <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                                                        {item.deadline
-                                                          ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
-                                                          : t("noDueDate")}
-                                                      </p>
-                                                    ) : null}
-                                                  </div>
-
-                                                  <div
-                                                    className="relative shrink-0 mt-1"
-                                                    ref={
-                                                      classworkItemMenu?.id === item.id && classworkItemMenu?.type === item.type
-                                                        ? classworkItemMenuRef
-                                                        : null
-                                                    }
-                                                  >
-                                                    <button
-                                                      type="button"
-                                                      className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
-                                                      aria-label={t("teacherMoreOptions")}
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setClassworkItemMenu((prev) =>
-                                                          prev?.id === item.id && prev?.type === item.type
-                                                            ? null
-                                                            : { type: item.type, id: item.id }
-                                                        );
-                                                      }}
-                                                    >
-                                                      <MoreVertical className="w-4 h-4" style={{ color: textColors.secondary }} />
-                                                    </button>
-                                                    {classworkItemMenu?.id === item.id &&
-                                                      classworkItemMenu?.type === item.type ? (
+                                                    {expandedItem?.type === item.type && expandedItem.id === item.id ? (
+                                                      <div className="px-4 pb-4 pt-0 text-left">
                                                         <div
-                                                          className="absolute right-0 top-full mt-1 z-[60] min-w-[200px] max-h-64 overflow-y-auto rounded-xl py-1 shadow-2xl border animate-in fade-in zoom-in duration-100"
-                                                          style={{ ...glassStyle, borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
-                                                          role="menu"
+                                                          className="mt-1 rounded-2xl p-4 border"
+                                                          style={{
+                                                            ...glassStyle,
+                                                            borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+                                                          }}
                                                         >
-                                                          <button
-                                                            type="button"
-                                                            role="menuitem"
-                                                            className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2 transition-colors"
-                                                            style={{ color: textColors.primary }}
-                                                            onClick={async (e) => {
-                                                              e.stopPropagation();
-                                                              setClassworkItemMenu(null);
-                                                              handleEditItem(item);
-                                                            }}
-                                                          >
-                                                            <Pencil className="w-4 h-4 shrink-0 opacity-60" />
-                                                            {t("edit")}
-                                                          </button>
-                                                          <div className="h-px mx-2 my-1 bg-black/5 dark:bg-white/5" />
-                                                          <button
-                                                            type="button"
-                                                            role="menuitem"
-                                                            className="w-full text-left px-4 py-2.5 text-xs hover:bg-red-500/10 text-red-500 flex items-center gap-2 transition-colors font-medium"
-                                                            disabled={deleteClassworkAssignmentMutation.isPending}
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              setClassworkItemMenu(null);
-                                                              setDeleteAssignmentConfirmId(item.id);
-                                                            }}
-                                                          >
-                                                            <Trash2 className="w-4 h-4 shrink-0" />
-                                                            {t("delete")}
-                                                          </button>
-                                                        </div>
-                                                      ) : null}
-                                                  </div>
-                                                </div>
+                                                          {(() => {
+                                                            const dueLabel = item.deadline
+                                                              ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
+                                                              : t("noDueDate");
 
-                                                {expandedItem?.type === item.type && expandedItem.id === item.id ? (
-                                                  <div className="px-4 pb-4 pt-0">
-                                                    <div
-                                                      className="mt-1 rounded-2xl p-4 border"
-                                                      style={{
-                                                        ...glassStyle,
-                                                        borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
-                                                      }}
-                                                    >
-                                                      {(() => {
-                                                        const dueLabel = item.deadline
-                                                          ? `${t("teacherDueDateRowLabel")}: ${formatLocalizedDate(item.deadline, lang, t, { includeTime: true, shortMonth: true })}`
-                                                          : t("noDueDate");
+                                                            const isAssignment = item.type === "assignment";
+                                                            const isQuestion = item.type === "question";
 
-                                                        const isAssignment = item.type === "assignment";
-                                                        const isQuestion = item.type === "question";
+                                                            const submittedCount = isAssignment
+                                                              ? submittedAssignmentMap.get(item.id)?.submitted ?? 0
+                                                              : isQuestion
+                                                                ? submittedQuestionMap.get(item.id) ?? 0
+                                                                : 0;
 
-                                                        const submittedCount = isAssignment
-                                                          ? submittedAssignmentMap.get(item.id)?.submitted ?? 0
-                                                          : isQuestion
-                                                            ? submittedQuestionMap.get(item.id) ?? 0
-                                                            : 0;
+                                                            const assignedCount = isAssignment
+                                                              ? submittedAssignmentMap.get(item.id)?.assigned ?? assignedCountForGroup
+                                                              : isQuestion
+                                                                ? assignedCountForGroup
+                                                                : 0;
 
-                                                        const assignedCount = isAssignment
-                                                          ? submittedAssignmentMap.get(item.id)?.assigned ?? assignedCountForGroup
-                                                          : isQuestion
-                                                            ? assignedCountForGroup
-                                                            : 0;
+                                                            const showSubmissionStats = isAssignment;
 
-                                                        const showSubmissionStats = isAssignment;
+                                                            const descriptionToRender =
+                                                              isAssignment
+                                                                ? expandedAssignmentDetails?.description ?? item.description
+                                                                : item.type === "material"
+                                                                  ? expandedMaterialDetails?.description ?? item.description
+                                                                  : item.description;
 
-                                                        const descriptionToRender =
-                                                          isAssignment
-                                                            ? expandedAssignmentDetails?.description ?? item.description
-                                                            : item.type === "material"
-                                                              ? expandedMaterialDetails?.description ?? item.description
-                                                              : item.description;
+                                                            const rubric = expandedAssignmentDetails?.rubric ?? [];
+                                                            const hasRubric = isAssignment && rubric.length > 0;
+                                                            const rubricMaxTotal = rubric.reduce((sum, c) => sum + (Number(c.max_points) || 0), 0);
 
-                                                        const rubric = expandedAssignmentDetails?.rubric ?? [];
-                                                        const hasRubric = isAssignment && rubric.length > 0;
-                                                        const rubricMaxTotal = rubric.reduce((sum, c) => sum + (Number(c.max_points) || 0), 0);
+                                                            const attachment_urls = isAssignment ? expandedAssignmentDetails?.attachment_urls ?? [] : [];
+                                                            const attachment_links = isAssignment ? expandedAssignmentDetails?.attachment_links ?? [] : [];
+                                                            const video_urls = isAssignment ? expandedAssignmentDetails?.video_urls ?? [] : [];
 
-                                                        const attachment_urls = isAssignment ? expandedAssignmentDetails?.attachment_urls ?? [] : [];
-                                                        const attachment_links = isAssignment ? expandedAssignmentDetails?.attachment_links ?? [] : [];
-                                                        const video_urls = isAssignment ? expandedAssignmentDetails?.video_urls ?? [] : [];
+                                                            const m_attachment_urls = item.type === "material" ? expandedMaterialDetails?.attachment_urls ?? [] : [];
+                                                            const m_attachment_links = item.type === "material" ? expandedMaterialDetails?.attachment_links ?? [] : [];
 
-                                                        const m_attachment_urls = item.type === "material" ? expandedMaterialDetails?.attachment_urls ?? [] : [];
-                                                        const m_attachment_links = item.type === "material" ? expandedMaterialDetails?.attachment_links ?? [] : [];
+                                                            const hasAttachments =
+                                                              (isAssignment && (attachment_urls.length > 0 || attachment_links.length > 0 || video_urls.length > 0)) ||
+                                                              (item.type === "material" && (m_attachment_urls.length > 0 || m_attachment_links.length > 0));
 
-                                                        const hasAttachments =
-                                                          (isAssignment && (attachment_urls.length > 0 || attachment_links.length > 0 || video_urls.length > 0)) ||
-                                                          (item.type === "material" && (m_attachment_urls.length > 0 || m_attachment_links.length > 0));
+                                                            const instructionsHref =
+                                                              item.type === "assignment"
+                                                                ? `/app/teacher/courses/${groupId}/assignment/${item.id}`
+                                                                : item.type === "question"
+                                                                  ? `/app/teacher/view-questions/${item.id}`
+                                                                  : null;
 
-                                                        const instructionsHref =
-                                                          item.type === "assignment"
-                                                            ? `/app/teacher/courses/${groupId}/assignment/${item.id}`
-                                                            : item.type === "question"
-                                                              ? `/app/teacher/view-questions/${item.id}`
-                                                              : null;
-
-                                                        return (
-                                                          <div className="space-y-3">
-                                                            {item.type !== "material" ? (
-                                                              <div className="text-sm font-medium" style={{ color: textColors.primary }}>
-                                                                {dueLabel}
-                                                              </div>
-                                                            ) : null}
-
-                                                            {showSubmissionStats ? (
-                                                              <div className="grid grid-cols-2 gap-3">
-                                                                <div className="rounded-xl p-3 border" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
-                                                                  <div className="text-lg font-semibold" style={{ color: textColors.primary }}>
-                                                                    {submittedCount}
+                                                            return (
+                                                              <div className="space-y-3">
+                                                                {item.type !== "material" ? (
+                                                                  <div className="text-sm font-medium" style={{ color: textColors.primary }}>
+                                                                    {dueLabel}
                                                                   </div>
-                                                                  <div className="text-xs" style={{ color: textColors.secondary }}>
-                                                                    {t("submitted")}
+                                                                ) : null}
+
+                                                                {showSubmissionStats && (
+                                                                  <div className="flex items-center gap-4 py-2 border-y border-black/5 dark:border-white/5">
+                                                                    <div className="flex-1 text-center">
+                                                                      <p className="text-xs opacity-60" style={{ color: textColors.primary }}>{t("teacherAssignedCount")}</p>
+                                                                      <p className="text-lg font-bold" style={{ color: textColors.primary }}>{assignedCount}</p>
+                                                                    </div>
+                                                                    <div className="w-px h-8 bg-black/5 dark:bg-white/5" />
+                                                                    <div className="flex-1 text-center">
+                                                                      <p className="text-xs opacity-60" style={{ color: textColors.primary }}>{t("teacherTurnedIn")}</p>
+                                                                      <p className="text-lg font-bold" style={{ color: textColors.primary }}>{submittedCount}</p>
+                                                                    </div>
+                                                                    <div className="w-px h-8 bg-black/5 dark:bg-white/5" />
+                                                                    <Link 
+                                                                      href={`/app/teacher/courses/${groupId}/assignment/${item.id}`}
+                                                                      className="flex-1 text-center group/btn"
+                                                                    >
+                                                                      <p className="text-xs text-blue-500 font-semibold group-hover/btn:underline">{t("teacherViewSubmissions")}</p>
+                                                                      <div className="flex items-center justify-center mt-1">
+                                                                        <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center group-hover/btn:bg-blue-500/20 transition-colors">
+                                                                          <CheckCircle className="w-4 h-4 text-blue-500" />
+                                                                        </div>
+                                                                      </div>
+                                                                    </Link>
                                                                   </div>
-                                                                </div>
-                                                                <div className="rounded-xl p-3 border" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
-                                                                  <div className="text-lg font-semibold" style={{ color: textColors.primary }}>
-                                                                    {assignedCount}
+                                                                )}
+
+                                                                {descriptionToRender && (
+                                                                  <div 
+                                                                    className="text-sm prose prose-sm dark:prose-invert max-w-none"
+                                                                    style={{ color: textColors.primary }}
+                                                                    dangerouslySetInnerHTML={{ __html: descriptionToRender }}
+                                                                  />
+                                                                )}
+
+                                                                {hasRubric && (
+                                                                  <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5">
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                      <h4 className="text-xs font-bold uppercase tracking-wider opacity-60" style={{ color: textColors.primary }}>
+                                                                        {t("assignmentRubricCriterion")}
+                                                                      </h4>
+                                                                      <span className="text-xs font-semibold px-2 py-1 bg-blue-500/10 text-blue-500 rounded-lg">
+                                                                        {rubricMaxTotal} {t("pointsSuffix")}
+                                                                      </span>
+                                                                    </div>
+                                                                    <div className="space-y-2">
+                                                                      {rubric.map((r, rIdx) => (
+                                                                        <div key={`${r.name}-${rIdx}`} className="p-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] border border-black/5 dark:border-white/5">
+                                                                          <div className="flex items-center justify-between gap-4">
+                                                                            <span className="text-sm font-semibold truncate" style={{ color: textColors.primary }}>{r.name}</span>
+                                                                            <span className="text-xs font-bold whitespace-nowrap" style={{ color: textColors.primary }}>{r.max_points} {t("pointsSuffix")}</span>
+                                                                          </div>
+                                                                          {r.description && <p className="text-xs mt-1 opacity-70 italic" style={{ color: textColors.primary }}>{r.description}</p>}
+                                                                        </div>
+                                                                      ))}
+                                                                    </div>
                                                                   </div>
-                                                                  <div className="text-xs" style={{ color: textColors.secondary }}>
-                                                                    {t("assigned")}
-                                                                  </div>
-                                                                </div>
-                                                              </div>
-                                                            ) : null}
+                                                                )}
 
-                                                            {descriptionToRender ? (
-                                                              <div
-                                                                className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none"
-                                                                style={{ color: textColors.secondary }}
-                                                                dangerouslySetInnerHTML={{ __html: descriptionToRender }}
-                                                              />
-                                                            ) : null}
-
-                                                            {hasRubric ? (
-                                                              <div className="text-sm font-medium" style={{ color: textColors.primary }}>
-                                                                {t("teacherRubricPill")
-                                                                  .replace("{criteria}", String(rubric.length))
-                                                                  .replace(
-                                                                    "{points}",
-                                                                    rubricMaxTotal % 1 === 0
-                                                                      ? String(rubricMaxTotal.toFixed(0))
-                                                                      : rubricMaxTotal.toFixed(1),
-                                                                  )}
-                                                              </div>
-                                                            ) : null}
-
-                                                            {hasAttachments ? (
-                                                              <div className="space-y-2">
-                                                                <div className="text-xs font-semibold" style={{ color: textColors.secondary }}>
-                                                                  {t("teacherAttachments")}
-                                                                </div>
-
-                                                                {isAssignment ? (
-                                                                  <>
-                                                                    {attachment_urls.length > 0 ? (
-                                                                      <div className="space-y-2">
+                                                                {hasAttachments && (
+                                                                  <div className="mt-3 space-y-3">
+                                                                    {attachment_urls.length > 0 && (
+                                                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                         {attachment_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherGradingFileFallback").replace("{n}", String(idx + 1));
+                                                                          const name = u.split("/").pop() ?? t("teacherAttachments");
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
                                                                               href={u}
                                                                               target="_blank"
                                                                               rel="noopener noreferrer"
-                                                                              className="block rounded-xl border px-3 py-2 hover:underline truncate"
+                                                                              className="flex items-center gap-2 p-2 rounded-xl border hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                                                                               style={{ color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
                                                                               onClick={(e) => e.stopPropagation()}
                                                                             >
-                                                                              {name}
+                                                                              <FileText className="w-4 h-4 shrink-0 opacity-60" />
+                                                                              <span className="text-xs truncate">{name}</span>
                                                                             </a>
                                                                           );
                                                                         })}
                                                                       </div>
-                                                                    ) : null}
+                                                                    )}
 
-                                                                    {attachment_links.length > 0 ? (
+                                                                    {attachment_links.length > 0 && (
                                                                       <div className="space-y-2">
-                                                                        {attachment_links.map((u, idx) => {
-                                                                          const lower = u.toLowerCase();
-                                                                          let host = u;
-                                                                          try {
-                                                                            host = new URL(u).hostname;
-                                                                          } catch {
-                                                                            // Keep raw url as a fallback label
-                                                                          }
-                                                                          const label = lower.includes("forms") ? t("googleForms") : host;
-                                                                          return (
-                                                                            <a
-                                                                              key={`${u}-${idx}`}
-                                                                              href={u}
-                                                                              target="_blank"
-                                                                              rel="noopener noreferrer"
-                                                                              className="block rounded-xl border px-3 py-2 hover:underline truncate"
-                                                                              style={{ color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
-                                                                              onClick={(e) => e.stopPropagation()}
-                                                                            >
-                                                                              {label}
-                                                                            </a>
-                                                                          );
-                                                                        })}
+                                                                        {attachment_links.map((u, idx) => (
+                                                                          <a
+                                                                            key={`${u}-${idx}`}
+                                                                            href={u}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="block rounded-xl border px-3 py-2 hover:underline truncate"
+                                                                            style={{ color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                          >
+                                                                            {u}
+                                                                          </a>
+                                                                        ))}
                                                                       </div>
-                                                                    ) : null}
+                                                                    )}
 
-                                                                    {video_urls.length > 0 ? (
-                                                                      <div className="space-y-2">
-                                                                        {video_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherVideoFallback").replace("{n}", String(idx + 1));
-                                                                          return (
-                                                                            <a
-                                                                              key={`${u}-${idx}`}
-                                                                              href={u}
-                                                                              target="_blank"
-                                                                              rel="noopener noreferrer"
-                                                                              className="block rounded-xl border px-3 py-2 hover:underline truncate"
-                                                                              style={{ color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
-                                                                              onClick={(e) => e.stopPropagation()}
-                                                                            >
-                                                                              {name}
-                                                                            </a>
-                                                                          );
-                                                                        })}
+                                                                    {video_urls.length > 0 && (
+                                                                      <div className="grid grid-cols-1 gap-2">
+                                                                        {video_urls.map((v, idx) => (
+                                                                          <div key={`${v}-${idx}`} className="rounded-xl overflow-hidden border" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
+                                                                            <iframe 
+                                                                              className="w-full aspect-video"
+                                                                              src={v.replace("watch?v=", "embed/").split("&")[0]}
+                                                                              allowFullScreen
+                                                                            />
+                                                                          </div>
+                                                                        ))}
                                                                       </div>
-                                                                    ) : null}
-                                                                  </>
-                                                                ) : (
-                                                                  <>
-                                                                    {m_attachment_urls.length > 0 ? (
+                                                                    )}
+
+                                                                    {m_attachment_urls.length > 0 && (
                                                                       <div className="space-y-2">
                                                                         {m_attachment_urls.map((u, idx) => {
-                                                                          const name = u.split("/").pop()?.split("?")[0] || t("teacherGradingFileFallback").replace("{n}", String(idx + 1));
+                                                                          const name = u.split("/").pop() ?? t("teacherAttachments");
                                                                           return (
                                                                             <a
                                                                               key={`${u}-${idx}`}
@@ -1522,9 +1576,9 @@ export default function TeacherCourseGroupPage() {
                                                                           );
                                                                         })}
                                                                       </div>
-                                                                    ) : null}
+                                                                    )}
 
-                                                                    {m_attachment_links.length > 0 ? (
+                                                                    {m_attachment_links.length > 0 && (
                                                                       <div className="space-y-2">
                                                                         {m_attachment_links.map((u, idx) => {
                                                                           const lower = u.toLowerCase();
@@ -1550,33 +1604,34 @@ export default function TeacherCourseGroupPage() {
                                                                           );
                                                                         })}
                                                                       </div>
-                                                                    ) : null}
-                                                                  </>
+                                                                    )}
+                                                                  </div>
                                                                 )}
-                                                              </div>
-                                                            ) : null}
 
-                                                            {instructionsHref ? (
-                                                              <div>
-                                                                <Link
-                                                                  href={instructionsHref}
-                                                                  onClick={(e) => e.stopPropagation()}
-                                                                  className="text-sm font-medium text-blue-500 hover:underline"
-                                                                >
-                                                                  {t("teacherViewAnswersInstructions")}
-                                                                </Link>
+                                                                {instructionsHref ? (
+                                                                  <div className="pt-2 border-t border-black/5 dark:border-white/5">
+                                                                    <Link
+                                                                      href={instructionsHref}
+                                                                      onClick={(e) => e.stopPropagation()}
+                                                                      className="text-xs font-semibold text-blue-500 hover:underline flex items-center gap-1"
+                                                                    >
+                                                                      {t("teacherViewAnswersInstructions")}
+                                                                      <ArrowLeft className="w-3 h-3 rotate-180" />
+                                                                    </Link>
+                                                                  </div>
+                                                                ) : null}
                                                               </div>
-                                                            ) : null}
-                                                          </div>
-                                                        );
-                                                      })()}
-                                                    </div>
-                                                  </div>
-                                                ) : null}
-                                              </li>
-                                            )}
-                                          </Draggable>
-                                        ))}
+                                                            );
+                                                          })()}
+                                                        </div>
+                                                      </div>
+                                                    ) : null}
+                                                  </li>
+                                                )}
+                                              </Draggable>
+                                            </Fragment>
+                                          );
+                                        })}
                                         {provided.placeholder}
                                       </ul>
                                     )}
@@ -1905,7 +1960,7 @@ export default function TeacherCourseGroupPage() {
                       <div className="mt-4 pt-3 border-t" style={{ borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}>
                         {row.graded_at ? (
                           <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-semibold text-xs">
-                            <CheckCircle2 className="w-4 h-4" />
+                            <CheckCircle className="w-4 h-4" />
                             {t("teacherAssignmentListStatusGraded")}
                             {row.teacher_comment && <span className="font-normal opacity-80 ml-1">({row.teacher_comment})</span>}
                           </div>

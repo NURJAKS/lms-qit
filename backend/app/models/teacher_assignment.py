@@ -24,6 +24,7 @@ class TeacherAssignment(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)  # manual close by teacher
     reject_submissions_after_deadline = Column(Boolean, nullable=False, default=True)
     is_synopsis = Column(Boolean, nullable=False, default=False)
+    is_supplementary = Column(Boolean, nullable=False, default=False)  # доп. задание — не оценивается, не обязательно
     allow_student_class_comments = Column(Boolean, nullable=False, default=True)
     allow_student_edit_submission = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

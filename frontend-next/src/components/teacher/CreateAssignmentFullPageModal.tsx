@@ -232,9 +232,8 @@ export function CreateAssignmentFullPageModal({
   const [topicCreateTitle, setTopicCreateTitle] = useState("");
   const [topicCreateDesc, setTopicCreateDesc] = useState("");
   const [isSynopsis, setIsSynopsis] = useState(false);
-  const [companionSynopsisEnabled, setCompanionSynopsisEnabled] = useState(false);
-  const [companionSynopsisTitle, setCompanionSynopsisTitle] = useState("");
-  const [companionSynopsisMaxPoints, setCompanionSynopsisMaxPoints] = useState(100);
+  const [isSupplementary, setIsSupplementary] = useState(false);
+
 
   const [rubricDropdownOpen, setRubricDropdownOpen] = useState(false);
   const [rubricCreatorOpen, setRubricCreatorOpen] = useState(false);
@@ -470,9 +469,8 @@ export function CreateAssignmentFullPageModal({
     setSubmitting(false);
     setMaxPointsFollowsRubric(!initialData);
     setIsSynopsis(initialData?.is_synopsis || false);
-    setCompanionSynopsisEnabled(!!initialData?.openCompanionSynopsis && !initialData?.is_synopsis);
-    setCompanionSynopsisTitle("");
-    setCompanionSynopsisMaxPoints(100);
+    setIsSupplementary(initialData?.is_supplementary || false);
+
   }, [isOpen, currentGroup.id, initialData, mode, t]);
 
   const uploadFile = async (file: File) => {
@@ -541,6 +539,7 @@ export function CreateAssignmentFullPageModal({
       testQuestions?: TestQuestionApi[];
       rejectSubmissionsAfterDeadline?: boolean;
       isSynopsis?: boolean;
+      isSupplementary?: boolean;
     }) => {
       await api.post("/teacher/assignments", {
         group_id: payload.groupId,
@@ -557,6 +556,7 @@ export function CreateAssignmentFullPageModal({
         test_questions: payload.testQuestions?.length ? payload.testQuestions : undefined,
         reject_submissions_after_deadline: payload.rejectSubmissionsAfterDeadline,
         is_synopsis: payload.isSynopsis,
+        is_supplementary: payload.isSupplementary,
       });
     },
   });
@@ -607,6 +607,7 @@ export function CreateAssignmentFullPageModal({
       attachmentUrls: string[];
       attachmentLinks: string[];
       videoUrls: string[];
+      isSupplementary?: boolean;
     }) => {
       await api.post("/teacher/materials", {
         group_id: payload.groupId,
@@ -617,6 +618,7 @@ export function CreateAssignmentFullPageModal({
         attachment_urls: payload.attachmentUrls.length ? payload.attachmentUrls : undefined,
         attachment_links: payload.attachmentLinks.length ? payload.attachmentLinks : undefined,
         video_urls: payload.videoUrls.length ? payload.videoUrls : undefined,
+        is_supplementary: payload.isSupplementary,
       });
     },
   });
@@ -670,6 +672,7 @@ export function CreateAssignmentFullPageModal({
               attachmentUrls,
               attachmentLinks,
               videoUrls,
+              isSupplementary,
             });
           }
         } else if (mode === "question") {
@@ -742,27 +745,7 @@ export function CreateAssignmentFullPageModal({
               testQuestions: apiTestQuestions.length ? apiTestQuestions : undefined,
               rejectSubmissionsAfterDeadline: rejectPayload,
               isSynopsis: mainIsSynopsis,
-            });
-          }
-          if (companionSynopsisEnabled && !mainIsSynopsis) {
-            const synTitle =
-              companionSynopsisTitle.trim() ||
-              `${cleanedTitle} — ${t("teacherSynopsisPairSuffix")}`;
-            await createAssignmentMutation.mutateAsync({
-              groupId: gid,
-              courseId: g.course_id,
-              topicId: resolvedTopic,
-              title: synTitle,
-              description: undefined,
-              deadlineIso,
-              maxPoints: Math.max(0, companionSynopsisMaxPoints),
-              attachmentUrls: [],
-              attachmentLinks: [],
-              videoUrls: [],
-              rubric: [],
-              testQuestions: undefined,
-              rejectSubmissionsAfterDeadline: rejectPayload,
-              isSynopsis: true,
+              isSupplementary,
             });
           }
         }
@@ -1187,79 +1170,9 @@ export function CreateAssignmentFullPageModal({
                     )}
                   </div>
 
-                  {isAssignmentLike && !initialData?.is_synopsis ? (
-                    <div
-                      className="rounded-2xl border p-4 space-y-3"
-                      style={{
-                        borderColor: companionSynopsisEnabled
-                          ? "#3B82F6"
-                          : isDark
-                            ? "rgba(255,255,255,0.12)"
-                            : "rgba(0,0,0,0.1)",
-                        background: companionSynopsisEnabled
-                          ? isDark
-                            ? "rgba(59,130,246,0.08)"
-                            : "rgba(219,234,254,0.25)"
-                          : "transparent",
-                      }}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold" style={{ color: textColors.primary }}>
-                            {t("assignmentCompanionSynopsisSection")}
-                          </p>
-                          <p className="text-xs mt-1 leading-relaxed" style={{ color: textColors.secondary }}>
-                            {t("assignmentCompanionSynopsisHint")}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCompanionSynopsisEnabled((v) => !v);
-                            if (!companionSynopsisEnabled && !companionSynopsisTitle.trim() && title.trim()) {
-                              setCompanionSynopsisTitle(`${title.trim()} — ${t("teacherSynopsisPairSuffix")}`);
-                            }
-                          }}
-                          className="w-full sm:w-auto shrink-0 rounded-xl px-3 py-2.5 text-xs font-semibold border transition-colors text-center sm:text-left"
-                          style={{
-                            borderColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)",
-                            color: textColors.primary,
-                          }}
-                        >
-                          {companionSynopsisEnabled ? t("assignmentRemoveCompanionSynopsis") : t("assignmentAddCompanionSynopsis")}
-                        </button>
-                      </div>
-                      {companionSynopsisEnabled ? (
-                        <div className="space-y-3 pt-1">
-                          <div className="space-y-1">
-                            <label className="block text-xs font-semibold" style={{ color: textColors.secondary }}>
-                              {t("assignmentCompanionSynopsisTitleLabel")}
-                            </label>
-                            <input
-                              value={companionSynopsisTitle}
-                              onChange={(e) => setCompanionSynopsisTitle(e.target.value)}
-                              placeholder={`${title.trim()} — ${t("teacherSynopsisPairSuffix")}`}
-                              className="w-full px-3 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
-                              style={{ ...inputStyle, color: textColors.primary }}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-xs font-semibold" style={{ color: textColors.secondary }}>
-                              {t("assignmentCompanionSynopsisPointsLabel")}
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={companionSynopsisMaxPoints}
-                              onChange={(e) => setCompanionSynopsisMaxPoints(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                              className="w-full px-3 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
-                              style={{ ...inputStyle, color: textColors.primary }}
-                            />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+
+
+
 
                   {/* Submit footer */}
                   {isAssignmentLike && (

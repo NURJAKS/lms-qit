@@ -28,7 +28,11 @@ export const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const t = token();
-  if (t) config.headers.Authorization = `Bearer ${t}`;
+  const hasAuthorizationHeader =
+    Boolean(config.headers?.Authorization) || Boolean(config.headers?.authorization);
+  if (t && !hasAuthorizationHeader) {
+    config.headers.Authorization = `Bearer ${t}`;
+  }
   // Для FormData не задаём Content-Type — браузер сам добавит multipart/form-data с boundary
   if (config.data instanceof FormData) {
     delete config.headers["Content-Type"];

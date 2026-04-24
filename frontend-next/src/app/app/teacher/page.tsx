@@ -51,6 +51,8 @@ type Assignment = {
   closed_at: string | null;
   is_closed: boolean;
   created_at: string | null;
+  is_synopsis?: boolean;
+  is_supplementary?: boolean;
 };
 
 type AddStudentTask = {
@@ -142,6 +144,8 @@ export default function TeacherPage() {
     video_urls: [] as string[],
     rubric: [] as { name: string; max_points: number }[],
     test_questions: [] as { question_text: string; option_a: string; option_b: string; option_c: string; option_d: string; correct_answer: string }[],
+    is_supplementary: false,
+    is_synopsis: false,
   });
   const [newLinkInput, setNewLinkInput] = useState("");
   const [newVideoLinkInput, setNewVideoLinkInput] = useState("");
@@ -163,6 +167,7 @@ export default function TeacherPage() {
     image_urls: [] as string[],
     attachment_urls: [] as string[],
     attachment_links: [] as string[],
+    is_supplementary: false,
   });
   const [newTopic, setNewTopic] = useState({ course_id: "" as number | "", title: "", description: "" });
   const [materialVideoLinkInput, setMaterialVideoLinkInput] = useState("");
@@ -394,6 +399,8 @@ export default function TeacherPage() {
       video_urls?: string[];
       rubric?: { name: string; max_points: number }[];
       test_questions?: { question_text: string; option_a: string; option_b: string; option_c: string; option_d: string; correct_answer: string }[];
+      is_supplementary?: boolean;
+      is_synopsis?: boolean;
     }) => {
       await api.post("/teacher/assignments", body);
     },
@@ -469,6 +476,8 @@ export default function TeacherPage() {
         attachment_links?: string[];
         video_urls?: string[];
         rubric?: { name: string; max_points: number }[];
+        is_supplementary?: boolean;
+        is_synopsis?: boolean;
       };
     }) => {
       await api.patch(`/teacher/assignments/${assignmentId}`, body);
@@ -503,7 +512,7 @@ export default function TeacherPage() {
   });
 
   const createMaterialMutation = useMutation({
-    mutationFn: async (body: { group_id: number; course_id: number; topic_id?: number; title: string; description?: string; video_urls?: string[]; image_urls?: string[]; attachment_urls?: string[]; attachment_links?: string[] }) => {
+    mutationFn: async (body: { group_id: number; course_id: number; topic_id?: number; title: string; description?: string; video_urls?: string[]; image_urls?: string[]; attachment_urls?: string[]; attachment_links?: string[]; is_supplementary?: boolean }) => {
       await api.post("/teacher/materials", body);
     },
     onSuccess: () => {
@@ -511,7 +520,7 @@ export default function TeacherPage() {
       queryClient.invalidateQueries({ queryKey: ["teacher-materials"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
       setCreateModalType(null);
-      setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [] });
+      setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [], is_supplementary: false });
       toast.success(t("teacherMaterialCreated"));
     },
     onError: (err: any) => {
@@ -571,6 +580,8 @@ export default function TeacherPage() {
       video_urls: [],
       rubric: [],
       test_questions: [],
+      is_supplementary: false,
+      is_synopsis: false,
     });
   };
 
@@ -631,6 +642,8 @@ export default function TeacherPage() {
         video_urls: data.video_urls || [],
         rubric: data.rubric || [],
         test_questions: [],
+        is_supplementary: (data as any).is_supplementary || false,
+        is_synopsis: (data as any).is_synopsis || false,
       });
       setCreateModalType("assignment");
     } catch (err: any) {
@@ -654,6 +667,7 @@ export default function TeacherPage() {
         image_urls: data.image_urls || [],
         attachment_urls: data.attachment_urls || [],
         attachment_links: data.attachment_links || [],
+        is_supplementary: data.is_supplementary || false,
       });
       setCreateModalType("material");
     } catch (err: any) {
@@ -750,6 +764,7 @@ export default function TeacherPage() {
         video_urls: newAssignment.video_urls.length ? newAssignment.video_urls : undefined,
         rubric: newAssignment.rubric.length ? newAssignment.rubric : undefined,
         test_questions: createModalType === "assignmentWithTest" && newAssignment.test_questions.length ? newAssignment.test_questions : undefined,
+        is_supplementary: newAssignment.is_supplementary,
       });
       setNewAssignment({
         group_id: "" as number | "",
@@ -764,6 +779,8 @@ export default function TeacherPage() {
         video_urls: [],
         rubric: [],
         test_questions: [],
+        is_supplementary: false,
+        is_synopsis: false,
       });
       setCreateModalType(null);
     }
@@ -856,7 +873,7 @@ export default function TeacherPage() {
         attachment_urls: newMaterial.attachment_urls.length ? newMaterial.attachment_urls : undefined,
         attachment_links: newMaterial.attachment_links.length ? newMaterial.attachment_links : undefined,
       });
-      setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [] });
+      setNewMaterial({ group_id: "" as number | "", course_id: "" as number | "", topic_id: null, title: "", description: "", video_urls: [], image_urls: [], attachment_urls: [], attachment_links: [], is_supplementary: false });
     }
   };
 
@@ -1542,9 +1559,14 @@ export default function TeacherPage() {
                       }}
                     >
                       {[
+                        { type: "assignment" as const, icon: FileText, label: t("teacherCreateAssignment") },
                         { type: "assignmentWithTest" as const, icon: FileText, label: t("teacherCreateAssignmentWithTest") },
+                        { type: "synopsis" as const, icon: BookOpen, label: t("teacherCreateSynopsis") },
                         { type: "question" as const, icon: MessageCircle, label: t("teacherCreateQuestion") },
                         { type: "material" as const, icon: BookOpen, label: t("teacherCreateMaterial") },
+                        { type: "supplementaryAssignment" as const, icon: Sparkles, label: t("teacherCreateSupplementaryAssignment") },
+                        { type: "supplementarySynopsis" as const, icon: Sparkles, label: t("teacherCreateSupplementarySynopsis") },
+                        { type: "supplementaryMaterial" as const, icon: Sparkles, label: t("teacherCreateSupplementaryMaterial") },
                         { type: "topic" as const, icon: List, label: t("teacherCreateTopic") },
                         { type: "reuse" as const, icon: Copy, label: t("teacherCreateReuse") },
                       ].map((item) => {
@@ -1553,7 +1575,29 @@ export default function TeacherPage() {
                           <button
                             key={item.type}
                             type="button"
-                            onClick={() => { setCreateModalType(item.type); setCreateDropdownOpen(false); }}
+                            onClick={() => { 
+                              if (item.type === "supplementaryAssignment") {
+                                setCreateModalType("assignment");
+                                setNewAssignment(prev => ({ ...prev, is_supplementary: true, is_synopsis: false }));
+                              } else if (item.type === "supplementarySynopsis") {
+                                setCreateModalType("assignment");
+                                setNewAssignment(prev => ({ ...prev, is_supplementary: true, is_synopsis: true }));
+                              } else if (item.type === "supplementaryMaterial") {
+                                setCreateModalType("material");
+                                setNewAssignment(prev => ({ ...prev, is_supplementary: true }));
+                              } else if (item.type === "synopsis") {
+                                setCreateModalType("assignment");
+                                setNewAssignment(prev => ({ ...prev, is_synopsis: true }));
+                              } else {
+                                setCreateModalType(item.type); 
+                                if (item.type === "assignment") {
+                                  setNewAssignment(prev => ({ ...prev, is_supplementary: false, is_synopsis: false }));
+                                } else if (item.type === "material") {
+                                  setNewAssignment(prev => ({ ...prev, is_supplementary: false }));
+                                }
+                              }
+                              setCreateDropdownOpen(false); 
+                            }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                             style={{ color: textColors.primary }}
                           >
@@ -2001,6 +2045,35 @@ export default function TeacherPage() {
                     )}
                   </div>
 
+                  <div className="pt-2">
+                    <label
+                      className="flex items-center gap-3 cursor-pointer p-4 rounded-2xl border transition-all hover:shadow-md"
+                      style={{
+                        borderColor: newAssignment.is_supplementary ? "#3B82F6" : isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+                        background: newAssignment.is_supplementary
+                          ? isDark
+                            ? "rgba(59,130,246,0.1)"
+                            : "rgba(219,234,254,0.3)"
+                          : "transparent",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newAssignment.is_supplementary}
+                        onChange={(e) => setNewAssignment((prev) => ({ ...prev, is_supplementary: e.target.checked }))}
+                        className="w-4 h-4 rounded accent-blue-500"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                          {t("teacherCreateSupplementary")}
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: textColors.secondary }}>
+                          {t("supplementaryMaterialsHeading")}
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
                   <div className="flex gap-2 pt-2">
                     <button
                       type="button"
@@ -2283,10 +2356,10 @@ export default function TeacherPage() {
                                     {t("teacherCloseAssignment")}
                                   </button>
                                 )}
-                              </>
-                            )}
-                          </div>
-                        </li>
+                                </>
+                              )}
+                            </div>
+                          </li>
                       );
                     })}
                   </ul>
@@ -2695,6 +2768,36 @@ export default function TeacherPage() {
                 )}
               </div>
             </div>
+
+            <div className="pt-2">
+              <label
+                className="flex items-center gap-3 cursor-pointer p-4 rounded-2xl border transition-all hover:shadow-md"
+                style={{
+                  borderColor: newMaterial.is_supplementary ? "#3B82F6" : isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+                  background: newMaterial.is_supplementary
+                    ? isDark
+                      ? "rgba(59,130,246,0.1)"
+                      : "rgba(219,234,254,0.3)"
+                    : "transparent",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newMaterial.is_supplementary}
+                  onChange={(e) => setNewMaterial((prev) => ({ ...prev, is_supplementary: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-blue-500"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                    {t("teacherCreateSupplementary")}
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: textColors.secondary }}>
+                    {t("supplementaryMaterialsHeading")}
+                  </div>
+                </div>
+              </label>
+            </div>
+
             <div className="flex gap-2 mt-5">
               <button
                 type="button"
@@ -2819,6 +2922,7 @@ export default function TeacherPage() {
                               title: data.title + ` ${t("teacherCopy")}`, description: data.description || "", deadline: "", max_points: 100,
                               attachment_urls: data.attachment_urls || [], attachment_links: data.attachment_links || [],
                               video_urls: data.video_urls || [], rubric: data.rubric || [], test_questions: [],
+                              is_supplementary: false, is_synopsis: false,
                             });
                             setActiveTab("assignments");
                             setCreateModalType("assignment");
@@ -2851,6 +2955,7 @@ export default function TeacherPage() {
                               title: data.title + ` ${t("teacherCopy")}`, description: data.description || "",
                               video_urls: data.video_urls || [], image_urls: data.image_urls || [],
                               attachment_urls: data.attachment_urls || [], attachment_links: data.attachment_links || [],
+                              is_supplementary: false,
                             });
                             setCreateModalType("material");
                           }}

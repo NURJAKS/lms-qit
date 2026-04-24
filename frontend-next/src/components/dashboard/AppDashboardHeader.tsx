@@ -7,19 +7,23 @@ import { SearchHeader } from "./SearchHeader";
 import { useAuthStore } from "@/store/authStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/context/ThemeContext";
+import { useSidebar } from "@/context/SidebarContext";
 import { useState, useRef, useEffect } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useLanguage } from "@/context/LanguageContext";
 import { api } from "@/api/client";
 import { getLocalizedNotificationText } from "@/lib/notificationText";
+import { Menu } from "lucide-react";
 
 export function AppDashboardHeader() {
-  const { user, logout } = useAuthStore();
-  const queryClient = useQueryClient();
-  const router = useRouter();
-  const { t, lang, setLang } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { setMobileOpen } = useSidebar();
   const { data: notifications = [], refetch } = useNotifications();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -74,11 +78,30 @@ export function AppDashboardHeader() {
   };
 
   return (
-    <header className="hidden lg:block sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-700">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6">
-        <SearchHeader />
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-700">
+      <div className="flex items-center justify-between h-16 sm:h-14 px-4 lg:px-6 gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="lg:hidden p-2 -ml-2 rounded-xl text-gray-600 dark:text-gray-300 active:scale-95 transition-all"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          <div className="lg:block hidden">
+            <SearchHeader />
+          </div>
+          <div className="lg:hidden flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+              style={{ background: "var(--qit-gradient-1)" }}
+            >
+              Q
+            </div>
+          </div>
+        </div>
 
-        <div className="hidden lg:flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <div className="relative hidden sm:block" ref={langRef}>
             <button
               type="button"
@@ -137,8 +160,8 @@ export function AppDashboardHeader() {
               </div>
             </button>
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-1 w-[min(20rem,calc(100vw-1.5rem))] max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-2xl shadow-xl z-50 max-h-80 overflow-auto">
-                <div className="p-3 border-b dark:border-gray-600 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-gray-50/50 dark:bg-gray-800/50">
+              <div className="fixed sm:absolute right-4 sm:right-0 top-16 sm:top-full mt-1 w-[calc(100vw-2rem)] sm:w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-2xl shadow-2xl z-50 max-h-[80vh] sm:max-h-96 overflow-hidden flex flex-col">
+                <div className="p-3 border-b dark:border-gray-600 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
                   <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">{t("notifications")}</span>
                   {unread.length > 0 && (
                     <button
@@ -146,12 +169,13 @@ export function AppDashboardHeader() {
                         e.stopPropagation();
                         markAllRead();
                       }}
-                      className="text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline text-left sm:text-right leading-snug whitespace-normal"
+                      className="text-xs font-bold text-[var(--qit-primary)] dark:text-[var(--qit-accent)] hover:underline active-tap-subtle"
                     >
                       {t("markAllAsRead")}
                     </button>
                   )}
                 </div>
+                <div className="overflow-y-auto flex-1 custom-scrollbar">
                 {notifications.length === 0 ? (
                   <p className="p-4 text-gray-500 dark:text-gray-400 text-sm">{t("noNotifications")}</p>
                 ) : (
@@ -172,6 +196,7 @@ export function AppDashboardHeader() {
                     );
                   })
                 )}
+                </div>
               </div>
             )}
           </div>

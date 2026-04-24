@@ -47,8 +47,11 @@ export function TopicTheoryContent({ content }: { content: string }) {
           {/* Subtle grid pattern for content */}
           <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none z-0 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:24px_24px]" />
           
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+          {/<[a-z][\s\S]*>/i.test(content) ? (
+            <div dangerouslySetInnerHTML={{ __html: content }} />
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
             components={{
               h2: ({ children }) => (
                 <h2 className="flex items-center gap-3 relative group/h2">
@@ -158,6 +161,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
           >
             {content}
           </ReactMarkdown>
+          )}
         </div>
 
         {/* Bottom footer/decoration */}

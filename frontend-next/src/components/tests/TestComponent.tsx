@@ -2,8 +2,10 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
+import type { TranslationKey } from "@/i18n/translations";
 import type { TestQuestion, Test } from "@/types";
 import { AlertTriangle, Maximize } from "lucide-react";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -12,10 +14,74 @@ interface TestComponentProps {
   testId: number;
   onComplete: () => void;
   onCancel: () => void;
+  /** If set, «retake» starts a fresh attempt without calling onCancel (e.g. stay on topic / in inline test). */
+  onRetake?: () => void;
+  /** Label for the primary button on the «passed» result card (default: profileContinue). */
+  passedContinueLabelKey?: TranslationKey;
 }
 
-export function TestComponent({ testId, onComplete, onCancel }: TestComponentProps) {
+function navigateToCourseSupplementaryTab(router: { push: (href: string) => void }) {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  const courseMatch = path.match(/^\/app\/courses\/(\d+)/);
+  const courseId = courseMatch?.[1] ?? new URLSearchParams(window.location.search).get("courseId");
+  if (courseId) {
+    router.push(`/app/courses/${courseId}?tab=supplementary`);
+    return;
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("tab", "supplementary");
+  router.push(`${url.pathname}${url.search}`);
+}
+
+function closeTestThenGoToSupplementary(
+  router: { push: (href: string) => void },
+  onCancel: () => void,
+) {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  const standalone = typeof window !== "undefined" && window.location.pathname.startsWith("/app/test/");
+  if (!standalone) onCancel();
+  navigateToCourseSupplementaryTab(router);
+}
+
+function TestScoreThresholdBar({
+  score,
+  barClassName,
+  marker50ClassName,
+}: {
+  score: number;
+  barClassName: string;
+  marker50ClassName: string;
+}) {
+  const pct = Math.min(Math.max(score, 0), 100);
+  return (
+    <>
+      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-1000 ${barClassName}`} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="relative mt-2 h-4 text-xs font-medium">
+        <span className="absolute left-0 text-gray-400 dark:text-gray-500">0%</span>
+        <span className={`absolute -translate-x-1/2 ${marker50ClassName}`} style={{ left: "50%" }}>
+          50%
+        </span>
+        <span className="absolute -translate-x-1/2 text-green-600 dark:text-green-500" style={{ left: "80%" }}>
+          80%
+        </span>
+        <span className="absolute left-full -translate-x-full text-gray-400 dark:text-gray-500">100%</span>
+      </div>
+    </>
+  );
+}
+
+export function TestComponent({ testId, onComplete, onCancel, onRetake, passedContinueLabelKey }: TestComponentProps) {
+  const router = useRouter();
   const { t, lang } = useLanguage();
+
+  const handleRetakeClick = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (onRetake) onRetake();
+    else onCancel();
+  };
   const [step, setStep] = useState(0);
   const showConfirm = useNotificationStore((s) => s.showConfirm);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -51,6 +117,18 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCheatingWarning, setShowCheatingWarning] = useState(false);
   const [hasEnteredFullscreenOnce, setHasEnteredFullscreenOnce] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  const handleFinishEarly = () => {
+    setShowExitConfirm(true);
+  };
+
+  const handleNext = () => {
+    if (step === questions.length - 1) submitMutation.mutate();
+    else setStep((s) => s + 1);
+  };
+
+  const handlePrev = () => setStep((s) => Math.max(0, s - 1));
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -104,6 +182,10 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
 
     const blockHotkeys = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      if (key === "escape") {
+        e.preventDefault();
+        handleFinishEarly();
+      }
       if ((e.ctrlKey || e.metaKey) && (key === "c" || key === "x" || key === "a" || key === "insert")) {
         e.preventDefault();
       }
@@ -137,44 +219,122 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
     }
   };
 
-  const handleFinishEarly = () => {
-    showConfirm({
-      title: t("testFinishAndExit"),
-      message: t("testExitWarning"),
-      variant: "danger",
-      onConfirm: () => submitMutation.mutate(),
-    });
-  };
-
   const current = questions[step];
   const isLast = step === questions.length - 1;
 
-  const handleNext = () => {
-    if (isLast) submitMutation.mutate();
-    else setStep((s) => s + 1);
-  };
-
-  const handlePrev = () => setStep((s) => Math.max(0, s - 1));
-
   if (submitMutation.isSuccess && submitMutation.data) {
     const d = submitMutation.data;
-    if (d.passed) {
+    const tier: string = (d as Record<string, unknown>).result_tier as string || (d.passed ? "passed" : "failed");
+    const showSuppLink: boolean = (d as Record<string, unknown>).show_supplementary_link as boolean || false;
+
+    const wrapperClass = "w-full h-full min-h-[400px] flex flex-col items-center justify-center bg-white dark:bg-gray-900 p-4 transition-all duration-300";
+
+    // --- PASSED (80-100%) ---
+    if (tier === "passed") {
       return (
-        <div className="max-w-xl mx-auto bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-6 text-center">
-          <h2 className="text-xl font-bold text-green-800 dark:text-green-200 mb-2">{t("topicTestCongratsTitle")}</h2>
-          <p className="text-green-700 dark:text-green-300 mb-2 font-medium">{t("testPassed")}</p>
-          <p className="text-green-700/90 dark:text-green-300/90 mb-4 text-sm">{t("topicTestCongratsBody")}</p>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">{t("testScore")}: {d.score.toFixed(0)}% ({d.correct_count}/{d.total_count})</p>
-          <button type="button" onClick={onComplete} className="py-2 px-4 rounded-lg bg-green-600 text-white hover:bg-green-700">{t("profileContinue")}</button>
+        <div className={wrapperClass}>
+          <div className="w-full max-w-xl mx-auto rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800">
+            <div className="bg-green-600 p-6 text-center relative overflow-hidden">
+              <div className="relative">
+                <div className="text-4xl mb-3">✅</div>
+                <h2 className="text-xl font-bold text-white tracking-wide">{t("testResultPassedTitle")}</h2>
+              </div>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-gray-700 dark:text-gray-300 mb-6 text-base leading-relaxed">{t("testResultPassedDesc")}</p>
+              <div className="inline-flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 rounded-xl px-8 py-4 border border-gray-100 dark:border-gray-700 mb-6">
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{t("testScore")}</span>
+                <span className="text-4xl font-bold text-green-600 dark:text-green-500">{d.score.toFixed(0)}%</span>
+                <span className="text-xs text-gray-400 mt-1">({d.correct_count}/{d.total_count})</span>
+              </div>
+              <div className="mt-2">
+                <button type="button" onClick={onComplete} className="py-2.5 px-6 rounded-lg bg-[var(--qit-primary)] hover:opacity-90 text-white font-semibold transition-all text-sm w-full sm:w-auto mt-2">
+                  {t(passedContinueLabelKey ?? "profileContinue")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
+
+    // --- NEEDS REVIEW (50-80%) ---
+    if (tier === "needs_review") {
+      return (
+        <div className={wrapperClass}>
+          <div className="w-full max-w-xl mx-auto rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800">
+            <div className="bg-amber-500 p-6 text-center relative overflow-hidden">
+              <div className="relative">
+                <div className="text-4xl mb-3">⚠️</div>
+                <h2 className="text-xl font-bold text-white tracking-wide">{t("testResultNeedsReviewTitle")}</h2>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 dark:text-gray-300 mb-4 text-base leading-relaxed text-center">{t("testResultNeedsReviewDesc")}</p>
+              <div className="my-6 bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-gray-100 dark:border-gray-700">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t("testScore")}</span>
+                  <span className="text-2xl font-bold text-amber-600 dark:text-amber-500">{d.score.toFixed(0)}%</span>
+                </div>
+                <TestScoreThresholdBar score={d.score} barClassName="bg-amber-500" marker50ClassName="text-amber-600 dark:text-amber-500" />
+              </div>
+              <p className="text-gray-500 dark:text-gray-400 text-sm text-center mb-6">{t("testResultNeedsReviewSupplementaryHint")}</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button type="button" onClick={handleRetakeClick} className="py-2.5 px-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-semibold transition-all text-sm">
+                  {t("testRetry")}
+                </button>
+                {showSuppLink && (
+                  <button
+                    type="button"
+                    onClick={() => closeTestThenGoToSupplementary(router, onCancel)}
+                    className="py-2.5 px-6 rounded-lg bg-[var(--qit-primary)] hover:opacity-90 text-white font-semibold transition-all text-sm"
+                  >
+                    {t("testGoToSupplementary")}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- FAILED (0-50%) ---
     return (
-      <div className="max-w-xl mx-auto bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6 text-center">
-        <h2 className="text-xl font-bold text-amber-800 dark:text-amber-200 mb-2">{t("testFailed")}</h2>
-        <p className="text-amber-700 dark:text-amber-300 mb-4">{t("testFailedDesc")}</p>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">{t("testScore")}: {d.score.toFixed(0)}% ({d.correct_count}/{d.total_count})</p>
-        <button type="button" onClick={onCancel} className="py-2 px-4 rounded-lg bg-amber-600 text-white hover:bg-amber-700">{t("testRetry")}</button>
+      <div className={wrapperClass}>
+        <div className="w-full max-w-xl mx-auto rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800">
+          <div className="bg-red-500 p-6 text-center relative overflow-hidden">
+            <div className="relative">
+              <div className="text-4xl mb-3">❌</div>
+              <h2 className="text-xl font-bold text-white tracking-wide">{t("testResultFailedTitle")}</h2>
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-gray-700 dark:text-gray-300 mb-4 text-base leading-relaxed text-center">{t("testResultFailedDesc")}</p>
+            <div className="my-6 bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t("testScore")}</span>
+                <span className="text-2xl font-bold text-red-600 dark:text-red-500">{d.score.toFixed(0)}%</span>
+              </div>
+              <TestScoreThresholdBar score={d.score} barClassName="bg-red-500" marker50ClassName="text-red-500 dark:text-red-400" />
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm text-center mb-6">{t("testResultFailedSupplementaryHint")}</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button type="button" onClick={handleRetakeClick} className="py-2.5 px-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-semibold transition-all text-sm">
+                {t("testRetry")}
+              </button>
+              {showSuppLink && (
+                <button
+                  type="button"
+                  onClick={() => closeTestThenGoToSupplementary(router, onCancel)}
+                  className="py-2.5 px-6 rounded-lg bg-[var(--qit-primary)] hover:opacity-90 text-white font-semibold transition-all text-sm"
+                >
+                  {t("testGoToSupplementary")}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -201,7 +361,7 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
   ];
 
   return (
-    <div ref={containerRef} className="relative w-full h-full min-h-[400px] flex flex-col items-center justify-center bg-white dark:bg-gray-900 overflow-auto p-4 transition-all duration-300">
+    <div ref={containerRef} className="fixed inset-0 z-[50] flex flex-col items-center justify-center bg-white dark:bg-gray-900 overflow-auto p-4 transition-all duration-300">
       
       {!isFullscreen && !submitMutation.isSuccess && (
         <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-white dark:bg-gray-900 p-6 text-center text-gray-800 dark:text-white">
@@ -221,7 +381,7 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
         </div>
       )}
 
-      {showCheatingWarning && isFullscreen && !submitMutation.isSuccess && (
+      {showCheatingWarning && !submitMutation.isSuccess && (
         <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md p-6 text-center text-white">
           <AlertTriangle className="w-20 h-20 text-red-500 mb-6 animate-bounce" />
           <h2 className="text-2xl font-bold mb-4 text-red-500">{t("testCheatingWarning")}</h2>
@@ -235,6 +395,36 @@ export function TestComponent({ testId, onComplete, onCancel }: TestComponentPro
           >
             {t("profileContinue")}
           </button>
+        </div>
+      )}
+
+      {showExitConfirm && !submitMutation.isSuccess && (
+        <div className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-6 text-center text-white">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl max-w-md w-full shadow-2xl border border-red-200 dark:border-red-900 mx-4">
+            <h2 className="text-2xl font-bold mb-4 text-red-600 dark:text-red-400">{t("testFinishAndExit")}</h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-8 leading-relaxed">
+              {t("testExitWarning")}
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button 
+                type="button" 
+                onClick={() => setShowExitConfirm(false)}
+                className="py-2.5 px-6 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex-1"
+              >
+                {t("cancel")}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setShowExitConfirm(false);
+                  submitMutation.mutate();
+                }}
+                className="py-2.5 px-6 rounded-xl bg-red-600 text-white font-semibold shadow-lg hover:bg-red-700 transition-all flex-1"
+              >
+                {t("testFinishConfirm")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -245,6 +245,10 @@ export interface SafeProfilePreviewData {
   birth_date?: string | null;
   points?: number | null;
   status?: string | null;
+  tg_email?: string | null;
+  tg_username?: string | null;
+  school?: string | null;
+  school_name?: string | null;
 
   // Student
   gender?: string | null;

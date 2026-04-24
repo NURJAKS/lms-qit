@@ -25,7 +25,9 @@ import {
   Users,
   AlertTriangle,
   X,
+  Sparkles,
 } from "lucide-react";
+import { TestComponent } from "@/components/tests/TestComponent";
 import { PrivateCommentsSection } from "@/components/courses/PrivateCommentsSection";
 import { AssignmentClassCommentsSection } from "@/components/courses/AssignmentClassCommentsSection";
 import { cn } from "@/lib/utils";
@@ -532,6 +534,8 @@ export function StudentCourseClasswork({
   const [workActionError, setWorkActionError] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showTest, setShowTest] = useState(false);
+  const [testAttemptKey, setTestAttemptKey] = useState(0);
 
   const [topicFilter, setTopicFilter] = useState<"all" | number>("all");
   const [topicFilterOpen, setTopicFilterOpen] = useState(false);
@@ -1216,6 +1220,33 @@ export function StudentCourseClasswork({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {t("assignmentUploadFile")}
                 </div>
+              )}
+
+              {/* Quiz section */}
+              {a.test_id && !a.submitted && !a.closed && (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowTest(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-purple-500/30 hover:from-purple-700 hover:to-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    {t("startQuiz" as TranslationKey)}
+                  </button>
+                </div>
+              )}
+
+              {showTest && a.test_id && (
+                <TestComponent
+                  testId={a.test_id}
+                  onComplete={() => {
+                    setShowTest(false);
+                    refetchAssignments();
+                  }}
+                  onCancel={() => setShowTest(false)}
+                  onRetake={() => setTestAttemptKey((k) => k + 1)}
+                  key={testAttemptKey}
+                />
               )}
 
               {!a.submitted ? (

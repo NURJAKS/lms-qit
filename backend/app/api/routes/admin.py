@@ -242,13 +242,9 @@ def approve_application(
     app.approved_at = datetime.now(timezone.utc)
     app.approved_by = current_user.id
 
+    # Мы НЕ перезаписываем пароль при одобрении, если он уже есть (а он всегда есть после подачи заявки).
+    # Это предотвращает путаницу, когда у студента перестает работать пароль из первого письма.
     new_password = None
-    if is_first_approval:
-        from app.core.security import get_password_hash
-        import secrets
-        import string
-        new_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
-        user.password_hash = get_password_hash(new_password)
 
     pay_msg = f"Оплатите {amount}₸ по курсу «{course.title}» для доступа к материалам. " if amount > 0 else ""
     notif = Notification(

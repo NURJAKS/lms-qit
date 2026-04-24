@@ -266,6 +266,90 @@ def list_my_assignments(
     return out
 
 
+@router.get("/my-supplementary")
+def list_my_supplementary_materials(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    course_id: int = Query(..., description="ID курса для дополнительных материалов"),
+):
+    """Список дополнительных материалов и заданий студента (is_supplementary=True), сгруппированных по темам."""
+    from app.models.course_topic import CourseTopic
+
+    group_ids = [
+        gs.group_id
+        for gs in db.query(GroupStudent).filter(GroupStudent.student_id == current_user.id).all()
+    ]
+    if not group_ids:
+        return {"topics": [], "assignments": [], "materials": []}
+
+    # Supplementary assignments
+    supp_assignments = (
+        db.query(TeacherAssignment)
+        .filter(
+            TeacherAssignment.group_id.in_(group_ids),
+            TeacherAssignment.course_id == course_id,
+            TeacherAssignment.is_supplementary == True,
+        )
+        .order_by(TeacherAssignment.id.desc())
+        .all()
+    )
+
+    # Supplementary materials
+    supp_materials = (
+        db.query(TeacherMaterial)
+        .filter(
+            TeacherMaterial.group_id.in_(group_ids),
+            TeacherMaterial.course_id == course_id,
+            TeacherMaterial.is_supplementary == True,
+        )
+        .order_by(TeacherMaterial.id.desc())
+        .all()
+    )
+
+    # Course topics for structure
+    topics = (
+        db.query(CourseTopic)
+        .filter(CourseTopic.course_id == course_id)
+        .order_by(CourseTopic.order_number)
+        .all()
+    )
+
+    topics_out = [{"id": t.id, "title": t.title, "order_number": t.order_number} for t in topics]
+
+    assignments_out = [
+        {
+            "id": a.id,
+            "title": a.title,
+            "description": a.description,
+            "topic_id": a.topic_id,
+            "attachment_urls": _assignment_json_list(getattr(a, "attachment_urls", None)),
+            "attachment_links": _assignment_json_list(getattr(a, "attachment_links", None)),
+            "video_urls": _assignment_json_list(getattr(a, "video_urls", None)),
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "is_synopsis": bool(getattr(a, "is_synopsis", False)),
+        }
+        for a in supp_assignments
+    ]
+
+    materials_out = [
+        {
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "topic_id": m.topic_id,
+            "video_urls": _assignment_json_list(getattr(m, "video_urls", None)),
+            "image_urls": _assignment_json_list(getattr(m, "image_urls", None)),
+            "attachment_urls": _assignment_json_list(getattr(m, "attachment_urls", None)),
+            "attachment_links": _assignment_json_list(getattr(m, "attachment_links", None)),
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m in supp_materials
+    ]
+
+    return {"topics": topics_out, "assignments": assignments_out, "materials": materials_out}
+
+
+
 @router.get("/my/submissions")
 def list_my_submissions(
     db: Annotated[Session, Depends(get_db)],

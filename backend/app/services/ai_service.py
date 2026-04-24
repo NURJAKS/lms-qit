@@ -307,6 +307,87 @@ def chat_with_openai(
         return (get_ai_unavailable_user_message(loc), False)
 
 
+PUBLIC_SYSTEM_PROMPT = """Ты — ИИ-консультант академии «Qazaq IT Academy».
+Твоя задача — отвечать ТОЛЬКО на вопросы абитуриентов касательно курсов: какие курсы есть, сколько они стоят, длительность, формат обучения, что проходят на курсах.
+Если пользователь задает технический вопрос (например, написать код, решить задачу, объяснить алгоритм) или вопрос не по теме:
+Вежливо откажись и скажи, что для консультаций по программированию и доступу к полноценному AI-ментору необходимо войти в аккаунт и оплатить курс на платформе.
+Пиши кратко и по существу (максимум 1-2 абзаца)."""
+
+PUBLIC_CANNED_ANSWERS = [
+    {
+        "keywords": ["цена", "стоимость", "сколько стоит", "бағасы", "cost", "price", "қанша"],
+        "answer": {
+            "ru": "Точная стоимость курсов зависит от выбранного направления и формата обучения. Пожалуйста, перейдите в раздел «Курсы» на нашем сайте или зарегистрируйтесь, чтобы увидеть актуальные цены.",
+            "kk": "Курстардың нақты құны таңдалған бағытқа және оқу форматына байланысты. Нақты бағаларды көру үшін сайтымыздың «Курстар» бөліміне өтіңіз немесе тіркеліңіз.",
+            "en": "The exact cost of the courses depends on the chosen direction and format. Please visit the 'Courses' section on our website or sign up to see current prices.",
+        }
+    },
+    {
+        "keywords": ["какие курсы", "курсы есть", "қандай курстар", "программа", "what courses"],
+        "answer": {
+            "ru": "Qazaq IT Academy предлагает курсы по Основам программирования (Python), Веб-разработке (HTML, CSS, JS, React), Мобильной разработке (Flutter), Машинному обучению (AI/ML) и многим другим направлениям. Зарегистрируйтесь, чтобы увидеть полный каталог!",
+            "kk": "Qazaq IT Academy Бағдарламалау негіздері (Python), Web-әзірлеу (HTML, CSS, JS, React), Мобильді әзірлеу (Flutter), Жасанды интеллект (AI/ML) және басқа да көптеген бағыттар бойынша курстарды ұсынады. Толық каталогты көру үшін тіркеліңіз!",
+            "en": "Qazaq IT Academy offers courses in Programming Basics (Python), Web Development (HTML, CSS, JS, React), Mobile Development (Flutter), Machine Learning (AI/ML), and many more. Register to see the full catalog!",
+        }
+    },
+    {
+        "keywords": ["время", "сколько занимает", "длительность", "уақыт", "ұзақтығы", "duration", "how long"],
+        "answer": {
+            "ru": "Длительность курсов обычно варьируется от 1 до 6 месяцев в зависимости от сложности и интенсивности программы. Подробную информацию о каждом курсе вы найдете в каталоге после бесплатной регистрации.",
+            "kk": "Курстардың ұзақтығы бағдарламаның күрделілігіне байланысты әдетте 1-ден 6 айға дейін созылады. Әр курс туралы толық ақпаратты тегін тіркелгеннен кейін каталогтан таба аласыз.",
+            "en": "The duration of the courses usually varies from 1 to 6 months depending on the program's complexity. You will find detailed information about each course in the catalog after free registration.",
+        }
+    }
+]
+
+def chat_with_openai_public(message: str, lang: str = "ru") -> str:
+    """
+    Обрабатывает публичные запросы на главной странице (без авторизации).
+    """
+    loc = lang if lang in ("ru", "kk", "en") else "ru"
+    msg_lower = message.lower()
+    
+    # 1. Проверяем заготовленные ответы
+    for canned in PUBLIC_CANNED_ANSWERS:
+        for kw in canned["keywords"]:
+            if kw in msg_lower:
+                return canned["answer"].get(loc, canned["answer"]["ru"])
+
+    # 2. Если нет заготовленного ответа, идем в LLM с жесткими лимитами
+    if USE_GEMINI:
+        if not settings.GEMINI_API_KEY:
+            return get_ai_unavailable_user_message(loc)
+        try:
+            model = _get_gemini_model()
+            response = model.generate_content(
+                f"{PUBLIC_SYSTEM_PROMPT}\n\nПользователь: {message}",
+            )
+            if response.text:
+                return response.text
+        except Exception as e:
+            logger.warning("Gemini public chat error: %s", e)
+            return get_ai_unavailable_user_message(loc)
+    else:
+        if not settings.OPENAI_API_KEY:
+            return get_ai_unavailable_user_message(loc)
+        client = get_openai_client()
+        try:
+            r = client.chat.completions.create(
+                model=settings.OPENAI_CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": PUBLIC_SYSTEM_PROMPT},
+                    {"role": "user", "content": message},
+                ],
+                max_tokens=200,
+            )
+            if r.choices:
+                return r.choices[0].message.content or ""
+        except Exception as e:
+            logger.warning("OpenAI public chat error: %s", e)
+            return get_ai_unavailable_user_message(loc)
+    return get_ai_unavailable_user_message(loc)
+
+
 def get_challenge_recommendations(
     wrong_topic_titles: list[str],
     course_title: str,

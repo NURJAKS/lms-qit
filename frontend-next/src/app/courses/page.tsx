@@ -111,18 +111,18 @@ function CatalogCourseCard({
         </span>
         <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2 line-clamp-2">{localizedTitle}</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-4">{localizedDesc}</p>
-        <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
-          <span className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            {t(metrics.durationKey as TranslationKey)}
+        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <Clock className="w-3.5 h-3.5 shrink-0 text-[var(--qit-primary)]" />
+            <span className="truncate">{t(metrics.durationKey as TranslationKey)}</span>
           </span>
-          <span className="flex items-center gap-1">
-            <Signal className="w-4 h-4" />
-            {t(metrics.levelKey as TranslationKey)}
+          <span className="flex items-center gap-1.5 min-w-0">
+            <Signal className="w-3.5 h-3.5 shrink-0 text-[var(--qit-primary)]" />
+            <span className="truncate">{t(metrics.levelKey as TranslationKey)}</span>
           </span>
-          <span className="flex items-center gap-1">
-            <GraduationCap className="w-4 h-4" />
-            {metrics.students} {t("coursesStudents")}
+          <span className="flex items-center gap-1.5 min-w-0 col-span-2">
+            <GraduationCap className="w-3.5 h-3.5 shrink-0 text-[var(--qit-primary)]" />
+            <span className="truncate">{metrics.students} {t("coursesStudents")}</span>
           </span>
         </div>
         <p className="text-xl font-bold text-[#00b0ff] mb-4">
@@ -145,9 +145,12 @@ function CatalogPageContent() {
   const user = useAuthStore((s) => s.user);
   const isPremiumUser = user?.is_premium === 1;
   const [buyModal, setBuyModal] = useState<Course | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   type PaymentMethod = "kaspi" | "halyk" | "card" | "eurasian" | "jusan" | "forte";
 
-  const [submitStep, setSubmitStep] = useState<"form" | "payment_method" | "card_details" | "loading" | "done">("form");
+  const [submitStep, setSubmitStep] = useState<"form_student" | "form_parent" | "payment_method" | "card_details" | "loading" | "done">("form_student");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("card");
   const [cardData, setCardData] = useState({ number: "", expiry: "", cvv: "" });
   const [submitError, setSubmitError] = useState("");
@@ -212,7 +215,7 @@ function CatalogPageContent() {
       await handleInitiatePayment(course.id);
     } else {
       // Не авторизован - показываем форму
-      setSubmitStep("form");
+      setSubmitStep("form_student");
       setFormData({
         email: "",
         full_name: "",
@@ -251,7 +254,7 @@ function CatalogPageContent() {
       } else {
         setSubmitError(t("paymentInitError"));
       }
-      setSubmitStep("form");
+      setSubmitStep("form_student");
     }
   }, [queryClient]);
 
@@ -362,7 +365,7 @@ function CatalogPageContent() {
 
   const closeBuyModal = (source?: string) => {
     setBuyModal(null);
-    setSubmitStep("form");
+    setSubmitStep("form_student");
     setEmailError(null);
     setConfirmationToken(null);
     setCardData({ number: "", expiry: "", cvv: "" });
@@ -392,7 +395,7 @@ function CatalogPageContent() {
           setSubmitStep("payment_method");
           handleInitiatePayment(id);
         } else {
-          setSubmitStep("form");
+          setSubmitStep("form_student");
           setFormData({
             email: "",
             full_name: "",
@@ -439,7 +442,7 @@ function CatalogPageContent() {
             </nav>
             <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0 min-w-0">
               <AppHeader />
-              {token ? (
+              {(mounted && token) ? (
                 <Link
                   href="/app"
                   className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
@@ -453,7 +456,7 @@ function CatalogPageContent() {
                   className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
                   style={{ background: "var(--qit-gradient-3)" }}
                 >
-                  {t("navPersonalCabinet")}
+                  {t("signIn")}
                 </Link>
               )}
             </div>
@@ -566,11 +569,6 @@ function CatalogPageContent() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="buy-modal-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeBuyModal("backdrop");
-            }
-          }}
         >
           <div
             className="rounded-xl shadow-xl p-4 sm:p-6 max-w-3xl mx-2 sm:mx-4 w-full min-w-0 h-[95dvh] max-h-[100dvh] sm:h-auto sm:max-h-[85vh] flex flex-col border backdrop-blur-xl bg-white dark:bg-[#1A2238] border-gray-200 dark:border-white/10"
@@ -579,7 +577,8 @@ function CatalogPageContent() {
             <div className="flex items-start gap-2 flex-shrink-0 pb-3 sm:pb-4 border-b border-gray-200 dark:border-white/10">
               <div className="flex-1 min-w-0">
                 <h2 id="buy-modal-title" className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white font-montserrat truncate pr-1">
-                  {submitStep === "form" && t("buyCourse")}
+                  {submitStep === "form_student" && t("studentInfo")}
+                  {submitStep === "form_parent" && t("parentDataSection")}
                   {submitStep === "payment_method" && t("paymentSelectMethod")}
                   {submitStep === "card_details" && t("cardDetails")}
                   {submitStep === "loading" && t("paymentProcessing")}
@@ -602,214 +601,246 @@ function CatalogPageContent() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto">
-            {submitStep === "form" && (
-              <>
-                <p className="text-gray-600 dark:text-gray-400 mb-3 sm:mb-4 text-sm line-clamp-2">
-                  &quot;{buyModal.title}&quot; — {Number(buyModal.price)}₸
-                </p>
-                <div className="space-y-3 sm:space-y-4 mb-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                        {t("studentInfo")}
-                      </p>
-                      <div className="space-y-2">
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("paymentMethodEmailLabel")}</label>
-                          <input
-                            type="email"
-                            value={formData.email}
-                            onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("emailPlaceholder")}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("fullName")} *</label>
-                          <input
-                            type="text"
-                            value={formData.full_name}
-                            onChange={(e) => setFormData((p) => ({ ...p, full_name: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("namePlaceholder")}
-                            required
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("birthDate")}</label>
-                            <input
-                              type="date"
-                              value={formData.student_birth_date}
-                              onChange={(e) => setFormData((p) => ({ ...p, student_birth_date: e.target.value }))}
-                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("age")}</label>
-                            <input
-                              type="number"
-                              min={5}
-                              max={100}
-                              value={formData.student_age}
-                              onChange={(e) => setFormData((p) => ({ ...p, student_age: e.target.value }))}
-                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                              placeholder={t("placeholderAgeStudent")}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("iin")}</label>
-                          <input
-                            type="text"
-                            maxLength={12}
-                            value={formData.student_iin}
-                            onChange={(e) => setFormData((p) => ({ ...p, student_iin: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("placeholderIin")}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("phone")}</label>
-                          <input
-                            type="tel"
-                            value={formData.phone}
-                            onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("placeholderPhone")}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("city")}</label>
-                          <input
-                            type="text"
-                            value={formData.city}
-                            onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("cityPlaceholder")}
-                          />
-                        </div>
+            {submitStep === "form_student" && (
+              <div className="flex flex-col h-full">
+                <div className="flex-1 space-y-4 py-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-[var(--qit-primary)] text-white flex items-center justify-center font-bold text-sm">1</div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">{t("studentInfo")}</span>
+                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700 ml-2" />
+                    <div className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-gray-700 text-gray-400 flex items-center justify-center font-bold text-sm">2</div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("paymentMethodEmailLabel")} *</label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("emailPlaceholder")}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("fullName")} *</label>
+                        <input
+                          type="text"
+                          value={formData.full_name}
+                          onChange={(e) => setFormData((p) => ({ ...p, full_name: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("namePlaceholder")}
+                          required
+                        />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                        {t("parentDataSection")}
-                      </p>
-                      <div className="space-y-2">
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("parentEmail")} *</label>
-                          <input
-                            type="email"
-                            value={formData.parent_email}
-                            onChange={(e) => setFormData((p) => ({ ...p, parent_email: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("emailPlaceholder")}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("parentFullName")} *</label>
-                          <input
-                            type="text"
-                            value={formData.parent_full_name}
-                            onChange={(e) => setFormData((p) => ({ ...p, parent_full_name: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("namePlaceholder")}
-                            required
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("birthDate")}</label>
-                            <input
-                              type="date"
-                              value={formData.parent_birth_date}
-                              onChange={(e) => setFormData((p) => ({ ...p, parent_birth_date: e.target.value }))}
-                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("age")}</label>
-                            <input
-                              type="number"
-                              min={18}
-                              max={100}
-                              value={formData.parent_age}
-                              onChange={(e) => setFormData((p) => ({ ...p, parent_age: e.target.value }))}
-                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                              placeholder={t("placeholderAgeParent")}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("iin")}</label>
-                          <input
-                            type="text"
-                            maxLength={12}
-                            value={formData.parent_iin}
-                            onChange={(e) => setFormData((p) => ({ ...p, parent_iin: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("placeholderIin")}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("parentPhone")}</label>
-                          <input
-                            type="tel"
-                            value={formData.parent_phone}
-                            onChange={(e) => setFormData((p) => ({ ...p, parent_phone: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("placeholderPhone")}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">{t("parentCity")}</label>
-                          <input
-                            type="text"
-                            value={formData.parent_city}
-                            onChange={(e) => setFormData((p) => ({ ...p, parent_city: e.target.value }))}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                            placeholder={t("cityPlaceholder")}
-                          />
-                        </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("birthDate")}</label>
+                        <input
+                          type="date"
+                          value={formData.student_birth_date}
+                          onChange={(e) => setFormData((p) => ({ ...p, student_birth_date: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        />
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("age")}</label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={100}
+                          value={formData.student_age}
+                          onChange={(e) => setFormData((p) => ({ ...p, student_age: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderAgeStudent")}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("iin")}</label>
+                        <input
+                          type="text"
+                          maxLength={12}
+                          value={formData.student_iin}
+                          onChange={(e) => setFormData((p) => ({ ...p, student_iin: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderIin")}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("phone")}</label>
+                        <input
+                          type="tel"
+                          value={formData.phone}
+                          onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderPhone")}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("city")}</label>
+                      <input
+                        type="text"
+                        value={formData.city}
+                        onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        placeholder={t("cityPlaceholder")}
+                      />
                     </div>
                   </div>
                 </div>
-                {submitError && <p className="text-red-500 text-sm mb-3">{submitError}</p>}
-                <div className="flex gap-2">
+
+                <div className="flex gap-3 pt-6 mt-4 border-t border-gray-100 dark:border-gray-800 pb-[env(safe-area-inset-bottom)]">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      closeBuyModal("cancel");
-                    }}
-                    className="min-h-[44px] py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 touch-manipulation"
+                    onClick={() => closeBuyModal("cancel")}
+                    className="flex-1 min-h-[48px] py-3 px-6 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold active-tap-subtle"
                   >
                     {t("cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      if (!formData.email.trim() || !formData.full_name.trim() || !formData.parent_email.trim() || !formData.parent_full_name.trim()) return;
+                      if (!formData.email.trim() || !formData.full_name.trim()) return;
+                      setSubmitStep("form_parent");
+                    }}
+                    disabled={!formData.email.trim() || !formData.full_name.trim()}
+                    className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20"
+                    style={{ background: "var(--qit-primary)" }}
+                  >
+                    {t("nextStep" as TranslationKey)} →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {submitStep === "form_parent" && (
+              <div className="flex flex-col h-full">
+                <div className="flex-1 space-y-4 py-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm">✓</div>
+                    <span className="font-semibold text-gray-400 dark:text-gray-500 line-through">{t("studentInfo")}</span>
+                    <div className="flex-1 h-px bg-[var(--qit-primary)] ml-2" />
+                    <div className="w-8 h-8 rounded-full bg-[var(--qit-primary)] text-white flex items-center justify-center font-bold text-sm">2</div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">{t("parentDataSection")}</span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("parentEmail")} *</label>
+                        <input
+                          type="email"
+                          value={formData.parent_email}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_email: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("emailPlaceholder")}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("parentFullName")} *</label>
+                        <input
+                          type="text"
+                          value={formData.parent_full_name}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_full_name: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("namePlaceholder")}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("birthDate")}</label>
+                        <input
+                          type="date"
+                          value={formData.parent_birth_date}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_birth_date: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("age")}</label>
+                        <input
+                          type="number"
+                          min={18}
+                          max={100}
+                          value={formData.parent_age}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_age: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderAgeParent")}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("iin")}</label>
+                        <input
+                          type="text"
+                          maxLength={12}
+                          value={formData.parent_iin}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_iin: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderIin")}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("parentPhone")}</label>
+                        <input
+                          type="tel"
+                          value={formData.parent_phone}
+                          onChange={(e) => setFormData((p) => ({ ...p, parent_phone: e.target.value }))}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          placeholder={t("placeholderPhone")}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("parentCity")}</label>
+                      <input
+                        type="text"
+                        value={formData.parent_city}
+                        onChange={(e) => setFormData((p) => ({ ...p, parent_city: e.target.value }))}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        placeholder={t("cityPlaceholder")}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-6 mt-4 border-t border-gray-100 dark:border-gray-800 pb-[env(safe-area-inset-bottom)]">
+                  <button
+                    type="button"
+                    onClick={() => setSubmitStep("form_student")}
+                    className="flex-1 min-h-[48px] py-3 px-6 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold active-tap-subtle"
+                  >
+                    ← {t("back")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!formData.parent_email.trim() || !formData.parent_full_name.trim()) return;
                       setSubmitError("");
                       setSubmitStep("payment_method");
                     }}
-                    disabled={
-                      !formData.email.trim() ||
-                      !formData.full_name.trim() ||
-                      !formData.parent_email.trim() ||
-                      !formData.parent_full_name.trim()
-                    }
-                    className="flex-1 min-h-[44px] py-2 px-4 rounded-lg text-white disabled:opacity-50 touch-manipulation"
+                    disabled={!formData.parent_email.trim() || !formData.parent_full_name.trim()}
+                    className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20"
                     style={{ background: "var(--qit-primary)" }}
                   >
-                    {t("goToPayment")}
+                    {t("goToPaymentButton" as TranslationKey)} →
                   </button>
                 </div>
-              </>
+              </div>
             )}
 
             {submitStep === "payment_method" && (
@@ -930,7 +961,7 @@ function CatalogPageContent() {
                 <div className="flex gap-4">
                   <button
                     type="button"
-                    onClick={() => setSubmitStep("form")}
+                    onClick={() => setSubmitStep("form_student")}
                     className="flex-1 min-h-[44px] py-4 px-6 rounded-2xl font-bold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors touch-manipulation"
                   >
                     {t("back")}

@@ -30,7 +30,7 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
   return (
     <MagicCard
       className={cn(
-        "flex flex-col p-6 w-[350px] min-h-[220px] shrink-0 mx-4",
+        "flex flex-col p-6 w-[calc(100vw-3rem)] sm:w-[350px] min-h-[220px] shrink-0 mx-4",
         "border border-gray-200/50 dark:border-white/10 select-none",
         review.is_featured && "ring-1 ring-yellow-500/50",
         className
@@ -66,7 +66,7 @@ export function ReviewCard({ review, className }: ReviewCardProps) {
       </div>
 
       <div className="flex-grow">
-        <p className="text-gray-700 dark:text-gray-300 text-[13px] leading-relaxed line-clamp-4 italic font-medium">
+        <p className="text-gray-700 dark:text-gray-300 text-[13px] leading-relaxed line-clamp-4 italic font-medium whitespace-normal">
           &ldquo;{reviewText}&rdquo;
         </p>
       </div>

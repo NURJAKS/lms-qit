@@ -123,6 +123,12 @@ export default function HomePage() {
   const heroBtnRef = useRef<HTMLAnchorElement>(null);
   const [heroBtnTilt, setHeroBtnTilt] = useState({ x: 0, y: 0 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const { data: courses = [], isLoading: coursesLoading, isError: coursesError } = useQuery({
     queryKey: ["courses-all"],
@@ -212,7 +218,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-white dark:bg-gray-900 overflow-x-hidden">
       <header
         id="home"
-        className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800"
+        className="fixed top-0 left-0 w-full z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800"
       >
         <div className="w-full pl-3 pr-3 sm:pl-4 sm:pr-5 lg:pl-5 lg:pr-8">
           <div className="flex items-center justify-between h-16 lg:h-20 gap-3 sm:gap-5 lg:gap-7 min-w-0">
@@ -280,11 +286,11 @@ export default function HomePage() {
             </nav>
             <div className="flex items-center gap-2 sm:gap-6 ml-auto shrink-0 min-w-0">
               <Link
-                href={token ? "/app" : "/login"}
+                href={(mounted && token) ? "/app" : "/login"}
                 className="hidden md:flex px-3 py-2 text-sm xl:px-5 xl:py-2.5 xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
                 style={{ background: "var(--qit-gradient-3)" }}
               >
-                {token ? t("navGoToDashboard") : t("navPersonalCabinet")}
+                {(mounted && token) ? t("navPersonalCabinet") : t("signIn")}
               </Link>
               <div className="hidden md:block">
                 <AppHeader />
@@ -406,12 +412,12 @@ export default function HomePage() {
                 </button>
               </div>
               <Link
-                href={token ? "/app" : "/login"}
+                href={(mounted && token) ? "/app" : "/login"}
                 onClick={() => setMobileMenuOpen(false)}
                 className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90"
                 style={{ background: "var(--qit-gradient-3)" }}
               >
-                {token ? t("navGoToDashboard") : t("navPersonalCabinet")}
+                {(mounted && token) ? t("navPersonalCabinet") : t("signIn")}
               </Link>
             </nav>
           </div>
@@ -425,22 +431,22 @@ export default function HomePage() {
         />
         <div className="absolute inset-0 bg-[#1a237e]/60" />
         <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[120px] h-[120px] animate-orbit-faster">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[100px] h-[100px] sm:w-[150px] sm:h-[150px] animate-orbit-faster">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-white/50" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1 h-1 rounded-full bg-white/40" />
           </div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] animate-orbit-fast">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[160px] h-[160px] sm:w-[250px] sm:h-[250px] animate-orbit-fast">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/40" />
             <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-1 h-1 rounded-full bg-[#00b0ff]/35" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1 h-1 rounded-full bg-white/35" />
           </div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] animate-orbit">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[220px] h-[220px] sm:w-[350px] sm:h-[350px] animate-orbit">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-white/35" />
             <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#00e5ff]/30" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1 h-1 rounded-full bg-white/30" />
             <div className="absolute top-1/2 left-0 -translate-y-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#ff4081]/25" />
           </div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] animate-orbit-slow">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] sm:w-[480px] sm:h-[480px] animate-orbit-slow opacity-50 sm:opacity-100">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-white/30" />
             <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-1 h-1 rounded-full bg-[#00b0ff]/25" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1 h-1 rounded-full bg-white/25" />
@@ -454,10 +460,10 @@ export default function HomePage() {
           <div className="absolute top-[45%] right-[10%] w-1.5 h-1.5 rounded-full bg-white/30 animate-float-particle-fast" style={{ animationDelay: "-5s" }} />
         </div>
         <div className="relative z-20 max-w-4xl mx-auto px-4 text-center">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4 sm:mb-6 font-montserrat leading-tight px-2">
-            <span className="block sm:inline">{t("heroTitle")}</span>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-6 sm:mb-8 font-montserrat leading-[1.1] px-2 sm:px-0">
+            <span className="block sm:inline">{t("heroTitle")}</span>{" "}
             <span
-              className="bg-clip-text text-transparent bg-[length:200%_auto] animate-gradient block sm:inline"
+              className="bg-clip-text text-transparent bg-[length:200%_auto] animate-gradient inline"
               style={{
                 backgroundImage: "linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #06b6d4, #6366f1)",
                 WebkitBackgroundClip: "text",
@@ -465,7 +471,7 @@ export default function HomePage() {
               }}
             >
               <TypingHeroText />
-            </span>
+            </span>{" "}
             <span className="block sm:inline">{t("heroTitleSuffix")}</span>
           </h1>
           <p className="text-base sm:text-lg lg:text-xl text-white/90 mb-6 sm:mb-10 max-w-2xl mx-auto px-4">
@@ -496,9 +502,9 @@ export default function HomePage() {
       </section>
 
       {/* Stats */}
-      <section className="py-16 lg:py-20 bg-[#f5f7ff] dark:bg-gray-800/50">
+      <section className="py-12 lg:py-20 bg-[#f5f7ff] dark:bg-gray-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { target: 100, suffix: "+", labelKey: "statsStudents", color: "text-[#1a237e]" },
               { target: 24, suffix: "+", labelKey: "statsCourses", color: "text-[#00b0ff]" },
@@ -507,12 +513,12 @@ export default function HomePage() {
             ].map(({ target, suffix, labelKey, color }, i) => (
               <div
                 key={labelKey}
-                className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-lg relative overflow-hidden animate-float"
+                className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-lg relative overflow-hidden animate-float"
                 style={{ animationDelay: `${i * 200}ms` }}
               >
                 <div className="absolute top-0 left-0 right-0 h-1" style={{ background: "var(--qit-gradient-2)" }} />
                 <CountUpStat target={target} suffix={suffix} color={color} />
-                <p className="text-gray-600 dark:text-gray-400">{t(labelKey as TranslationKey)}</p>
+                <p className="text-gray-600 dark:text-gray-400 font-medium">{t(labelKey as TranslationKey)}</p>
               </div>
             ))}
           </div>
@@ -580,14 +586,14 @@ export default function HomePage() {
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white font-montserrat">
               {t("coursesTitle")}
             </h2>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex overflow-x-auto pb-4 gap-3 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
               {CATEGORIES.map(({ id, key }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setCategory(id)}
-                  className={`px-5 py-2.5 rounded-full font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#00b0ff] focus:ring-offset-2 ${category === id
-                    ? "text-white"
+                  className={`px-5 py-2.5 rounded-full font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#00b0ff] focus:ring-offset-2 whitespace-nowrap active-tap-subtle shrink-0 ${category === id
+                    ? "text-white shadow-lg shadow-[#00b0ff]/20"
                     : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-2 border-gray-200 dark:border-gray-600 hover:border-[#00b0ff] hover:scale-105"
                     }`}
                   style={category === id ? { background: "var(--qit-gradient-2)" } : undefined}
@@ -611,7 +617,7 @@ export default function HomePage() {
           )}
           {!coursesLoading && !coursesError && (
             <>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 max-w-full">
                 {filteredCourses.slice(0, 6).map((course, i) => {
                   const category = getCategoryFromCourse(course);
                   const accent = CATEGORY_ACCENT[category.key] ?? "#00b0ff";

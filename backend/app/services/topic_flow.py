@@ -52,7 +52,8 @@ def synopsis_graded(db: Session, user_id: int, topic_id: int) -> bool:
     # Find synopsis assignment for this topic
     sa = db.query(TeacherAssignment).filter(
         TeacherAssignment.topic_id == topic_id,
-        TeacherAssignment.is_synopsis == True
+        TeacherAssignment.is_synopsis == True,
+        TeacherAssignment.is_supplementary == False,
     ).first()
     if not sa:
         return False
@@ -71,7 +72,8 @@ def synopsis_graded(db: Session, user_id: int, topic_id: int) -> bool:
 def synopsis_submitted(db: Session, user_id: int, topic_id: int) -> bool:
     sa = db.query(TeacherAssignment).filter(
         TeacherAssignment.topic_id == topic_id,
-        TeacherAssignment.is_synopsis == True
+        TeacherAssignment.is_synopsis == True,
+        TeacherAssignment.is_supplementary == False,
     ).first()
     if not sa:
         return False
@@ -99,6 +101,7 @@ def topic_assignments_for_student(
             TeacherAssignment.topic_id == topic_id,
             TeacherAssignment.course_id == course_id,
             TeacherAssignment.group_id.in_(gids),
+            TeacherAssignment.is_supplementary == False,
         )
         .all()
     )

@@ -6,11 +6,13 @@ import type { AxiosError } from "axios";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { PrivateCommentsSection } from "@/components/courses/PrivateCommentsSection";
-import { CheckCircle2, FileText, Globe, Loader2, Plus, X, MessageSquare, ChevronRight } from "lucide-react";
+import { CheckCircle2, FileText, Globe, Loader2, Plus, X, MessageSquare, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { TestComponent } from "@/components/tests/TestComponent";
 import { cn } from "@/lib/utils";
 import { htmlLinksOpenInNewTab } from "@/lib/htmlLinkNewTab";
 import { ALLOWED_EXTENSIONS_STR, ALLOWED_EXTENSIONS_HINT } from "@/constants/fileTypes";
+import type { TranslationKey } from "@/i18n/translations";
 
 type AssignmentRow = {
   id: number;
@@ -29,6 +31,7 @@ type AssignmentRow = {
   closed: boolean;
   manually_closed?: boolean;
   is_synopsis?: boolean;
+  test_id?: number | null;
 };
 
 type QuestionRow = {
@@ -97,6 +100,8 @@ function TopicAssignmentCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showTest, setShowTest] = useState(false);
+  const [testAttemptKey, setTestAttemptKey] = useState(0);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -419,6 +424,33 @@ function TopicAssignmentCard({
           <Loader2 className="w-4 h-4 animate-spin" />
           {t("assignmentUploadFile")}
         </p>
+      )}
+
+      {/* Quiz section */}
+      {assignment.test_id && !assignment.submitted && !assignment.closed && (
+        <div className="mb-4 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowTest(true)}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm font-bold shadow-lg shadow-purple-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Sparkles className="w-4 h-4" />
+            {t("startQuiz" as TranslationKey)}
+          </button>
+        </div>
+      )}
+
+      {showTest && assignment.test_id && (
+        <TestComponent
+          testId={assignment.test_id}
+          onComplete={() => {
+            setShowTest(false);
+            queryClient.invalidateQueries({ queryKey: ["topic-assignments", courseId, topicId] });
+          }}
+          onCancel={() => setShowTest(false)}
+          onRetake={() => setTestAttemptKey((k) => k + 1)}
+          key={testAttemptKey}
+        />
       )}
 
       {!assignment.submitted && !submissionBlocked ? (

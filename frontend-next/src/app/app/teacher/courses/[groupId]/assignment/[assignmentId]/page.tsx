@@ -337,12 +337,7 @@ export default function TeacherAssignmentPage() {
       const viewerUrl = `/app/teacher/courses/${groupId}/assignment/${assignmentId}/view?${params.toString()}`;
       window.open(viewerUrl, "_blank", "noopener,noreferrer");
     } else {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = url.split("/").pop()?.split("?")[0] || "file";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 

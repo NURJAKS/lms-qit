@@ -11,7 +11,7 @@ import { api } from "@/api/client";
  
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { isTeacher } = useAuthStore();
 
   const { data: unreviewedCount = 0 } = useQuery({
@@ -24,6 +24,13 @@ export function MobileBottomNav() {
     staleTime: 30000,
   });
  
+  const getShortLabel = (key: string, original: string) => {
+    if (key === "unreviewedAssignments") return lang === "ru" ? "Проверка" : lang === "kk" ? "Тексеру" : "Review";
+    if (key === "teacherCoursesTab") return lang === "ru" ? "Курсы" : lang === "kk" ? "Курстар" : "Courses";
+    if (key === "studentCoursesTabHint") return lang === "ru" ? "Каталог" : lang === "kk" ? "Каталог" : "Catalog";
+    return original;
+  };
+
   const navItems = [
     {
       href: "/app",
@@ -34,19 +41,19 @@ export function MobileBottomNav() {
       {
         href: "/app/teacher/courses",
         icon: BookOpen,
-        label: t("teacherCoursesTab"),
+        label: getShortLabel("teacherCoursesTab", t("teacherCoursesTab")),
       },
       {
         href: "/app/teacher/courses/review",
         icon: ClipboardList,
-        label: t("unreviewedAssignments"),
+        label: getShortLabel("unreviewedAssignments", t("unreviewedAssignments")),
         badge: unreviewedCount > 0 ? unreviewedCount : undefined,
       },
     ] : [
       {
         href: "/app/courses",
         icon: BookOpen,
-        label: t("studentCoursesTabHint"),
+        label: getShortLabel("studentCoursesTabHint", t("studentCoursesTabHint")),
       },
     ]),
     {

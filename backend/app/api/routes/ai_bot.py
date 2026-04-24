@@ -242,3 +242,15 @@ def chat_history(
         q = q.filter(AIChatHistory.course_id == course_id)
     rows = q.order_by(AIChatHistory.created_at.desc()).limit(limit).all()
     return [{"id": r.id, "message": r.message, "response": r.response, "course_id": r.course_id, "created_at": r.created_at} for r in reversed(rows)]
+
+
+class PublicChatRequest(BaseModel):
+    message: str
+
+@router.post("/public-chat", response_model=ChatResponse)
+def public_ai_chat(body: PublicChatRequest, lang: str = "ru"):
+    from app.services.ai_service import chat_with_openai_public
+    
+    response_text = chat_with_openai_public(body.message, lang)
+    return ChatResponse(response=response_text, message_id=None)
+

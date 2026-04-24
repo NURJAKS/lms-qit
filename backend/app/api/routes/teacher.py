@@ -210,6 +210,7 @@ class AssignmentCreate(BaseModel):
     test_questions: list[TestQuestionCreate] | None = None  # for assignment with test
     reject_submissions_after_deadline: bool | None = None
     is_synopsis: bool = False
+    is_supplementary: bool = False
 
 
 class AssignmentUpdate(BaseModel):
@@ -225,6 +226,7 @@ class AssignmentUpdate(BaseModel):
     rubric: list[RubricCriterionCreate] | None = None
     reject_submissions_after_deadline: bool | None = None
     is_synopsis: bool | None = None
+    is_supplementary: bool | None = None
 
 
 def _parse_rubric_levels_json(raw: str | None) -> list[dict]:
@@ -275,6 +277,7 @@ class MaterialCreate(BaseModel):
     image_urls: list[str] | None = None
     attachment_urls: list[str] | None = None
     attachment_links: list[str] | None = None
+    is_supplementary: bool = False
 
 
 class QuestionCreate(BaseModel):
@@ -1600,6 +1603,7 @@ def create_assignment(
         test_id=test_id_val,
         reject_submissions_after_deadline=rej_after,
         is_synopsis=body.is_synopsis,
+        is_supplementary=body.is_supplementary,
         max_points=100 if body.is_synopsis else body.max_points,
     )
     db.add(a)
@@ -1867,6 +1871,8 @@ def update_assignment(
         a.is_synopsis = body.is_synopsis
         if a.is_synopsis:
             a.max_points = 100
+    if body.is_supplementary is not None:
+        a.is_supplementary = body.is_supplementary
 
     if body.rubric is not None:
         db.query(TeacherAssignmentRubric).filter(
@@ -2315,7 +2321,7 @@ def unmark_assignment_reviewed(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_teacher_user)],
 ):
-    """Отметить задание как непроверенное (сбросить оценки 0 у пустых сдач или просто сбросить оценки)."""
+    """Отметить задание как непроверенное. Сбрасывает только автоматические оценки (0), выставленные через 'Mark Reviewed'."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Задание не найдено")
@@ -2323,14 +2329,22 @@ def unmark_assignment_reviewed(
     if not g or not _can_manage_group(current_user, g):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
-    # Сбрасываем оценки у всех сдач этого задания
+    # Сбрасываем только те оценки, которые были выставлены автоматически
+    # Ориентируемся на комментарии "Auto-graded as reviewed" и "Not submitted, marked as reviewed"
     submissions = db.query(AssignmentSubmission).filter(
-        AssignmentSubmission.assignment_id == assignment_id
+        AssignmentSubmission.assignment_id == assignment_id,
+        AssignmentSubmission.grade == 0,
+        AssignmentSubmission.teacher_comment.in_([
+            "Auto-graded as reviewed", 
+            "Not submitted, marked as reviewed"
+        ])
     ).all()
     
     for s in submissions:
         s.grade = None
-        # Если это была пустая сдача (без текста и файла), можно её вообще удалить
+        s.teacher_comment = None
+        s.graded_at = None
+        # Если это была пустая сдача (без текста и файла), которую мы создали автоматически, удаляем её
         if not s.submission_text and not s.file_url and not s.file_urls:
             db.delete(s)
 
@@ -2493,6 +2507,7 @@ def create_material(
         image_urls=json.dumps(body.image_urls) if body.image_urls else None,
         attachment_urls=json.dumps(body.attachment_urls) if body.attachment_urls else None,
         attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
+        is_supplementary=body.is_supplementary,
     )
     db.add(m)
     for gs in g.students:
