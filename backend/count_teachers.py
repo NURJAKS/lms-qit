@@ -4,7 +4,7 @@ import os
 # Add current directory to path so 'app' can be found
 sys.path.append(os.getcwd())
 
-from app.db.session import SessionLocal
+from app.core.database import SessionLocal
 from app.models.user import User
 
 def count_teachers():

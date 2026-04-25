@@ -2820,6 +2820,8 @@ export const translations = {
     paymentCardCvv: 'CVV',
     adminEmailLabel: 'Email',
     fileLabel: 'Файл',
+    nextStep: 'Следующий шаг',
+    goToPaymentButton: 'Перейти к оплате',
   },
   kk: {
     enrolledViewMore: 'Тағы...',
@@ -5623,6 +5625,8 @@ export const translations = {
     paymentCardCvv: 'CVV',
     adminEmailLabel: 'Email',
     fileLabel: 'Файл',
+    nextStep: 'Келесі қадам',
+    goToPaymentButton: 'Төлемге өту',
   },
   en: {
     adminOverview: 'Overview',
@@ -8425,6 +8429,8 @@ export const translations = {
     paymentCardCvv: 'CVV',
     adminEmailLabel: 'Email',
     fileLabel: 'File',
+    nextStep: 'Next Step',
+    goToPaymentButton: 'Go to Payment',
   },
 } as const;
 
