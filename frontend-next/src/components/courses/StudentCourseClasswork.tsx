@@ -8,12 +8,14 @@ import type { AxiosError } from "axios";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
 import {
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
   ChevronsUpDown,
   ClipboardList,
+  ExternalLink,
   FileText,
   Filter,
   Globe,
@@ -21,8 +23,10 @@ import {
   Lock,
   MessageSquare,
   Paperclip,
+  Play,
   Plus,
   Users,
+  Video,
   AlertTriangle,
   X,
   Sparkles,
@@ -33,6 +37,7 @@ import { AssignmentClassCommentsSection } from "@/components/courses/AssignmentC
 import { cn } from "@/lib/utils";
 import { htmlLinksOpenInNewTab } from "@/lib/htmlLinkNewTab";
 import { formatLocalizedDate, formatRelativeDate } from "@/utils/dateUtils";
+import { TopicTheoryContent } from "@/components/courses/TopicTheoryContent";
 
 type RubricLevelItem = { text: string; points: number };
 type RubricItem = {
@@ -169,6 +174,23 @@ function apiErrorDetail(err: unknown): string | null {
   return null;
 }
 
+/* ── YouTube helpers ── */
+function isYouTubeUrl(url: string): boolean {
+  return /youtube\.com|youtu\.be/i.test(url);
+}
+
+function getYouTubeEmbedUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    let videoId = u.searchParams.get("v");
+    if (!videoId && u.hostname.includes("youtu.be")) {
+      videoId = u.pathname.slice(1);
+    }
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  } catch {
+    return null;
+  }
+}
 
 function fileKindIcon(name: string) {
   const lower = name.toLowerCase();
@@ -177,60 +199,6 @@ function fileKindIcon(name: string) {
   if (lower.endsWith(".pdf"))
     return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-600 text-xs font-bold text-white">PDF</span>;
   return <FileText className="h-10 w-10 shrink-0 text-blue-500" />;
-}
-
-function AttachmentsBlock({ urls, links }: { urls: string[]; links: string[] }) {
-  const { t } = useLanguage();
-  const border = "border-gray-200 dark:border-gray-700";
-  return (
-    <div className="space-y-3">
-      {urls.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-            {t("assignmentAttachFiles")}
-          </div>
-          <div className="space-y-1">
-            {urls.map((u, idx) => {
-              const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
-              return (
-                <a
-                  key={`${u}-${idx}`}
-                  href={u}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:underline truncate ${border}`}
-                >
-                  <Paperclip className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                  <span className="truncate">{name}</span>
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {links.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-            {t("linkOption")}
-          </div>
-          <div className="space-y-1">
-            {links.map((u, idx) => (
-              <a
-                key={`${u}-${idx}`}
-                href={u}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`block rounded-xl border px-3 py-2 text-sm hover:underline truncate ${border}`}
-              >
-                {attachmentLabel(u, t("googleFormLabel"))}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function AttachmentsBlockRich({
@@ -246,7 +214,7 @@ function AttachmentsBlockRich({
   const border = "border-gray-200 dark:border-gray-700";
   if (urls.length === 0 && links.length === 0) return null;
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
       {urls.map((u, idx) => {
         const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
         return (
@@ -256,7 +224,7 @@ function AttachmentsBlockRich({
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "flex min-h-[88px] items-center gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50",
+              "flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50",
               border
             )}
           >
@@ -275,7 +243,7 @@ function AttachmentsBlockRich({
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            "flex min-h-[88px] items-center gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50",
+            "flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50",
             border
           )}
         >
@@ -541,6 +509,7 @@ export function StudentCourseClasswork({
   const [topicFilterOpen, setTopicFilterOpen] = useState(false);
   const [collapsedTopics, setCollapsedTopics] = useState<Record<string, boolean>>({});
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
+  const [expandedMaterial, setExpandedMaterial] = useState<number | null>(null);
   const [allCollapsed, setAllCollapsed] = useState(false);
 
   const topicFilterRef = useRef<HTMLDivElement | null>(null);
@@ -1133,7 +1102,7 @@ export function StudentCourseClasswork({
               {a.submitted && (a.submission_text?.trim() ?? "") ? (
                 <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/50">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">{t("studentSubmissionAnswerLabel")}</p>
-                  <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{a.submission_text}</p>
+                  <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100 break-words">{a.submission_text}</p>
                 </div>
               ) : null}
 
@@ -1505,33 +1474,162 @@ export function StudentCourseClasswork({
                       section.items.map((cItem) => {
                         if (cItem.kind === "material") {
                           const mat = cItem.data as MaterialRow;
+                          const isMaterialExpanded = expandedMaterial === mat.id;
+                          const hasDescription = !!mat.description?.trim();
+                          const hasVideos = mat.video_urls?.length > 0;
+                          const hasFiles = (mat.attachment_urls?.length ?? 0) > 0 || (mat.attachment_links?.length ?? 0) > 0;
                           return (
-                            <div
-                              key={`m-${mat.id}`}
-                              className={cn(
-                                "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 transition-colors rounded-lg",
-                                mat.is_locked ? "opacity-50 grayscale cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
-                              )}
-                            >
-                              <div className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white",
-                                mat.is_locked ? "bg-gray-400" : "bg-gray-500"
-                              )}>
-                                {mat.is_locked ? <Lock className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <span className="block truncate text-sm text-gray-900 dark:text-white">
-                                  {mat.title}
-                                </span>
-                                {mat.is_locked && (
-                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                                    {t("lockedWatchVideoFirst")}
-                                  </span>
+                            <div key={`m-${mat.id}`}>
+                              {/* Material row header */}
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  if (mat.is_locked) return;
+                                  setExpandedMaterial(isMaterialExpanded ? null : mat.id);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    if (mat.is_locked) return;
+                                    setExpandedMaterial(isMaterialExpanded ? null : mat.id);
+                                  }
+                                }}
+                                className={cn(
+                                  "flex flex-wrap items-center gap-x-3 gap-y-2 px-2 py-3 rounded-lg transition-colors",
+                                  mat.is_locked ? "opacity-50 grayscale cursor-not-allowed" : "cursor-pointer",
+                                  !mat.is_locked && (isMaterialExpanded ? "bg-purple-50/50 dark:bg-purple-900/10" : "hover:bg-gray-50 dark:hover:bg-gray-700/30")
                                 )}
+                              >
+                                <div className={cn(
+                                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white",
+                                  mat.is_locked ? "bg-gray-400" : "bg-purple-600"
+                                )}>
+                                  {mat.is_locked ? <Lock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block truncate text-sm text-gray-900 dark:text-white">
+                                    {mat.title}
+                                  </span>
+                                  {mat.is_locked && (
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                      {t("lockedWatchVideoFirst")}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
+                                  {mat.created_at ? `${t("publishedLabel")} ${formatRelativeDate(mat.created_at, lang, t)}` : ""}
+                                </span>
                               </div>
-                              <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400 sm:text-xs">
-                                {mat.created_at ? `${t("publishedLabel")} ${formatRelativeDate(mat.created_at, lang, t)}` : ""}
-                              </span>
+
+                              {/* Expanded material content */}
+                              {isMaterialExpanded && (
+                                <div className="border-t border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-800 px-3 py-5 sm:px-4 sm:py-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <div className="space-y-5 pl-0 sm:pl-12">
+                                    {/* ── 🎥 Video Section ── */}
+                                    {hasVideos && (
+                                      <section>
+                                        <div className="flex items-center gap-3 mb-4">
+                                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/20">
+                                            <Play className="w-5 h-5 text-white" />
+                                          </div>
+                                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                            {t("teacherVideo")}
+                                          </h3>
+                                        </div>
+                                        <div className="space-y-4">
+                                          {mat.video_urls.map((url, i) =>
+                                            isYouTubeUrl(url) ? (
+                                              <div key={i} className="rounded-2xl overflow-hidden aspect-video shadow-xl border border-gray-200 dark:border-gray-700">
+                                                <iframe
+                                                  src={getYouTubeEmbedUrl(url) || url}
+                                                  className="w-full h-full"
+                                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                  allowFullScreen
+                                                  title={mat.title}
+                                                />
+                                              </div>
+                                            ) : (
+                                              <a
+                                                key={i}
+                                                href={url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:border-red-300 dark:hover:border-red-800 transition-colors"
+                                              >
+                                                <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                                                  <Video className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{mat.title}</p>
+                                                  <p className="text-xs text-gray-500 truncate">{url}</p>
+                                                </div>
+                                                <ExternalLink className="w-4 h-4 text-gray-400 shrink-0" />
+                                              </a>
+                                            )
+                                          )}
+                                        </div>
+                                      </section>
+                                    )}
+
+                                    {/* ── 📖 Theory / Description Section ── */}
+                                    {hasDescription && (
+                                      <section>
+                                        <TopicTheoryContent content={mat.description!} />
+                                      </section>
+                                    )}
+
+                                    {/* ── 📎 Files & Links Section ── */}
+                                    {hasFiles && (
+                                      <section>
+                                        <div className="flex items-center gap-3 mb-4">
+                                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                            <Paperclip className="w-5 h-5 text-white" />
+                                          </div>
+                                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                            {t("assignmentMaterialsHeading")}
+                                          </h3>
+                                        </div>
+                                        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
+                                          {(mat.attachment_urls ?? []).map((u, idx) => {
+                                            const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
+                                            return (
+                                              <a
+                                                key={`${u}-${idx}`}
+                                                href={u}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 transition-all hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700"
+                                              >
+                                                {fileKindIcon(name)}
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{name}</p>
+                                                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{t("fileLabel")}</p>
+                                                </div>
+                                              </a>
+                                            );
+                                          })}
+                                          {(mat.attachment_links ?? []).map((u, idx) => (
+                                            <a
+                                              key={`${u}-${idx}`}
+                                              href={u}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 transition-all hover:shadow-md hover:border-sky-300 dark:hover:border-sky-700"
+                                            >
+                                              <Globe className="h-10 w-10 shrink-0 text-gray-400" />
+                                              <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{t("linkOption")}</p>
+                                                <p className="truncate text-xs text-gray-500 dark:text-gray-400">{attachmentLabel(u, t("googleFormLabel"))}</p>
+                                              </div>
+                                            </a>
+                                          ))}
+                                        </div>
+                                      </section>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -1671,7 +1769,7 @@ export function StudentCourseClasswork({
 
                                   {/* Attachment cards — GC style (horizontal cards with icon) */}
                                   {hasAttachments && (
-                                    <div className="flex flex-wrap gap-3">
+                                    <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
                                       {(item.attachment_urls ?? []).map((u, idx) => {
                                         const name = u.split("/").pop()?.split("?")[0] || `${t("fileLabel")} ${idx + 1}`;
                                         return (
@@ -1680,13 +1778,13 @@ export function StudentCourseClasswork({
                                             href={u}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="flex min-w-0 w-full max-w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5 transition-shadow hover:shadow dark:border-gray-700 dark:bg-gray-900 sm:min-w-[180px] sm:max-w-[280px] sm:w-auto"
+                                            className="flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800/50"
                                           >
-                                            <div className="min-w-0 flex-1">
-                                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{name}</p>
-                                              <p className="text-[11px] text-gray-400">{t("fileTypeFile")}</p>
-                                            </div>
                                             {fileKindIcon(name)}
+                                            <div className="min-w-0 flex-1">
+                                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{name}</p>
+                                              <p className="text-xs text-gray-500 dark:text-gray-400">{t("fileLabel")}</p>
+                                            </div>
                                           </a>
                                         );
                                       })}
@@ -1696,13 +1794,13 @@ export function StudentCourseClasswork({
                                           href={u}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="flex min-w-0 w-full max-w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5 transition-shadow hover:shadow dark:border-gray-700 dark:bg-gray-900 sm:min-w-[180px] sm:max-w-[280px] sm:w-auto"
+                                          className="flex min-h-[88px] w-full min-w-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800/50"
                                         >
+                                          <Globe className="h-10 w-10 shrink-0 text-gray-400" />
                                           <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{t("linkOption")}</p>
-                                            <p className="text-[11px] text-gray-400 truncate">{u}</p>
+                                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{t("linkOption")}</p>
+                                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{attachmentLabel(u, t("googleFormLabel"))}</p>
                                           </div>
-                                          <Globe className="h-8 w-8 shrink-0 text-gray-400" />
                                         </a>
                                       ))}
                                     </div>

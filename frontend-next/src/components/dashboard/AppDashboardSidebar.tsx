@@ -8,9 +8,7 @@ import {
   Library,
   Calendar,
   Settings,
-  Menu,
   ChevronDown,
-  Bell,
   User,
   LogOut,
   Trophy,
@@ -37,11 +35,9 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useTheme } from "@/context/ThemeContext";
 import { useSidebar } from "@/context/SidebarContext";
-import { useNotifications } from "@/hooks/useNotifications";
 import { useLanguage } from "@/context/LanguageContext";
-import { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { api } from "@/api/client";
-import { getLocalizedNotificationText } from "@/lib/notificationText";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function AppDashboardSidebar() {
@@ -52,43 +48,6 @@ export function AppDashboardSidebar() {
   const { t, lang, setLang } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { collapsed, toggle, width, mobileOpen, setMobileOpen } = useSidebar();
-  const { data: notifications = [], refetch } = useNotifications();
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [langOpen, setLangOpen] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const langRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!notifOpen) return;
-    const close = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node))
-        setNotifOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [notifOpen]);
-
-  useEffect(() => {
-    if (!userMenuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node))
-        setUserMenuOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [userMenuOpen]);
-
-  useEffect(() => {
-    if (!langOpen) return;
-    const close = (e: MouseEvent) => {
-      if (langRef.current && !langRef.current.contains(e.target as Node))
-        setLangOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [langOpen]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -103,22 +62,6 @@ export function AppDashboardSidebar() {
       document.removeEventListener("keydown", onEsc);
     };
   }, [mobileOpen, setMobileOpen]);
-
-  const unread = notifications.filter((n) => !n.is_read);
-
-  const markRead = (notificationId: number, link?: string) => {
-    api.put(`/notifications/${notificationId}/read`).then(() => {
-      refetch();
-      setNotifOpen(false);
-      if (link) router.push(link);
-    });
-  };
-
-  const markAllRead = () => {
-    api.post("/notifications/read-all").then(() => {
-      refetch();
-    });
-  };
 
   const navLinkClass = (href: string) => {
     const isActive =
@@ -483,102 +426,6 @@ export function AppDashboardSidebar() {
           <NavContent compact={collapsed} />
         </div>
       </aside>
-
-      {/* Mobile header - Simplified */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 flex items-center justify-between px-4 glass-nav">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="p-2 -ml-2 rounded-xl active-tap text-gray-700 dark:text-white bg-white/50 dark:bg-white/10"
-          aria-label={t("openMenu")}
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-main-menu"
-        >
-          <Menu className="w-6 h-6" />
-        </button>
-        
-        <Link href="/app" className="flex items-center gap-2 group">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg group-active:scale-95 transition-transform"
-            style={{ background: "var(--qit-gradient-3)" }}
-          >
-            Q
-          </div>
-          <span className="max-w-[42vw] truncate font-bold text-gray-900 dark:text-white tracking-tight">
-            {t("platformName")}
-          </span>
-        </Link>
-        
-        <div className="flex items-center">
-          <div className="relative" ref={notifRef}>
-            <button
-              type="button"
-              onClick={() => setNotifOpen(!notifOpen)}
-              className="p-2 -mr-2 rounded-xl active-tap text-gray-700 dark:text-white"
-            >
-              <div className="relative">
-                <Bell className="w-6 h-6" />
-                {unread.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-[10px] bg-red-500 text-white rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900">
-                    {unread.length > 9 ? "9+" : unread.length}
-                  </span>
-                )}
-              </div>
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl z-50 max-h-96 overflow-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sticky top-0 bg-inherit z-10">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="font-bold text-sm shrink-0">{t("notifications")}</h3>
-                    {unread.length > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase shrink-0">
-                        {t("newBadge")}
-                      </span>
-                    )}
-                  </div>
-                  {unread.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        markAllRead();
-                      }}
-                      className="text-[10px] sm:text-xs font-semibold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)] hover:underline text-left sm:text-right leading-snug whitespace-normal w-full sm:w-auto sm:max-w-[12.5rem]"
-                    >
-                      {t("markAllAsRead")}
-                    </button>
-                  )}
-                </div>
-                {notifications.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {t("noNotifications")}
-                    </p>
-                  </div>
-                ) : (
-                  notifications.slice(0, 15).map((n) => {
-                    const { title, message } = getLocalizedNotificationText(n, t);
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => markRead(n.id, n.link)}
-                        className={`w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!n.is_read ? "bg-[var(--qit-primary)]/5 dark:bg-[var(--qit-primary)]/10" : ""}`}
-                      >
-                        <p className="font-bold text-xs text-gray-900 dark:text-gray-200 mb-0.5">{title}</p>
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                          {message}
-                        </p>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
 
       {/* Mobile overlay menu */}
       {mobileOpen && (

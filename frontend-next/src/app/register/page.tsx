@@ -75,8 +75,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-4 right-4 z-20">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div className="flex justify-end w-full max-w-[880px] mb-4 relative z-20">
         <AppHeader />
       </div>
       <div className="absolute inset-0 bg-[#f5f7ff] dark:bg-gray-900" />

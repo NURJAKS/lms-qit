@@ -85,6 +85,7 @@ export default function TopicViewPage() {
   const [actualVideoDuration, setActualVideoDuration] = useState<number | null>(null);
   const [hasShownTheoryCoinsToast, setHasShownTheoryCoinsToast] = useState(false);
   const [localWatchedSeconds, setLocalWatchedSeconds] = useState<number>(0);
+  const [topicTab, setTopicTab] = useState<"lesson" | "supplementary">("lesson");
   const isPremium = user?.is_premium === 1;
 
   const {
@@ -225,6 +226,10 @@ export default function TopicViewPage() {
 
   useEffect(() => {
     setHasShownTheoryCoinsToast(false);
+  }, [tId]);
+
+  useEffect(() => {
+    setTopicTab("lesson");
   }, [tId]);
 
   useEffect(() => {
@@ -410,6 +415,7 @@ export default function TopicViewPage() {
   }
 
   const currentTestId = topicTest?.test_id ?? testId;
+  const showSupplementarySlots = canViewTheory && (flow == null || flow.has_course_groups);
 
   return (
     <div className="relative w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-0">
@@ -429,7 +435,37 @@ export default function TopicViewPage() {
         {getLocalizedTopicTitle(topic.title, t as any)}
       </h1>
 
-      {!isPremium && (
+      {!showTest && (
+        <nav
+          className="mb-6 flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain border-b border-gray-200 px-0 pb-0.5 [-webkit-overflow-scrolling:touch] dark:border-gray-600 sm:gap-6 scroll-px-0"
+          aria-label={t("courseSectionsAria")}
+        >
+          <button
+            type="button"
+            onClick={() => setTopicTab("lesson")}
+            className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              topicTab === "lesson"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+            }`}
+          >
+            {t("topicTabMain")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTopicTab("supplementary")}
+            className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              topicTab === "supplementary"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+            }`}
+          >
+            {t("supplementaryMaterialsTab")}
+          </button>
+        </nav>
+      )}
+
+      {!isPremium && topicTab === "lesson" && (
       <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
@@ -483,7 +519,7 @@ export default function TopicViewPage() {
       </div>
       )}
 
-      {!showTest ? (
+      {!showTest && topicTab === "lesson" ? (
         <>
           {isVideoTopic ? (
             <>
@@ -571,12 +607,6 @@ export default function TopicViewPage() {
                   <TopicTheoryContent content={topic.description} />
                 </div>
               )}
-              {canViewTheory && (flow == null || flow.has_course_groups) && (
-                <TopicSynopsisSection topicId={tId} courseId={cId} />
-              )}
-              {canViewTheory && (flow == null || flow.has_course_groups) && (
-                <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
-              )}
             </>
           ) : (
             <>
@@ -588,12 +618,6 @@ export default function TopicViewPage() {
                 )}
               </div>
               {isPremium && <TopicNotes topicId={tId} />}
-              {(flow == null || flow.has_course_groups) && (
-                <TopicSynopsisSection topicId={tId} courseId={cId} />
-              )}
-              {(flow == null || flow.has_course_groups) && (
-                <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
-              )}
             </>
           )}
           {flow && !progress?.is_completed && !flow.can_take_test && flow.block_reason && flow.block_reason !== "ok" && (
@@ -653,7 +677,25 @@ export default function TopicViewPage() {
             </div>
           )}
         </>
-      ) : (
+      ) : !showTest && topicTab === "supplementary" ? (
+        <div className="space-y-2">
+          {!canViewTheory && isVideoTopic ? (
+            <div className="mb-6 flex items-start gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
+              <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800 dark:text-amber-200">{t("topicTheoryLockedUntilVideo")}</p>
+            </div>
+          ) : flow && !flow.has_course_groups ? (
+            <div className="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/30">
+              <p className="text-sm text-gray-700 dark:text-gray-300">{t("topicFlowNoGroups")}</p>
+            </div>
+          ) : showSupplementarySlots ? (
+            <>
+              <TopicSynopsisSection topicId={tId} courseId={cId} />
+              <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
+            </>
+          ) : null}
+        </div>
+      ) : showTest ? (
         currentTestId && (
           <TestComponent
             key={testAttemptKey}
@@ -667,7 +709,7 @@ export default function TopicViewPage() {
             passedContinueLabelKey="topicFlowNextTopic"
           />
         )
-      )}
+      ) : null}
     </div>
   );
 }

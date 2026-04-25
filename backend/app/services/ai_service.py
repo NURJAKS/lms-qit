@@ -670,7 +670,7 @@ def solve_quiz_questions(
             })
         return fallback_results
 
-def generate_ai_personal_plan(student_level: str, analytics_data: dict, weak_topics: list, lang: str = "ru") -> str:
+def generate_ai_personal_plan(student_level: str, analytics_data: dict, weak_topics: list, lang: str = "ru", db: Session = None) -> str:
     """Генерирует персональный план развития студента на основе AI vs Student и аналитики."""
     locale = lang if lang in ("ru", "kk", "en") else "ru"
     insights = analytics_data.get("insights") or {}
@@ -681,6 +681,34 @@ def generate_ai_personal_plan(student_level: str, analytics_data: dict, weak_top
         if weak_topics
         else "По данным платформы слабых тем с баллом <60% не зафиксировано (или нет завершённых тестов)."
     )
+
+    if not is_ai_provider_configured():
+        return get_ai_unavailable_user_message(locale)
+
+    # 1. Try to get from cache
+    p_hash = ""
+    if db:
+        try:
+            # We hash the key factors: level, analytics (insights snapshot), weak topics, and language
+            hash_data = {
+                "level": student_level,
+                "analytics": analytics_data,
+                "weak_topics": sorted(weak_topics),
+                "lang": locale
+            }
+            p_hash = hashlib.md5(json.dumps(hash_data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            
+            cached = db.query(AIChallengeCache).filter(
+                AIChallengeCache.questions_hash == f"plan_{p_hash}",
+                AIChallengeCache.ai_level == student_level,
+                AIChallengeCache.game_mode == "personal_plan"
+            ).first()
+            
+            if cached:
+                logger.debug("Plan cache hit for hash %s", p_hash)
+                return cached.response_json
+        except Exception as ce:
+            logger.warning("AI plan cache read failed: %s", ce)
 
     prompt = f"""
 Ты — персональный AI-ментор по IT.
@@ -708,38 +736,46 @@ def generate_ai_personal_plan(student_level: str, analytics_data: dict, weak_top
 """
 
     unavail = get_ai_unavailable_user_message(locale)
+    plan_text = unavail
 
-    if not is_ai_provider_configured():
-        return unavail
-
-    if USE_GEMINI:
-        if not settings.GEMINI_API_KEY:
-            return unavail
-        try:
+    try:
+        if USE_GEMINI:
+            if not settings.GEMINI_API_KEY:
+                return unavail
             model = _get_gemini_model()
             response = model.generate_content(prompt)
             if response.text:
-                return response.text
-        except Exception as e:
-            logger.error(f"Error generating AI plan with Gemini: {e}")
-            return unavail
-    else:
-        if not settings.OPENAI_API_KEY:
-            return unavail
-        client = get_openai_client()
-        try:
+                plan_text = response.text
+        else:
+            if not settings.OPENAI_API_KEY:
+                return unavail
+            client = get_openai_client()
             r = client.chat.completions.create(
                 model=settings.OPENAI_CHAT_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=2000,
             )
             if r.choices:
-                return r.choices[0].message.content or ""
-        except Exception as e:
-            logger.error(f"Error generating AI plan with OpenAI: {e}")
-            return unavail
+                plan_text = r.choices[0].message.content or unavail
+    except Exception as e:
+        logger.error(f"Error generating AI plan: {e}")
+        return unavail
 
-    return unavail
+    if plan_text != unavail and db and plan_text:
+        try:
+            new_cache = AIChallengeCache(
+                questions_hash=f"plan_{p_hash}",
+                ai_level=student_level,
+                game_mode="personal_plan",
+                response_json=plan_text
+            )
+            db.add(new_cache)
+            db.commit()
+        except Exception as ce:
+            logger.warning("AI plan cache save failed: %s", ce)
+            db.rollback()
+
+    return plan_text
 
 
 def transform_ai_personal_plan(

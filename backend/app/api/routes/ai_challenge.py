@@ -1936,6 +1936,7 @@ def create_personal_plan(
         analytics_data=analytics_data,
         weak_topics=weak_for_prompt,
         lang=lang,
+        db=db,
     )
 
     return {"plan": plan_markdown}

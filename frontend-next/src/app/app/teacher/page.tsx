@@ -125,6 +125,7 @@ export default function TeacherPage() {
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const [createModalType, setCreateModalType] = useState<"assignment" | "assignmentWithTest" | "question" | "material" | "topic" | "reuse" | null>(null);
   const [processingTaskId, setProcessingTaskId] = useState<number | null>(null);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
   const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
   const [editingDeadlineId, setEditingDeadlineId] = useState<number | null>(null);
   const [editingDeadline, setEditingDeadline] = useState("");
@@ -339,6 +340,7 @@ export default function TeacherPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: number) => {
+      setCompletingTaskId(taskId);
       await api.post(`/teacher/add-student-tasks/${taskId}/complete`);
     },
     onSuccess: () => {
@@ -348,19 +350,8 @@ export default function TeacherPage() {
     onError: (e: any) => {
       toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
     },
-  });
-
-  const addStudentToGroupOnlyMutation = useMutation({
-    mutationFn: async (task: AddStudentTask) => {
-      await api.post(`/teacher/groups/${task.group_id}/students`, { student_id: task.student_id });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["teacher-groups"] });
-      queryClient.invalidateQueries({ queryKey: ["teacher-add-student-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["teacher-stats"] });
-    },
-    onError: (e: any) => {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("error"));
+    onSettled: () => {
+      setCompletingTaskId(null);
     },
   });
 
@@ -1379,74 +1370,69 @@ export default function TeacherPage() {
                           </span>
                         </td>
                         <td className="py-4 px-6 text-sm" style={{ color: textColors.primary }}>
-                          {task.group_name}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("groups");
+                              setExpandedGroupId(task.group_id);
+                            }}
+                            className="text-left text-sm font-medium hover:underline"
+                            style={{ color: isDark ? "#60A5FA" : "#3B82F6" }}
+                            title={t("teacherOpenGroupHint")}
+                          >
+                            {task.group_name}
+                          </button>
                         </td>
                         <td className="py-4 px-6 text-right">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => addStudentToGroupOnlyMutation.mutate(task)}
-                              disabled={
-                                addStudentToGroupOnlyMutation.isPending ||
-                                task.student_in_group === true
-                              }
-                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-white text-xs font-medium transition-all hover:shadow-md hover:scale-[1.02] disabled:opacity-50"
-                              style={{ background: "linear-gradient(135deg, #3B82F6, #8B5CF6)" }}
-                              title={
-                                task.student_in_group
-                                  ? t("teacherAlreadyInGroupHint")
-                                  : t("teacherAddStudentToGroupOnlyHint")
-                              }
-                            >
-                              {addStudentToGroupOnlyMutation.isPending ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Plus className="w-3.5 h-3.5" />
-                              )}
-                              {t("teacherAddStudentToGroupOnly")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveTab("groups");
-                                setExpandedGroupId(task.group_id);
-                              }}
-                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all border"
-                              style={{
-                                borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
-                                color: textColors.secondary,
-                              }}
-                              title={t("teacherOpenGroupHint")}
-                            >
-                              {t("teacherOpenGroup")}
-                            </button>
+                          <div className="inline-flex flex-col items-end gap-2 min-w-[200px]">
                             <button
                               type="button"
                               onClick={() => addAndCompleteTaskMutation.mutate(task)}
-                              disabled={addAndCompleteTaskMutation.isPending}
-                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium text-white transition-all hover:shadow-md hover:scale-[1.02] disabled:opacity-50"
+                              disabled={
+                                addAndCompleteTaskMutation.isPending ||
+                                completeTaskMutation.isPending ||
+                                processingTaskId === task.id ||
+                                completingTaskId === task.id
+                              }
+                              className="inline-flex w-full items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-white transition-all hover:shadow-md hover:scale-[1.02] disabled:opacity-50"
                               style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}
-                              title={t("teacherAddToGroupAndComplete")}
+                              title={t("teacherAddToGroupAndCompleteHint")}
                             >
-                              {processingTaskId === task.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              {processingTaskId === task.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
                               {t("teacherAddToGroupAndComplete")}
                             </button>
                             <button
                               type="button"
                               onClick={() => completeTaskMutation.mutate(task.id)}
-                              disabled={completeTaskMutation.isPending || task.student_in_group === false}
-                              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
+                              disabled={
+                                completeTaskMutation.isPending ||
+                                addAndCompleteTaskMutation.isPending ||
+                                task.student_in_group === false ||
+                                processingTaskId === task.id ||
+                                completingTaskId === task.id
+                              }
+                              className="inline-flex w-full items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
                               style={{
-                                background: isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)",
-                                color: isDark ? "#34D399" : "#059669",
+                                background: isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(209, 250, 229, 0.95)",
+                                color: isDark ? "#34D399" : "#047857",
+                                border: `1px solid ${isDark ? "rgba(52, 211, 153, 0.35)" : "rgba(16, 185, 129, 0.35)"}`,
                               }}
                               title={
                                 task.student_in_group === false
                                   ? t("teacherCompleteTaskNeedsGroupHint")
-                                  : t("teacherMarkDone")
+                                  : t("teacherMarkDoneHint")
                               }
                             >
-                              <Check className="w-3.5 h-3.5" /> {t("teacherMarkDone")}
+                              {completingTaskId === task.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
+                              {t("teacherMarkDone")}
                             </button>
                           </div>
                         </td>

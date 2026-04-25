@@ -59,7 +59,7 @@ export function WelcomeWidget() {
 
   return (
     <div
-      className="relative rounded-unified-lg p-6 overflow-hidden group"
+      className="relative rounded-unified-lg p-4 sm:p-6 overflow-hidden group"
       style={{
         ...glassStyle,
         background: isDark 
@@ -81,7 +81,7 @@ export function WelcomeWidget() {
       </div>
 
       <div className="relative">
-        <h2 className="text-2xl font-geologica font-bold mb-1" style={{ color: textColors.primary }}>
+        <h2 className="text-xl sm:text-2xl font-geologica font-bold mb-1" style={{ color: textColors.primary }}>
           {t("welcome")}, {userName}! 👋
         </h2>
         <p className="text-sm mb-5" style={{ color: textColors.secondary }}>

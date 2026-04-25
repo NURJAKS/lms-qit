@@ -1991,7 +1991,8 @@ def list_submissions(
         "description": a.description,
         "max_points": a.max_points,
         "deadline": _deadline_to_iso_utc(a.deadline),
-        "group_name": g.group_name
+        "group_name": g.group_name,
+        "group_id": a.group_id,
     }
 
     return {"submissions": submissions, "rubric": rubric, "assignment": assignment_details}

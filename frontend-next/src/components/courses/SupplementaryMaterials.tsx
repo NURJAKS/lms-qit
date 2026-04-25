@@ -144,6 +144,21 @@ function normalizeExternalLinkUrl(raw: string): string | null {
   }
 }
 
+function fileKindIcon(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".doc") || lower.endsWith(".docx"))
+    return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white shadow-lg shadow-blue-500/20">W</span>;
+  if (lower.endsWith(".pdf"))
+    return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-600 text-xs font-bold text-white shadow-lg shadow-red-500/20">PDF</span>;
+  if (lower.endsWith(".xls") || lower.endsWith(".xlsx"))
+    return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-600 text-xs font-bold text-white shadow-lg shadow-green-500/20">XLS</span>;
+  if (lower.endsWith(".ppt") || lower.endsWith(".pptx"))
+    return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-600 text-xs font-bold text-white shadow-lg shadow-orange-500/20">PPT</span>;
+  if (lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".7z"))
+    return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-600 text-xs font-bold text-white shadow-lg shadow-gray-500/20">ZIP</span>;
+  return <FileText className="h-10 w-10 shrink-0 text-blue-500" />;
+}
+
 function apiErrorDetail(err: unknown): string | null {
   const ax = err as AxiosError<{ detail?: unknown }>;
   const d = ax.response?.data?.detail;
@@ -342,38 +357,51 @@ function SupplementaryAssignmentCard({
       {/* Description */}
       {assignment.description && (
         <div
-          className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-200 [&_img]:max-w-full [&_pre]:overflow-x-auto"
+          className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-200 [&_img]:max-w-full [&_pre]:overflow-x-auto break-words"
           dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(assignment.description) }}
         />
       )}
 
       {/* Teacher attachments */}
       {((assignment.attachment_urls?.length ?? 0) > 0 || (assignment.attachment_links?.length ?? 0) > 0) && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{t("assignmentMaterialsHeading")}</p>
-          <div className="space-y-1">
-            {(assignment.attachment_urls ?? []).map((url, idx) => (
-              <a
-                key={`${url}-${idx}`}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm hover:underline truncate"
-              >
-                <Paperclip className="w-4 h-4 shrink-0 text-blue-500" />
-                {getFileName(url)}
-              </a>
-            ))}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t("assignmentMaterialsHeading")}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(assignment.attachment_urls ?? []).map((url, idx) => {
+              const name = getFileName(url);
+              return (
+                <a
+                  key={`${url}-${idx}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 p-4 transition-all hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 group/file"
+                >
+                  {fileKindIcon(name)}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition-colors">{name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t("fileLabel")}</p>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-gray-300 opacity-0 group-hover/file:opacity-100 transition-opacity" />
+                </a>
+              );
+            })}
             {(assignment.attachment_links ?? []).map((url, idx) => (
               <a
                 key={`${url}-${idx}`}
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm hover:underline truncate"
+                className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 p-4 transition-all hover:shadow-md hover:border-sky-300 dark:hover:border-sky-700 group/link"
               >
-                <Link2 className="w-4 h-4 shrink-0 text-blue-500" />
-                {url}
+                <div className="w-10 h-10 rounded-lg bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center shrink-0">
+                  <Globe className="h-6 w-6 text-sky-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white group-hover/link:text-sky-600 transition-colors">{t("linkOption")}</p>
+                  <p className="truncate text-xs text-gray-500 dark:text-gray-400">{url}</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-gray-300 opacity-0 group-hover/link:opacity-100 transition-opacity" />
               </a>
             ))}
           </div>
@@ -779,32 +807,47 @@ function SupplementaryTopicDetail({
                 <TopicTheoryContent content={m.description!} />
                 {/* Material attachments for this material */}
                 {(m.attachment_urls.length > 0 || m.attachment_links.length > 0) && (
-                  <div className="mt-3 space-y-2">
-                    {m.attachment_urls.map((url, idx) => (
-                      <a
-                        key={`f-${m.id}-${idx}`}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-purple-400 hover:text-purple-600 transition-colors mr-2"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        {getFileName(url)}
-                      </a>
-                    ))}
-                    {m.attachment_links.map((link, idx) => (
-                      <a
-                        key={`l-${m.id}-${idx}`}
-                        href={link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        <Link2 className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{link}</span>
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                    ))}
+                  <div className="mt-6 space-y-3">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">{t("assignmentMaterialsHeading")}</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {m.attachment_urls.map((url, idx) => {
+                        const name = getFileName(url);
+                        return (
+                          <a
+                            key={`f-${m.id}-${idx}`}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 p-4 transition-all hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-700 group/file"
+                          >
+                            {fileKindIcon(name)}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white group-hover/file:text-purple-600 transition-colors">{name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{t("fileLabel")}</p>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-gray-300 opacity-0 group-hover/file:opacity-100 transition-opacity" />
+                          </a>
+                        );
+                      })}
+                      {m.attachment_links.map((link, idx) => (
+                        <a
+                          key={`l-${m.id}-${idx}`}
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 p-4 transition-all hover:shadow-lg hover:border-sky-300 dark:hover:border-sky-700 group/link"
+                        >
+                          <div className="w-10 h-10 rounded-lg bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center shrink-0">
+                            <Globe className="h-6 w-6 text-sky-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white group-hover/link:text-sky-600 transition-colors">{t("linkOption")}</p>
+                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{link}</p>
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-300 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

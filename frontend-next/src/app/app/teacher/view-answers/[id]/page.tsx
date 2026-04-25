@@ -116,6 +116,7 @@ type AssignmentDetails = {
   max_points: number;
   deadline: string | null;
   group_name: string;
+  group_id?: number;
 };
 
 export default function AssignmentDetailPage() {
@@ -138,7 +139,13 @@ export default function AssignmentDetailPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "graded" | "not_submitted">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  useEffect(() => {
+    // Open sidebar by default only on large screens
+    if (window.innerWidth >= 1024) {
+      setIsSidebarOpen(true);
+    }
+  }, []);
   const [sortBy, setSortBy] = useState<"name" | "status" | "date">("name");
   const [selectedSubmissions, setSelectedSubmissions] = useState<Set<number>>(new Set());
   
@@ -164,6 +171,13 @@ export default function AssignmentDetailPage() {
   const submissions = data?.submissions ?? [];
   const rubric = data?.rubric ?? [];
   const assignment = data?.assignment;
+
+  const gradingExitHref =
+    assignment?.group_id != null &&
+    Number.isFinite(assignment.group_id) &&
+    Number(assignment.group_id) > 0
+      ? `/app/teacher/courses/${assignment.group_id}`
+      : "/app/teacher/courses";
 
   const sortedAndFilteredSubmissions = useMemo(() => {
     let result = [...submissions];
@@ -202,6 +216,9 @@ export default function AssignmentDetailPage() {
     setGrade(s.grade !== null ? String(s.grade) : "");
     setComment(s.teacher_comment ?? "");
     setActiveFileIndex(0);
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
     const grades: Record<number, string> = {};
     if (rubric.length) {
       rubric.forEach((c) => {
@@ -322,6 +339,14 @@ export default function AssignmentDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["assignment-submissions", id] });
       queryClient.invalidateQueries({ queryKey: ["teacher-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox"] });
+      const cached = queryClient.getQueryData<{ assignment?: { group_id?: number } }>([
+        "assignment-submissions",
+        id,
+      ]);
+      const gid = cached?.assignment?.group_id;
+      if (gid != null && Number.isFinite(gid)) {
+        queryClient.invalidateQueries({ queryKey: ["teacher-gradebook", gid] });
+      }
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 2500);
     },
@@ -408,7 +433,7 @@ export default function AssignmentDetailPage() {
         </p>
         <div className="flex gap-4">
           <button
-            onClick={() => router.push("/app/teacher?tab=assignments")}
+            onClick={() => router.push(gradingExitHref)}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200"
           >
             {t("back")}
@@ -435,7 +460,7 @@ export default function AssignmentDetailPage() {
       <div className="flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
         <div className="shrink-0 border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
           <button
-            onClick={() => router.push("/app/teacher?tab=assignments")}
+            onClick={() => router.push(gradingExitHref)}
             className="mb-2 inline-flex items-center gap-2 text-sm text-gray-500 transition-colors hover:text-[var(--qit-primary)] dark:text-gray-400 dark:hover:text-[#00b0ff]"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -485,7 +510,7 @@ export default function AssignmentDetailPage() {
               </h2>
               {assignment.description ? (
                 <div
-                  className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-100"
+                  className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-100 break-words"
                   dangerouslySetInnerHTML={{ __html: assignment.description }}
                 />
               ) : (
@@ -506,7 +531,7 @@ export default function AssignmentDetailPage() {
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex items-center justify-between shrink-0 z-20 shadow-sm">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => router.push("/app/teacher?tab=assignments")}
+            onClick={() => router.push(gradingExitHref)}
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -566,11 +591,26 @@ export default function AssignmentDetailPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row min-h-0">
+      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row min-h-0 relative">
+        {/* Mobile Sidebar Overlay */}
+        {isSidebarOpen && (
+          <div 
+            className="lg:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px]" 
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+        {/* Mobile Toggle Sidebar Button */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="lg:hidden absolute left-4 top-4 z-30 p-2.5 rounded-xl bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+          aria-label={t("teacherGradingStudents")}
+        >
+          <Users className="w-5 h-5" />
+        </button>
         {/* Left Sidebar: Student List */}
         <div className={cn(
-          "border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col shrink-0 h-full overflow-hidden transition-all duration-300",
-          isSidebarOpen ? "w-72" : "w-0"
+          "fixed lg:relative inset-y-0 left-0 z-40 lg:z-auto border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col shrink-0 h-full overflow-hidden transition-all duration-300 shadow-2xl lg:shadow-none",
+          isSidebarOpen ? "w-[280px] translate-x-0" : "w-0 -translate-x-full lg:translate-x-0"
         )}>
           <div className="p-3 border-b border-gray-100 dark:border-gray-800 min-w-[288px]">
             <div className="flex items-center justify-between mb-3">
@@ -715,7 +755,7 @@ export default function AssignmentDetailPage() {
           {/* Sidebar Toggle Button (Floating) */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white dark:bg-gray-800 border border-l-0 border-gray-200 dark:border-gray-700 p-1 rounded-r-md shadow-sm hover:bg-gray-50 transition-colors"
+            className="hidden lg:block absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white dark:bg-gray-800 border border-l-0 border-gray-200 dark:border-gray-700 p-1 rounded-r-md shadow-sm hover:bg-gray-50 transition-colors"
           >
             {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
           </button>
@@ -817,7 +857,7 @@ export default function AssignmentDetailPage() {
                       </div>
                     </>
                   ) : selectedSubmission.submission_text ? (
-                    <div className="p-8 prose dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="p-8 prose dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap break-words">
                       {selectedSubmission.submission_text}
                     </div>
                   ) : (

@@ -78,7 +78,7 @@ export function DailyQuestWidget() {
                   {t(q.title_key as "dailyQuestLogin") || q.title}
                 </p>
                 <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
-                  {q.progress}/{q.target} · +{q.points} {t("points")}
+                  {q.progress}/{q.target} · +{q.points} {t("profileCoins")}
                 </p>
                 <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: theme === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)" }}>
                   <div

@@ -1471,7 +1471,7 @@ export default function TeacherCourseGroupPage() {
 
                                                                 {descriptionToRender && (
                                                                   <div 
-                                                                    className="text-sm prose prose-sm dark:prose-invert max-w-none"
+                                                                    className="text-sm prose prose-sm dark:prose-invert max-w-none break-words"
                                                                     style={{ color: textColors.primary }}
                                                                     dangerouslySetInnerHTML={{ __html: descriptionToRender }}
                                                                   />

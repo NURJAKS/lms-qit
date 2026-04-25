@@ -30,7 +30,7 @@ export function LeaderboardMotivationWidget() {
   ];
 
   return (
-    <div className="rounded-xl p-5 lg:p-6 overflow-hidden relative" style={glassStyle}>
+    <div className="rounded-xl p-4 sm:p-6 overflow-hidden relative" style={glassStyle}>
       {/* Ambient “game board” background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-24 -right-20 w-64 h-64 rounded-full bg-[var(--qit-primary)]/12 blur-3xl animate-pulse" />

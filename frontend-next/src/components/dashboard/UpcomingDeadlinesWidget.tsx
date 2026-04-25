@@ -125,13 +125,11 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
       animate={{ opacity: 1, y: 0 }}
       style={{
         ...glassStyle,
-        padding: isGrid ? "0.75rem" : "1.5rem",
-        borderRadius: "1.5rem",
         height: isGrid ? "auto" : "100%",
         display: "flex",
         flexDirection: "column",
       }}
-      className="relative overflow-hidden group border border-white/10"
+      className={`relative overflow-hidden group border border-white/10 ${isGrid ? "p-3" : "p-4 sm:p-6"} rounded-[1.25rem] sm:rounded-[1.5rem]`}
     >
       <div className={`flex items-center justify-between ${isGrid ? "mb-4" : "mb-6"}`}>
         {teacherMode ? (

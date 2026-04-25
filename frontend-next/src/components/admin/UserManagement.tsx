@@ -519,7 +519,43 @@ export function UserManagement() {
                 <h3 className="text-base font-semibold mb-3" style={{ color: textColors.primary }}>
                   {t("adminQueueAwaitingConfirmation")} ({queueAwaitingConfirmation.length})
                 </h3>
-                <div className="overflow-x-auto">
+                {/* Mobile Cards for Awaiting Confirmation */}
+                <div className="sm:hidden space-y-3">
+                  {queueAwaitingConfirmation.length === 0 ? (
+                    <div className="py-8 text-center text-sm" style={{ color: textColors.secondary }}>
+                      {t("adminQueueAwaitingConfirmationEmpty")}
+                    </div>
+                  ) : (
+                    queueAwaitingConfirmation.map((row) => (
+                      <div key={`await-card-${row.application_id}-${row.user_id}`} className="p-4 rounded-xl border border-gray-200 dark:border-white/10 space-y-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm truncate" style={{ color: textColors.primary }}>{row.full_name}</p>
+                            <p className="text-xs truncate" style={{ color: textColors.secondary }}>{row.email}</p>
+                          </div>
+                          <p className="text-[10px] whitespace-nowrap" style={{ color: textColors.secondary }}>{formatDate(row.created_at)}</p>
+                        </div>
+                        <div className="text-xs">
+                          <span className="opacity-60">{t("course")}: </span>
+                          <span className="font-medium" style={{ color: textColors.primary }}>
+                            {row.course_title ? getLocalizedCourseTitle({ title: row.course_title } as any, t) : "—"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => row.application_id && grantAccessMutation.mutate(row.application_id)}
+                          disabled={grantAccessMutation.isPending || !row.application_id}
+                          className="w-full py-2 px-3 rounded-lg text-white text-sm disabled:opacity-60 font-medium"
+                          style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}
+                        >
+                          {t("adminGrantAccess")}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Desktop Table */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full min-w-[760px]">
                     <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
                       <tr>
@@ -566,11 +602,60 @@ export function UserManagement() {
                 </div>
               </div>
 
-              <div>
+              <div className="mt-8">
                 <h3 className="text-base font-semibold mb-3" style={{ color: textColors.primary }}>
                   {t("adminQueueNeedsGroup")} ({queueNeedsGroup.length})
                 </h3>
-                <div className="overflow-x-auto">
+                {/* Mobile Cards for Needs Group */}
+                <div className="sm:hidden space-y-3">
+                  {queueNeedsGroup.length === 0 ? (
+                    <div className="py-8 text-center text-sm" style={{ color: textColors.secondary }}>
+                      {t("adminQueueNeedsGroupEmpty")}
+                    </div>
+                  ) : (
+                    queueNeedsGroup.map((row) => (
+                      <div key={`needs-card-${row.user_id}-${row.course_id}`} className="p-4 rounded-xl border border-gray-200 dark:border-white/10 space-y-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate" style={{ color: textColors.primary }}>{row.full_name}</p>
+                          <p className="text-xs truncate" style={{ color: textColors.secondary }}>{row.email}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="opacity-60">{t("course")}: </span>
+                            <p className="font-medium truncate" style={{ color: textColors.primary }}>
+                              {row.course_title ? getLocalizedCourseTitle({ title: row.course_title } as any, t) : "—"}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="opacity-60">{t("adminEnrolledAt")}: </span>
+                            <p className="font-medium" style={{ color: textColors.primary }}>{formatDate(row.enrolled_at)}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAssignModal({
+                              id: row.user_id,
+                              full_name: row.full_name,
+                              email: row.email,
+                              phone: row.phone || "",
+                              course_id: row.course_id,
+                              course_title: row.course_title || "",
+                              enrolled_at: row.enrolled_at,
+                              application_id: row.application_id,
+                            })
+                          }
+                          className="w-full py-2 px-3 rounded-lg text-white text-sm font-medium"
+                          style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                        >
+                          {t("adminAssign")}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Desktop Table */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full min-w-[760px]">
                     <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
                       <tr>
@@ -625,180 +710,163 @@ export function UserManagement() {
               </div>
             </div>
           ) : activeTab === "users" ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
-                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-                  <tr>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminFullName")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("email")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("role")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminRelationColumn")}
-                    </th>
-                    {canManageUsers && (
-                      <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
-                        {t("adminCoursesActions")}
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
-                            {u.photo_url ? (
-                              <img src={u.photo_url} alt={u.full_name} className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              getInitials(u.full_name)
-                            )}
-                          </div>
-                          <div>
-                            <Link
-                              href={`/app/profile/${u.id}`}
-                              className="font-medium transition-colors hover:text-[#8B5CF6] truncate max-w-[150px] inline-block"
-                              style={{ color: textColors.primary }}
-                            >
-                              {u.full_name}
-                            </Link>
-                            <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className="truncate max-w-[180px] inline-block" style={{ color: textColors.primary }} title={u.email}>{u.email}</span>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getRoleBadgeColor(u.role)}`}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                        {u.role === "student" ? (
-                          u.parent ? (
-                            <div>
-                              <p style={{ color: textColors.primary }}>{u.parent.full_name}</p>
-                              <p className="text-xs">ID: {u.parent.id}</p>
-                            </div>
-                          ) : (
-                            t("adminNoParentAssigned")
-                          )
-                        ) : u.role === "parent" ? (
-                          <div className="flex flex-wrap gap-1 items-center">
-                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
-                              {t("adminChildrenCountLabel")}: {u.children?.length ?? 0}
-                            </span>
-                            {(u.children ?? []).slice(0, 3).map((child) => (
-                              <span
-                                key={child.id}
-                                className="text-xs px-2 py-0.5 rounded-full"
-                                style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
-                              >
-                                {child.full_name}
-                              </span>
-                            ))}
-                          </div>
+            <div>
+              {/* Mobile User Cards */}
+              <div className="sm:hidden p-4 space-y-4">
+                {users.map((u) => (
+                  <div key={`user-card-${u.id}`} className="p-4 rounded-2xl border border-gray-200 dark:border-white/10 space-y-4" style={getGlassCardStyle(theme)}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-base shrink-0 shadow-inner" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
+                        {u.photo_url ? (
+                          <img src={u.photo_url} alt={u.full_name} className="w-full h-full rounded-full object-cover" />
                         ) : (
-                          "—"
+                          getInitials(u.full_name)
                         )}
-                      </td>
-                      {canManageUsers && (
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {u.role === "student" && (
-                              <button
-                                type="button"
-                                onClick={() => setRewardUser(u)}
-                                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                style={{ color: "#EAB308" }}
-                                title={t("adminRewardCoinsButtonTitle")}
-                              >
-                                <Coins className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setEditing(u)}
-                              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                              style={{ color: "#8B5CF6" }}
-                              title={t("adminEdit")}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <DeleteConfirmButton
-                              onDelete={() => deleteMutation.mutate(u.id)}
-                              isLoading={deleteMutation.isPending && deleteMutation.variables === u.id}
-                              hideText={!collapsed}
-                              size="sm"
-                              variant="ghost"
-                              className="p-1"
-                              title={`${t("adminDelete")} ${u.full_name}?`}
-                              description={t("adminUserDeleteConfirm")}
-                            />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/app/profile/${u.id}`} className="font-bold text-base truncate block hover:text-[#8B5CF6] transition-colors" style={{ color: textColors.primary }}>
+                          {u.full_name}
+                        </Link>
+                        <p className="text-xs truncate opacity-70" style={{ color: textColors.secondary }}>{u.email}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleBadgeColor(u.role)}`}>
+                        {u.role}
+                      </span>
+                      <span className="text-[10px] font-medium opacity-50" style={{ color: textColors.secondary }}>ID: {u.id}</span>
+                    </div>
+
+                    <div className="text-xs space-y-2 p-3 rounded-xl bg-gray-50/50 dark:bg-black/20 border border-gray-100 dark:border-white/5">
+                      <p className="font-semibold opacity-60 uppercase text-[9px] tracking-tight">{t("adminRelationColumn")}</p>
+                      {u.role === "student" ? (
+                        u.parent ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-[10px] text-blue-600 dark:text-blue-300 font-bold shrink-0">
+                              {getInitials(u.parent.full_name)}
+                            </div>
+                            <span className="font-medium truncate" style={{ color: textColors.primary }}>{u.parent.full_name}</span>
                           </div>
-                        </td>
+                        ) : <span style={{ color: textColors.secondary }}>{t("adminNoParentAssigned")}</span>
+                      ) : u.role === "parent" ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {(u.children ?? []).map((child) => (
+                            <span key={child.id} className="px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 font-medium">
+                              {child.full_name}
+                            </span>
+                          ))}
+                          {(u.children ?? []).length === 0 && <span style={{ color: textColors.secondary }}>{t("noChildren")}</span>}
+                        </div>
+                      ) : <span className="opacity-40">—</span>}
+                    </div>
+
+                    {canManageUsers && (
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          onClick={() => setEditing(u)}
+                          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-semibold text-sm transition-all active:scale-[0.98]"
+                        >
+                          <Pencil className="w-4 h-4" /> {t("adminEdit")}
+                        </button>
+                        {u.role === "student" && (
+                          <button
+                            onClick={() => setRewardUser(u)}
+                            className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 active:scale-[0.98]"
+                          >
+                            <Coins className="w-5 h-5" />
+                          </button>
+                        )}
+                        <div className="p-1 rounded-xl bg-red-100 dark:bg-red-500/20">
+                          <DeleteConfirmButton
+                            onDelete={() => deleteMutation.mutate(u.id)}
+                            isLoading={deleteMutation.isPending && deleteMutation.variables === u.id}
+                            hideText={true}
+                            size="sm"
+                            variant="ghost"
+                            className="p-1.5 text-red-600 dark:text-red-400"
+                            title={`${t("adminDelete")} ${u.full_name}?`}
+                            description={t("adminUserDeleteConfirm")}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full min-w-[640px]">
+                  <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                    <tr>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminFullName")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("email")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("role")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminRelationColumn")}
+                      </th>
+                      {canManageUsers && (
+                        <th className="text-right py-4 px-6 font-semibold text-sm w-32" style={{ color: textColors.primary }}>
+                          {t("adminCoursesActions")}
+                        </th>
                       )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : activeTab === "parents" ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px]">
-                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-                  <tr>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminFullName")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("email")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminParentsLinkedStudents")}
-                    </th>
-                    <th className="text-right py-4 px-6 font-semibold text-sm w-52" style={{ color: textColors.primary }}>
-                      {t("adminCoursesActions")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parentUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
-                        {t("noParentsFound")}
-                      </td>
-                    </tr>
-                  ) : (
-                    parentUsers.map((u) => (
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
                       <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
                         <td className="py-4 px-6">
-                          <div>
-                            <Link
-                              href={`/app/profile/${u.id}`}
-                              className="font-medium transition-colors hover:text-[#8B5CF6] inline-block"
-                              style={{ color: textColors.primary }}
-                            >
-                              {u.full_name}
-                            </Link>
-                            <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}>
+                              {u.photo_url ? (
+                                <img src={u.photo_url} alt={u.full_name} className="w-full h-full rounded-full object-cover" />
+                              ) : (
+                                getInitials(u.full_name)
+                              )}
+                            </div>
+                            <div>
+                              <Link
+                                href={`/app/profile/${u.id}`}
+                                className="font-medium transition-colors hover:text-[#8B5CF6] truncate max-w-[150px] inline-block"
+                                style={{ color: textColors.primary }}
+                              >
+                                {u.full_name}
+                              </Link>
+                              <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
+                            </div>
                           </div>
                         </td>
-                        <td className="py-4 px-6" style={{ color: textColors.primary }}>{u.email}</td>
+                        <td className="py-4 px-6">
+                          <span className="truncate max-w-[180px] inline-block" style={{ color: textColors.primary }} title={u.email}>{u.email}</span>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getRoleBadgeColor(u.role)}`}>
+                            {u.role}
+                          </span>
+                        </td>
                         <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                          {u.children && u.children.length > 0 ? (
+                          {u.role === "student" ? (
+                            u.parent ? (
+                              <div>
+                                <p style={{ color: textColors.primary }}>{u.parent.full_name}</p>
+                                <p className="text-xs">ID: {u.parent.id}</p>
+                              </div>
+                            ) : (
+                              t("adminNoParentAssigned")
+                            )
+                          ) : u.role === "parent" ? (
                             <div className="flex flex-wrap gap-1 items-center">
                               <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
-                                {t("childrenCount").replace("{count}", String(u.children.length))}
+                                {t("adminChildrenCountLabel")}: {u.children?.length ?? 0}
                               </span>
-                              {u.children.map((child) => (
+                              {(u.children ?? []).slice(0, 3).map((child) => (
                                 <span
                                   key={child.id}
                                   className="text-xs px-2 py-0.5 rounded-full"
@@ -809,127 +877,367 @@ export function UserManagement() {
                               ))}
                             </div>
                           ) : (
-                            t("noChildren")
+                            "—"
                           )}
                         </td>
-                        <td className="py-4 px-6 text-right">
-                          <button
-                            type="button"
-                            onClick={() => selectTab("relations")}
-                            className="py-2 px-4 rounded-lg text-white text-sm"
-                            style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                          >
-                            {t("adminOpenRelationManager")}
-                          </button>
+                        {canManageUsers && (
+                          <td className="py-4 px-6 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {u.role === "student" && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRewardUser(u)}
+                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                  style={{ color: "#EAB308" }}
+                                  title={t("adminRewardCoinsButtonTitle")}
+                                >
+                                  <Coins className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setEditing(u)}
+                                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                style={{ color: "#8B5CF6" }}
+                                title={t("adminEdit")}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <DeleteConfirmButton
+                                onDelete={() => deleteMutation.mutate(u.id)}
+                                isLoading={deleteMutation.isPending && deleteMutation.variables === u.id}
+                                hideText={!collapsed}
+                                size="sm"
+                                variant="ghost"
+                                className="p-1"
+                                title={`${t("adminDelete")} ${u.full_name}?`}
+                                description={t("adminUserDeleteConfirm")}
+                              />
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === "parents" ? (
+            <div>
+              {/* Mobile Parent Cards */}
+              <div className="sm:hidden p-4 space-y-4">
+                {parentUsers.length === 0 ? (
+                  <div className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                    {t("noParentsFound")}
+                  </div>
+                ) : (
+                  parentUsers.map((u) => (
+                    <div key={`parent-card-${u.id}`} className="p-4 rounded-2xl border border-gray-200 dark:border-white/10 space-y-4" style={getGlassCardStyle(theme)}>
+                      <div className="flex justify-between items-start">
+                        <div className="min-w-0">
+                          <Link href={`/app/profile/${u.id}`} className="font-bold text-base truncate block hover:text-[#8B5CF6] transition-colors" style={{ color: textColors.primary }}>
+                            {u.full_name}
+                          </Link>
+                          <p className="text-xs truncate opacity-70" style={{ color: textColors.secondary }}>{u.email}</p>
+                          <p className="text-[10px] mt-1 opacity-40">ID: {u.id}</p>
+                        </div>
+                      </div>
+
+                      <div className="text-xs space-y-2 p-3 rounded-xl bg-gray-50/50 dark:bg-black/20 border border-gray-100 dark:border-white/5">
+                        <p className="font-semibold opacity-60 uppercase text-[9px] tracking-tight">{t("adminParentsLinkedStudents")}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {u.children && u.children.length > 0 ? (
+                            u.children.map((child) => (
+                              <span key={child.id} className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 font-medium">
+                                {child.full_name}
+                              </span>
+                            ))
+                          ) : <span style={{ color: textColors.secondary }}>{t("noChildren")}</span>}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => selectTab("relations")}
+                        className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all active:scale-[0.98]"
+                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                      >
+                        {t("adminOpenRelationManager")}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Parent Table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full min-w-[760px]">
+                  <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                    <tr>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminFullName")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("email")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminParentsLinkedStudents")}
+                      </th>
+                      <th className="text-right py-4 px-6 font-semibold text-sm w-52" style={{ color: textColors.primary }}>
+                        {t("adminCoursesActions")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parentUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                          {t("noParentsFound")}
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          ) : activeTab === "relations" ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
-                <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
-                  <tr>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("student")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminCurrentParent")}
-                    </th>
-                    <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminSelectParentToLink")}
-                    </th>
-                    <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
-                      {t("adminCoursesActions")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {relationRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
-                        {t("adminNoRelationsFound")}
-                      </td>
-                    </tr>
-                  ) : (
-                    relationRows.map((row) => {
-                      const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
-                      return (
-                        <tr
-                          key={row.student.id}
-                          className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}
-                        >
+                    ) : (
+                      parentUsers.map((u) => (
+                        <tr key={u.id} className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
                           <td className="py-4 px-6">
                             <div>
-                              <p style={{ color: textColors.primary }}>{row.student.full_name}</p>
-                              <p className="text-xs" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                              <Link
+                                href={`/app/profile/${u.id}`}
+                                className="font-medium transition-colors hover:text-[#8B5CF6] inline-block"
+                                style={{ color: textColors.primary }}
+                              >
+                                {u.full_name}
+                              </Link>
+                              <p className="text-xs mt-0.5" style={{ color: textColors.secondary }}>ID: {u.id}</p>
                             </div>
                           </td>
+                          <td className="py-4 px-6" style={{ color: textColors.primary }}>{u.email}</td>
                           <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
-                            {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                            {u.children && u.children.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 items-center">
+                                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: textColors.primary }}>
+                                  {t("childrenCount").replace("{count}", String(u.children.length))}
+                                </span>
+                                {u.children.map((child) => (
+                                  <span
+                                    key={child.id}
+                                    className="text-xs px-2 py-0.5 rounded-full"
+                                    style={{ background: isDark ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", color: textColors.primary }}
+                                  >
+                                    {child.full_name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              t("noChildren")
+                            )}
                           </td>
-                          <td className="py-4 px-6">
-                            <select
-                              value={selectedParent}
-                              onChange={(e) =>
-                                setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
-                              }
-                              className="w-full border-0 rounded-lg px-3 py-2"
-                              style={inputStyle}
+                          <td className="py-4 px-6 text-right">
+                            <button
+                              type="button"
+                              onClick={() => selectTab("relations")}
+                              className="py-2 px-4 rounded-lg text-white text-sm"
+                              style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
                             >
-                              <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
-                                — {t("adminSelectNone")}
-                              </option>
-                              {parentOptions.map((parent) => (
-                                <option
-                                  key={parent.id}
-                                  value={parent.id}
-                                  style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
-                                >
-                                  {parent.full_name} (#{parent.id})
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  linkParentMutation.mutate({
-                                    studentId: row.student.id,
-                                    parentId: selectedParent ? Number(selectedParent) : null,
-                                  })
-                                }
-                                disabled={linkParentMutation.isPending}
-                                className="py-2 px-4 rounded-lg text-white text-sm disabled:opacity-60"
-                                style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                              >
-                                {t("adminLinkSave")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
-                                disabled={linkParentMutation.isPending}
-                                className="py-2 px-4 rounded-lg text-sm disabled:opacity-60"
-                                style={{
-                                  background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
-                                  color: "#EF4444",
-                                }}
-                              >
-                                {t("adminUnlinkParent")}
-                              </button>
-                            </div>
+                              {t("adminOpenRelationManager")}
+                            </button>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === "relations" ? (
+            <div>
+              {/* Mobile Relation Cards */}
+              <div className="sm:hidden p-4 space-y-4">
+                {relationRows.length === 0 ? (
+                  <div className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                    {t("adminNoRelationsFound")}
+                  </div>
+                ) : (
+                  relationRows.map((row) => {
+                    const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
+                    return (
+                      <div key={`rel-card-${row.student.id}`} className="p-4 rounded-2xl border border-gray-200 dark:border-white/10 space-y-4" style={getGlassCardStyle(theme)}>
+                        <div>
+                          <p className="font-bold text-base truncate" style={{ color: textColors.primary }}>{row.student.full_name}</p>
+                          <p className="text-xs truncate opacity-70" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold opacity-60 uppercase tracking-tight">{t("adminCurrentParent")}</p>
+                          <p className="text-xs font-medium" style={{ color: textColors.primary }}>
+                            {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-semibold opacity-60 uppercase tracking-tight">{t("adminSelectParentToLink")}</p>
+                          <select
+                            value={selectedParent}
+                            onChange={(e) =>
+                              setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
+                            }
+                            className="w-full border-0 rounded-lg px-3 py-2 text-sm"
+                            style={inputStyle}
+                          >
+                            <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
+                              — {t("adminSelectNone")}
+                            </option>
+                            {parentOptions.map((parent) => (
+                              <option
+                                key={parent.id}
+                                value={parent.id}
+                                style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
+                              >
+                                {parent.full_name} (#{parent.id})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              linkParentMutation.mutate({
+                                studentId: row.student.id,
+                                parentId: selectedParent ? Number(selectedParent) : null,
+                              })
+                            }
+                            disabled={linkParentMutation.isPending}
+                            className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm disabled:opacity-60 transition-all active:scale-[0.98]"
+                            style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                          >
+                            {t("adminLinkSave")}
+                          </button>
+                          {row.parent && (
+                            <button
+                              type="button"
+                              onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
+                              disabled={linkParentMutation.isPending}
+                              className="p-2.5 rounded-xl disabled:opacity-60 active:scale-[0.98]"
+                              style={{
+                                background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
+                                color: "#EF4444",
+                              }}
+                              title={t("adminUnlinkParent")}
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Relation Table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full min-w-[900px]">
+                  <thead style={{ background: isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.05)" }}>
+                    <tr>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("student")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminCurrentParent")}
+                      </th>
+                      <th className="text-left py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminSelectParentToLink")}
+                      </th>
+                      <th className="text-right py-4 px-6 font-semibold text-sm" style={{ color: textColors.primary }}>
+                        {t("adminCoursesActions")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relationRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-sm" style={{ color: textColors.secondary }}>
+                          {t("adminNoRelationsFound")}
+                        </td>
+                      </tr>
+                    ) : (
+                      relationRows.map((row) => {
+                        const selectedParent = selectedParentByStudent[row.student.id] ?? (row.parent ? String(row.parent.id) : "");
+                        return (
+                          <tr
+                            key={row.student.id}
+                            className={`border-b ${isDark ? "border-white/10 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"} transition-colors`}
+                          >
+                            <td className="py-4 px-6">
+                              <div>
+                                <p style={{ color: textColors.primary }}>{row.student.full_name}</p>
+                                <p className="text-xs" style={{ color: textColors.secondary }}>{row.student.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-sm" style={{ color: textColors.secondary }}>
+                              {row.parent ? `${row.parent.full_name} (#${row.parent.id})` : t("adminNoParentAssigned")}
+                            </td>
+                            <td className="py-4 px-6">
+                              <select
+                                value={selectedParent}
+                                onChange={(e) =>
+                                  setSelectedParentByStudent((prev) => ({ ...prev, [row.student.id]: e.target.value }))
+                                }
+                                className="w-full border-0 rounded-lg px-3 py-2"
+                                style={inputStyle}
+                              >
+                                <option value="" style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}>
+                                  — {t("adminSelectNone")}
+                                </option>
+                                {parentOptions.map((parent) => (
+                                  <option
+                                    key={parent.id}
+                                    value={parent.id}
+                                    style={{ background: isDark ? "rgba(26, 34, 56, 0.95)" : "#FFFFFF" }}
+                                  >
+                                    {parent.full_name} (#{parent.id})
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    linkParentMutation.mutate({
+                                      studentId: row.student.id,
+                                      parentId: selectedParent ? Number(selectedParent) : null,
+                                    })
+                                  }
+                                  disabled={linkParentMutation.isPending}
+                                  className="py-2 px-4 rounded-lg text-white text-sm disabled:opacity-60"
+                                  style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                                >
+                                  {t("adminLinkSave")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => linkParentMutation.mutate({ studentId: row.student.id, parentId: null })}
+                                  disabled={linkParentMutation.isPending}
+                                  className="py-2 px-4 rounded-lg text-sm disabled:opacity-60"
+                                  style={{
+                                    background: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
+                                    color: "#EF4444",
+                                  }}
+                                >
+                                  {t("adminUnlinkParent")}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : null}
         </div>

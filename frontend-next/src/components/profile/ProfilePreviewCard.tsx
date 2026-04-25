@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Loader2, Crown } from "lucide-react";
+import { Crown } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import type { SafeProfilePreviewData } from "@/types/profiles";
 import { formatLocalizedDate } from "@/utils/dateUtils";
@@ -23,6 +23,10 @@ type ProfilePreviewCardProps = {
   profile: SafeProfilePreviewData;
   className?: string;
   rank?: number;
+  /** Bump after avatar upload so the same `photo_url` still reloads (browser cache bust). */
+  photoCacheBust?: number;
+  /** Temporary blob URL while upload is in flight — shows new photo before server URL is ready. */
+  localAvatarPreview?: string | null;
 };
 
 type FieldItem = {
@@ -108,7 +112,20 @@ function SectionCard({ title, items, className }: Section & { className?: string
   );
 }
 
-export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewCardProps) {
+function photoSrcWithBust(url: string | null | undefined, bust: number | undefined): string | undefined {
+  if (!url?.trim()) return undefined;
+  if (!bust) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}_avatar=${bust}`;
+}
+
+export function ProfilePreviewCard({
+  profile,
+  className,
+  rank,
+  photoCacheBust,
+  localAvatarPreview,
+}: ProfilePreviewCardProps) {
   const { t, lang } = useLanguage();
 
   const roleLabel = pickRoleLabel(profile, t);
@@ -246,8 +263,12 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
           <div className="flex flex-col items-center text-center md:flex-row md:items-start md:text-left gap-4">
             <div className="relative shrink-0 mx-auto md:mx-0">
               <div className="w-20 h-20 rounded-2xl bg-[var(--qit-primary)]/10 flex items-center justify-center overflow-hidden">
-                {profile.photo_url ? (
-                  <img src={profile.photo_url} alt="" className="w-full h-full object-cover" />
+                {localAvatarPreview || profile.photo_url ? (
+                  <img
+                    src={localAvatarPreview ?? photoSrcWithBust(profile.photo_url, photoCacheBust)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--qit-primary)] font-semibold text-2xl">
                     {profile.full_name.charAt(0).toUpperCase()}
@@ -267,30 +288,19 @@ export function ProfilePreviewCard({ profile, className, rank }: ProfilePreviewC
                 <span className="inline-flex items-center rounded-full bg-[var(--qit-primary)]/10 px-3 py-1 text-xs font-semibold text-[var(--qit-primary)] dark:text-[#00b0ff]">
                   {roleLabel}
                 </span>
-                {displayStatus &&
-                  (profile.role === "student" ? (
-                    <>
-                      <span className="hidden sm:inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
-                        {displayStatus}
-                      </span>
-
-                      <span className="sm:hidden inline-flex items-center justify-center rounded-full bg-[var(--qit-primary)]/10 border border-[var(--qit-primary)]/20 w-9 h-9 shrink-0">
-                        <Loader2 className="w-4 h-4 text-[var(--qit-secondary)] animate-spin" />
-                      </span>
-                    </>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
-                      {displayStatus}
-                    </span>
-                  ))}
+                {displayStatus && (
+                  <span className="inline-flex items-center max-w-[min(100%,14rem)] rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 truncate">
+                    {displayStatus}
+                  </span>
+                )}
               </div>
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white break-words text-center md:text-left w-full">
                 {profile.full_name}
               </h2>
-              <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap items-center md:items-start justify-center md:justify-start gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 w-full">
-                <span className="mobile-safe-text">{profile.email}</span>
-                {profile.phone && <span>{profile.phone}</span>}
-                {profile.city && <span>{mapCity(profile.city, t)}</span>}
+              <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap items-center md:items-start justify-center md:justify-start gap-x-4 gap-y-1.5 text-sm text-gray-500 dark:text-gray-400 w-full">
+                <span className="break-all sm:break-normal text-center md:text-left">{profile.email}</span>
+                {profile.phone && <span className="whitespace-nowrap">{profile.phone}</span>}
+                {profile.city && <span className="text-center md:text-left">{mapCity(profile.city, t)}</span>}
               </div>
             </div>
           </div>

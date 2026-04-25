@@ -49,7 +49,8 @@ class UserBase(BaseModel):
     educational_process_role: str | None = None
     education: str | None = None
     academic_degree: str | None = None
-    email_work: EmailStr | None = None
+    # Plain str: DB may store "" or non-RFC emails; EmailStr breaks UserResponse serialization.
+    email_work: str | None = None
     phone_work: str | None = None
     office: str | None = None
     reception_hours: str | None = None
@@ -87,6 +88,13 @@ class UserBase(BaseModel):
     @classmethod
     def _parse_json_list(cls, v):
         return _ensure_list(v)
+
+    @field_validator("email_work", mode="before")
+    @classmethod
+    def _blank_email_work_to_none(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class UserCreate(BaseModel):
@@ -161,6 +169,13 @@ class UserUpdate(BaseModel):
     can_edit_courses: bool | None = None
     can_view_analytics: bool | None = None
     can_configure_system: bool | None = None
+
+    @field_validator("email_work", mode="before")
+    @classmethod
+    def _patch_blank_email_work(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class UserResponse(UserBase):

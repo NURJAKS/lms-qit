@@ -1005,8 +1005,9 @@ def _admin_get_last_login_dt(db: Session, user_id: int):
 
 
 def _admin_ensure_student_profile(db: Session, user: User) -> StudentProfile | None:
-    sp = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
-    return sp
+    from app.api.routes.users import _ensure_student_profile
+
+    return _ensure_student_profile(db, user)
 
 
 @router.get("/users/{user_id}/student-profile", response_model=StudentProfileMergedResponse)

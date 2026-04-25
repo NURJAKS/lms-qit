@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
@@ -12,9 +12,9 @@ import { useLanguage } from "@/context/LanguageContext";
 import { toast } from "@/store/notificationStore";
 import type { TranslationKey } from "@/i18n/translations";
 import { getLocalizedCourseTitle } from "@/lib/courseUtils";
-import { 
-  BookOpen, Award, Trophy, Star, ChevronRight, Users, 
-  Clock, CheckCircle, ArrowLeft, X, Camera, User
+import {
+  BookOpen, Award, Trophy, Star, ChevronRight, Users,
+  Clock, CheckCircle, ArrowLeft, X, Camera
 } from "lucide-react";
 import { ProfilePreviewCard } from "@/components/profile/ProfilePreviewCard";
 import { LeaderboardTopAchievementCard } from "@/components/profile/LeaderboardTopAchievementCard";
@@ -23,6 +23,20 @@ import { BorderBeam } from "@/components/ui/border-beam";
 import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { formatProfileStudyDuration } from "@/lib/profileFieldLabels";
 import type { SafeProfilePreviewData } from "@/types/profiles";
+import type { User } from "@/types";
+
+/** Same path after re-upload → browser cache; bump forces reload. */
+function avatarUrlWithBust(url: string | null | undefined, bust: number): string | undefined {
+  if (!url?.trim()) return undefined;
+  if (!bust) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}_avatar=${bust}`;
+}
+
+/** Stored values for User.kinship_degree (backend seed / User model). */
+const PARENT_KINSHIP_VALUES = ["Отец", "Мать", "Опекун", "Другое"] as const;
+/** Stored values for User.educational_process_role (backend). */
+const PARENT_EDU_PROCESS_ROLES = ["Законный представитель", "Опекун"] as const;
 
 type CourseProgress = {
   course_id: number;
@@ -50,7 +64,6 @@ export default function MyProfilePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
-  const canManageUsers = useAuthStore((s) => s.canManageUsers());
   const [editOpen, setEditOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -67,10 +80,20 @@ export default function MyProfilePage() {
   const [country, setCountry] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [phoneAlternative, setPhoneAlternative] = useState("");
-  const [tgEmail, setTgEmail] = useState("");
-  const [school, setSchool] = useState("");
+  const [emailWork, setEmailWork] = useState("");
+  const [phoneWork, setPhoneWork] = useState("");
+  const [office, setOffice] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [avatarBust, setAvatarBust] = useState(0);
+  /** Blob URL for instant UI while POST /users/me/photo completes (same disk path would otherwise stay cached). */
+  const [avatarLocalPreview, setAvatarLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (avatarLocalPreview) URL.revokeObjectURL(avatarLocalPreview);
+    };
+  }, [avatarLocalPreview]);
 
   const userId = user?.id;
 
@@ -108,13 +131,22 @@ export default function MyProfilePage() {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: async (body: Record<string, string | null>) => {
-      const { data } = await api.patch("/users/me", body);
-      return data;
+    mutationFn: async (payload: {
+      user: Record<string, string | null>;
+      student: Record<string, string | null> | null;
+    }) => {
+      await api.patch("/users/me", payload.user);
+      if (payload.student) {
+        await api.patch("/users/me/student-profile", payload.student);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile-self"] });
+      toast.success(t("profileSaved"));
       setEditOpen(false);
+    },
+    onError: () => {
+      toast.error(t("profileSaveError"));
     },
   });
 
@@ -140,8 +172,9 @@ export default function MyProfilePage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-600 dark:text-gray-400 mb-4">{t("error")}</p>
-        <Link href="/app" className="text-[var(--qit-primary)] hover:underline">
-          ← {t("dashboardTitle")}
+        <Link href="/app" className="inline-flex items-center justify-center gap-2 text-[var(--qit-primary)] hover:underline">
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          {t("dashboardTitle")}
         </Link>
       </div>
     );
@@ -166,47 +199,93 @@ export default function MyProfilePage() {
     setCountry(u.country ?? "");
     setPostalCode(u.postal_code ?? "");
     setPhoneAlternative(u.phone_alternative ?? "");
-    setTgEmail(u.tg_email ?? "");
-    setSchool(u.school ?? "");
+    setEmailWork(u.email_work ?? "");
+    setPhoneWork(u.phone_work ?? "");
+    setOffice(u.office ?? "");
     setEditOpen(true);
   };
 
+  const showWorkContacts = ["parent", "teacher", "curator", "admin", "director"].includes(u.role);
+
   const saveEdit = () => {
-    const body: Record<string, string | null> = {
+    const userBody: Record<string, string | null> = {
       full_name: fullName.trim(),
       phone: phone.trim() || null,
       city: city.trim() || null,
       address: address.trim() || null,
       birth_date: birthDate || null,
       description: description.trim() || null,
-      gender: gender.trim() || null,
-      nationality: nationality.trim() || null,
-      country: country.trim() || null,
-      postal_code: postalCode.trim() || null,
-      phone_alternative: phoneAlternative.trim() || null,
     };
-    if (u.role === "parent") {
-      body.work_place = workPlace.trim() || null;
-      body.kinship_degree = kinshipDegree.trim() || null;
-      body.educational_process_role = educationalProcessRole.trim() || null;
-      body.academic_degree = academicDegree.trim() || null;
+    if (u.role !== "student") {
+      userBody.gender = gender.trim() || null;
     }
-    updateProfileMutation.mutate(body);
+    if (showWorkContacts) {
+      const ew = emailWork.trim();
+      userBody.email_work = ew || null;
+      userBody.phone_work = phoneWork.trim() || null;
+      userBody.office = office.trim() || null;
+    }
+    if (u.role === "parent") {
+      userBody.work_place = workPlace.trim() || null;
+      userBody.kinship_degree = kinshipDegree.trim() || null;
+      userBody.educational_process_role = educationalProcessRole.trim() || null;
+      userBody.academic_degree = academicDegree.trim() || null;
+    }
+    const studentBody =
+      u.role === "student"
+        ? {
+          gender: gender.trim() || "Мужской",
+          nationality: nationality.trim() || "",
+          country: country.trim() || "",
+          postal_code: postalCode.trim() || "",
+          phone_alternative: phoneAlternative.trim() || null,
+        }
+        : null;
+    updateProfileMutation.mutate({ user: userBody, student: studentBody });
   };
-  
+
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarLocalPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return previewUrl;
+    });
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
-      await api.post("/users/me/photo", formData);
-      queryClient.invalidateQueries({ queryKey: ["profile-self"] });
+      const { data: updatedUser } = await api.post<User>("/users/me/photo", formData);
+      const newUrl = updatedUser?.photo_url;
+
+      setAvatarBust((n) => n + 1);
+
+      if (userId != null) {
+        queryClient.setQueryData(["profile-self", userId], (prev: ProfilePublic | undefined) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            profile: { ...prev.profile, ...(newUrl != null ? { photo_url: newUrl } : {}) },
+          };
+        });
+      }
+
+      const auth = useAuthStore.getState().user;
+      if (auth && userId != null && auth.id === userId && newUrl != null) {
+        useAuthStore.setState({ user: { ...auth, photo_url: newUrl } });
+      }
+
+      toast.success(t("profilePhotoSaved"));
     } catch (err: any) {
       toast.error(err.response?.data?.detail || t("profilePhotoUploadFailed"));
     } finally {
       setUploading(false);
+      setAvatarLocalPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      e.target.value = "";
     }
   };
   const enrollments = data.enrollments ?? [];
@@ -239,14 +318,14 @@ export default function MyProfilePage() {
                 <Link href={`/app/profile/${u.parent.id}`} className="block p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors">
                   <p className="text-sm text-gray-500 dark:text-gray-400">{t("profileParent")}</p>
                   <p className="font-medium text-gray-800 dark:text-white">{u.parent.full_name}</p>
-                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfile")} →</p>
+                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfileCta")}</p>
                 </Link>
               )}
               {u.teacher && (
                 <Link href={`/app/profile/${u.teacher.id}`} className="block p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors">
                   <p className="text-sm text-gray-500 dark:text-gray-400">{t("profileTeacherCurator")}</p>
                   <p className="font-medium text-gray-800 dark:text-white">{u.teacher.full_name}</p>
-                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfile")} →</p>
+                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfileCta")}</p>
                 </Link>
               )}
             </div>
@@ -331,7 +410,7 @@ export default function MyProfilePage() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
       {editOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
           <div className="w-full sm:max-w-xl h-[100dvh] sm:h-auto sm:max-h-[min(90dvh,900px)] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-gray-800 border-0 sm:border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
@@ -341,179 +420,183 @@ export default function MyProfilePage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4">
-            <div className="flex flex-col items-center mb-6">
-              <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                <div className="w-24 h-24 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 group-hover:border-[var(--qit-primary)] transition-colors">
-                  {u.photo_url ? (
-                    <img src={u.photo_url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-gray-400 text-sm text-center px-2">{uploading ? t("loading") : t("profileChangePhoto")}</span>
-                  )}
-                </div>
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                  <span className="text-white text-xs font-medium">{t("profileChangePhoto")}</span>
-                </div>
-              </div>
-              <input type="file" ref={fileInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
-            </div>
-
-              <input type="file" ref={fileInputRef} onChange={handlePhotoChange} className="hidden" accept="image/*" />
-            </div>
-
-            <div className="space-y-6">
-              {/* Section: Основная информация */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-1.5 h-6 rounded-full bg-[var(--qit-primary)]" />
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
-                    {t("profileMainInfo" as TranslationKey)}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileFullName")}</label>
-                    <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileBirthDate")}</label>
-                    <input
-                      type="date"
-                      lang={lang === "kk" ? "kk" : lang === "en" ? "en" : "ru"}
-                      value={birthDate}
-                      onChange={(e) => setBirthDate(e.target.value)}
-                      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileGender")}</label>
-                    <select value={gender} onChange={(e) => setGender(e.target.value)} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all">
-                      <option value="Мужской">{t("profileGenderMale")}</option>
-                      <option value="Женский">{t("profileGenderFemale")}</option>
-                      <option value="Другое">{t("profileGenderOther")}</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section: Контакты */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2 text-blue-500">
-                  <div className="w-1.5 h-6 rounded-full bg-blue-500" />
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
-                    {t("contacts" as TranslationKey)}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhone")}</label>
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhoneAlternative")}</label>
-                    <input value={phoneAlternative} onChange={(e) => setPhoneAlternative(e.target.value)} placeholder={t("profilePhoneAlternative")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section: Местоположение */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2 text-emerald-500">
-                  <div className="w-1.5 h-6 rounded-full bg-emerald-500" />
-                  <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
-                    {t("location" as TranslationKey)}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCountry")}</label>
-                    <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("profileCountry")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCity")}</label>
-                    <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("city")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePostalCode")}</label>
-                    <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("profilePostalCode")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileAddress")}</label>
-                    <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col items-center mb-6">
-                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                  <div className="w-24 h-24 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 group-hover:border-[var(--qit-primary)] transition-colors">
-                    {u.photo_url ? (
-                      <img src={u.photo_url} alt="" className="w-full h-full object-cover" />
+            <div className="shrink-0 px-4 sm:px-6 pt-4 pb-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/90 dark:bg-gray-900/50">
+              <p className="text-center text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                {t("profileChangePhoto")}
+              </p>
+              <div className="flex flex-col items-center gap-2">
+                <label
+                  htmlFor="profile-avatar-upload"
+                  className={`relative group block cursor-pointer rounded-full focus-within:ring-2 focus-within:ring-[var(--qit-primary)] focus-within:ring-offset-2 focus-within:ring-offset-gray-50 dark:focus-within:ring-offset-gray-900 ${uploading ? "pointer-events-none opacity-60" : ""}`}
+                >
+                  <input
+                    id="profile-avatar-upload"
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handlePhotoChange}
+                    className="sr-only"
+                    accept="image/*"
+                    disabled={uploading}
+                    aria-label={t("profileClickToChange")}
+                  />
+                  <div className="w-[7.25rem] h-[7.25rem] sm:w-28 sm:h-28 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center overflow-hidden border-[3px] border-white dark:border-gray-800 shadow-md ring-1 ring-gray-200/80 dark:ring-gray-600/80">
+                    {avatarLocalPreview || u.photo_url ? (
+                      <img
+                        key={`${avatarLocalPreview ?? u.photo_url}-${avatarBust}`}
+                        src={avatarLocalPreview ?? avatarUrlWithBust(u.photo_url, avatarBust)}
+                        alt=""
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
                     ) : (
-                      <span className="text-gray-400 text-sm text-center px-2">{uploading ? t("loading") : t("profileChangePhoto")}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs font-medium text-center px-3 pointer-events-none">
+                        {uploading ? t("loading") : t("profileChangePhoto")}
+                      </span>
                     )}
                   </div>
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                    <Camera className="w-8 h-8 text-white" />
+                  <div className="pointer-events-none absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera className="w-9 h-9 text-white drop-shadow-md" aria-hidden />
                   </div>
-                </div>
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoChange} />
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t("profileClickToChange")}</p>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center max-w-[260px] leading-snug">
+                  {t("profileClickToChange")}
+                </p>
               </div>
-
-              <div className="space-y-8">
-                <section className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
-                    <User className="w-3.5 h-3.5" /> {t("profilePersonalInfo")}
-                  </h3>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5 scroll-pt-2">
+              <div className="space-y-6">
+                {/* Section: Основная информация */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-1.5 h-6 rounded-full bg-[var(--qit-primary)]" />
+                    <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                      {t("profileBasicInfoSection")}
+                    </h3>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("adminFullName")}</label>
-                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("adminFullName")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileFullName")}</label>
+                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t("profileFullName")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileBirthDate")}</label>
+                      <input
+                        type="date"
+                        lang={lang === "kk" ? "kk" : lang === "en" ? "en" : "ru"}
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileGender")}</label>
+                      <select value={gender} onChange={(e) => setGender(e.target.value)} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all">
+                        <option value="Мужской">{t("profileGenderMale")}</option>
+                        <option value="Женский">{t("profileGenderFemale")}</option>
+                        <option value="Другое">{t("profileGenderOther")}</option>
+                      </select>
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileEmail")}</label>
-                      <input value={u.email} disabled className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm cursor-not-allowed text-gray-500" />
+                      <input value={u.email} readOnly className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm cursor-not-allowed text-gray-500" />
                     </div>
                   </div>
-                </section>
+                </div>
 
-                <section className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
-                    <User className="w-3.5 h-3.5" /> {t("profileContactInfo")}
-                  </h3>
+                {/* Section: Контакты */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2 text-blue-500">
+                    <div className="w-1.5 h-6 rounded-full bg-blue-500" />
+                    <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                      {t("profileContactsSection")}
+                    </h3>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhone")}</label>
-                      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 (___) ___-__-__" className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("profilePhone")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileTgEmail")}</label>
-                      <input value={tgEmail} onChange={(e) => setTgEmail(e.target.value)} placeholder="example@gmail.com" className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
-                    </div>
+                    {u.role === "student" && (
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePhoneAlternative")}</label>
+                        <input value={phoneAlternative} onChange={(e) => setPhoneAlternative(e.target.value)} placeholder={t("profilePhoneAlternative")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      </div>
+                    )}
+                    {showWorkContacts && (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileWorkEmail")}</label>
+                          <input
+                            type="email"
+                            value={emailWork}
+                            onChange={(e) => setEmailWork(e.target.value)}
+                            placeholder={t("profileWorkEmail")}
+                            autoComplete="email"
+                            className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileWorkPhone")}</label>
+                          <input
+                            value={phoneWork}
+                            onChange={(e) => setPhoneWork(e.target.value)}
+                            placeholder={t("profileWorkPhone")}
+                            className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5 md:col-span-2">
+                          <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileOffice")}</label>
+                          <input
+                            value={office}
+                            onChange={(e) => setOffice(e.target.value)}
+                            placeholder={t("profileOffice")}
+                            className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
-                </section>
+                </div>
 
-                <section className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
-                    <User className="w-3.5 h-3.5" /> {t("profileLocationTitle")}
-                  </h3>
+                {/* Section: Местоположение */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2 text-emerald-500">
+                    <div className="w-1.5 h-6 rounded-full bg-emerald-500" />
+                    <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                      {t("profileLocationTitle")}
+                    </h3>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {u.role === "student" && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCountry")}</label>
+                        <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("profileCountry")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      </div>
+                    )}
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileCity")}</label>
                       <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("profileCity")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileSchool")}</label>
-                      <input value={school} onChange={(e) => setSchool(e.target.value)} placeholder={t("profileSchool")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                    {u.role === "student" && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profilePostalCode")}</label>
+                        <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("profilePostalCode")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                      </div>
+                    )}
+                    <div className={`flex flex-col gap-1.5 ${u.role === "student" ? "" : "md:col-span-2"}`}>
+                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileAddress")}</label>
+                      <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("profileAddress")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
                     </div>
                   </div>
-                </section>
+                </div>
 
-                {u.role === "student" && (
-                  <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--qit-primary)] flex items-center gap-2">
-                      <User className="w-3.5 h-3.5" /> {t("profileParentData")}
-                    </h3>
+                {u.role === "parent" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-2 text-amber-500">
+                      <div className="w-1.5 h-6 rounded-full bg-amber-500" />
+                      <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">
+                        {t("profileParentData")}
+                      </h3>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileWorkPlace")}</label>
@@ -521,10 +604,46 @@ export default function MyProfilePage() {
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileKinshipDegree")}</label>
-                        <input value={kinshipDegree} onChange={(e) => setKinshipDegree(e.target.value)} placeholder={t("profileKinshipDegree")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
+                        <select
+                          value={kinshipDegree}
+                          onChange={(e) => setKinshipDegree(e.target.value)}
+                          className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        >
+                          <option value="">{t("profileValueEmpty")}</option>
+                          {kinshipDegree &&
+                            !PARENT_KINSHIP_VALUES.includes(kinshipDegree as (typeof PARENT_KINSHIP_VALUES)[number]) ? (
+                            <option value={kinshipDegree}>{kinshipDegree}</option>
+                          ) : null}
+                          <option value="Отец">{t("kinshipFather")}</option>
+                          <option value="Мать">{t("kinshipMother")}</option>
+                          <option value="Опекун">{t("kinshipGuardian")}</option>
+                          <option value="Другое">{t("kinshipOther")}</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileEducationalProcessRole")}</label>
+                        <select
+                          value={educationalProcessRole}
+                          onChange={(e) => setEducationalProcessRole(e.target.value)}
+                          className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all"
+                        >
+                          <option value="">{t("profileValueEmpty")}</option>
+                          {educationalProcessRole &&
+                            !PARENT_EDU_PROCESS_ROLES.includes(
+                              educationalProcessRole as (typeof PARENT_EDU_PROCESS_ROLES)[number],
+                            ) ? (
+                            <option value={educationalProcessRole}>{educationalProcessRole}</option>
+                          ) : null}
+                          <option value="Законный представитель">{t("eduRoleLegalRepresentative")}</option>
+                          <option value="Опекун">{t("eduRoleGuardian")}</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-tighter">{t("profileAcademicDegree")}</label>
+                        <input value={academicDegree} onChange={(e) => setAcademicDegree(e.target.value)} placeholder={t("profileAcademicDegree")} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--qit-primary)] transition-all" />
                       </div>
                     </div>
-                  </section>
+                  </div>
                 )}
               </div>
             </div>
@@ -563,26 +682,31 @@ export default function MyProfilePage() {
               {t("profileEdit")}
             </button>
           </div>
-          
+
           <div className="mb-6">
-            <ProfilePreviewCard profile={u} rank={userRank?.rank} />
+            <ProfilePreviewCard
+              profile={u}
+              rank={userRank?.rank}
+              photoCacheBust={avatarBust}
+              localAvatarPreview={avatarLocalPreview}
+            />
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
             {[
               { icon: BookOpen, label: t("profileEnrolled"), count: enrollments.length, color: "var(--qit-primary)" },
               { icon: CheckCircle, label: t("profileCompleted"), count: completedCount, color: "#10b981" },
               { icon: Clock, label: t("profileStudyHours"), count: studyHoursStr, color: "#00b0ff" },
               { icon: Award, label: t("profileCertificates"), count: certificates.length, color: "#f59e0b" },
             ].map(({ icon: Icon, label, count, color }) => (
-              <div key={label} className="bg-white dark:bg-gray-800 rounded-[24px] border border-gray-100 dark:border-gray-700 p-5 shadow-lg shadow-gray-200/20 dark:shadow-none hover:scale-[1.02] transition-transform duration-300 group">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-xl bg-gray-50 dark:bg-gray-700 group-hover:scale-110 transition-transform">
-                    <Icon className="w-5 h-5" style={{ color }} />
+              <div key={label} className="bg-white dark:bg-gray-800 rounded-[20px] sm:rounded-[24px] border border-gray-100 dark:border-gray-700 p-3.5 sm:p-5 shadow-lg shadow-gray-200/20 dark:shadow-none hover:scale-[1.02] transition-transform duration-300 group min-w-0">
+                <div className="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-3 mb-2 sm:mb-3 min-w-0">
+                  <div className="p-1.5 sm:p-2 rounded-xl bg-gray-50 dark:bg-gray-700 group-hover:scale-110 transition-transform shrink-0 w-fit">
+                    <Icon className="w-4 h-4 sm:w-5 sm:h-5" style={{ color }} />
                   </div>
-                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-tighter">{label}</span>
+                  <span className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-tighter leading-tight break-words">{label}</span>
                 </div>
-                <p className="text-2xl font-black text-gray-900 dark:text-white font-montserrat">{count}</p>
+                <p className="text-lg sm:text-2xl font-black text-gray-900 dark:text-white font-montserrat break-words">{count}</p>
               </div>
             ))}
           </div>
@@ -624,8 +748,8 @@ export default function MyProfilePage() {
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {c.topics_completed}/{c.total_topics} {t("profileTopic")}
-                            {c.avg_test_score != null && ` • ${c.avg_test_score}%`}
-                            {c.certificate && ` • ✓`}
+                            {c.avg_test_score != null && `${t("profileMetaSeparator")}${c.avg_test_score}%`}
+                            {c.certificate && `${t("profileMetaSeparator")}${t("profileCertificateShort")}`}
                           </p>
                           <div className="mt-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                             <div

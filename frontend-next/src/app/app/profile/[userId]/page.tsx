@@ -97,8 +97,9 @@ export default function UserProfilePage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-600 dark:text-gray-400 mb-4">{t("error")}</p>
-        <Link href="/app/community" className="text-[var(--qit-primary)] hover:underline">
-          ← {t("communityTitle")}
+        <Link href="/app/community" className="inline-flex items-center justify-center gap-2 text-[var(--qit-primary)] hover:underline">
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          {t("communityTitle")}
         </Link>
       </div>
     );
@@ -118,8 +119,9 @@ export default function UserProfilePage() {
             {t("requestTimeoutRetry")}
           </p>
         )}
-        <Link href="/app/leaderboard" className="text-[var(--qit-primary)] hover:underline">
-          ← {t("leaderboardTitle")}
+        <Link href="/app/leaderboard" className="inline-flex items-center justify-center gap-2 text-[var(--qit-primary)] hover:underline">
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          {t("leaderboardTitle")}
         </Link>
       </div>
     );
@@ -166,7 +168,7 @@ export default function UserProfilePage() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">{t("profileParent")}</p>
                   <p className="font-medium text-gray-800 dark:text-white">{u.parent.full_name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{u.parent.email}</p>
-                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfile")} →</p>
+                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfileCta")}</p>
                 </Link>
               )}
               {u.teacher && (
@@ -174,7 +176,7 @@ export default function UserProfilePage() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">{t("profileTeacherCurator")}</p>
                   <p className="font-medium text-gray-800 dark:text-white">{u.teacher.full_name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{u.teacher.email}</p>
-                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfile")} →</p>
+                  <p className="text-xs text-[var(--qit-primary)] dark:text-[#00b0ff] mt-1">{t("parentViewProfileCta")}</p>
                 </Link>
               )}
             </div>
@@ -277,32 +279,32 @@ export default function UserProfilePage() {
           <ProfilePreviewCard profile={u} rank={userRank?.rank} />
         </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <BookOpen className="w-5 h-5" />
-                <span className="text-sm font-medium">{t("profileEnrolled")}</span>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm min-w-0">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1 min-w-0">
+                <BookOpen className="w-5 h-5 shrink-0" />
+                <span className="text-sm font-medium break-words">{t("profileEnrolled")}</span>
               </div>
               <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">{enrollments.length}</p>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="text-sm font-medium">{t("profileCompleted")}</span>
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm min-w-0">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1 min-w-0">
+                <CheckCircle className="w-5 h-5 shrink-0 text-green-500" />
+                <span className="text-sm font-medium break-words">{t("profileCompleted")}</span>
               </div>
               <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">{completedCount}</p>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <Clock className="w-5 h-5" />
-                <span className="text-sm font-medium">{t("profileStudyHours")}</span>
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm min-w-0">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1 min-w-0">
+                <Clock className="w-5 h-5 shrink-0" />
+                <span className="text-sm font-medium break-words">{t("profileStudyHours")}</span>
               </div>
               <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">{studyHoursStr}</p>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1">
-                <Award className="w-5 h-5 text-amber-500" />
-                <span className="text-sm font-medium">{t("profileCertificates")}</span>
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-[20px] border border-gray-200 dark:border-gray-600 p-4 shadow-sm min-w-0">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-1 min-w-0">
+                <Award className="w-5 h-5 shrink-0 text-amber-500" />
+                <span className="text-sm font-medium break-words">{t("profileCertificates")}</span>
               </div>
               <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">{certificates.length}</p>
             </div>
@@ -345,8 +347,8 @@ export default function UserProfilePage() {
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {c.topics_completed}/{c.total_topics} {t("profileTopic")}
-                            {c.avg_test_score != null && ` • ${c.avg_test_score}%`}
-                            {c.certificate && ` • ✓`}
+                            {c.avg_test_score != null && `${t("profileMetaSeparator")}${c.avg_test_score}%`}
+                            {c.certificate && `${t("profileMetaSeparator")}${t("profileCertificateShort")}`}
                           </p>
                           <div className="mt-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                             <div
@@ -368,7 +370,7 @@ export default function UserProfilePage() {
           {u.description && (
             <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("profileDescription")}</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">{u.description}</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm break-words">{u.description}</p>
             </div>
           )}
         </div>

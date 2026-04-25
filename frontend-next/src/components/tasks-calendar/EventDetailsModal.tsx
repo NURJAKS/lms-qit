@@ -318,7 +318,7 @@ export function EventDetailsModal({
                   {t("assignmentCriteria")}
                 </p>
                 <div
-                  className="text-gray-800 dark:text-white prose prose-sm max-w-none"
+                  className="text-gray-800 dark:text-white prose prose-sm max-w-none break-words"
                   dangerouslySetInnerHTML={{ __html: assignment!.description }}
                 />
               </div>

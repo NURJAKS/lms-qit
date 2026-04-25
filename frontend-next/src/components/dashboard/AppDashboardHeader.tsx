@@ -78,7 +78,7 @@ export function AppDashboardHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-700">
+    <header className="fixed inset-x-0 top-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-700 lg:sticky lg:inset-x-auto">
       <div className="flex items-center justify-between h-16 sm:h-14 px-4 lg:px-6 gap-2">
         <div className="flex items-center gap-3">
           <button
@@ -91,14 +91,17 @@ export function AppDashboardHeader() {
           <div className="lg:block hidden">
             <SearchHeader />
           </div>
-          <div className="lg:hidden flex items-center gap-2">
+          <Link href="/app" className="lg:hidden flex items-center gap-2 min-w-0 group">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+              className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-white font-bold text-sm group-active:scale-95 transition-transform"
               style={{ background: "var(--qit-gradient-1)" }}
             >
               Q
             </div>
-          </div>
+            <span className="truncate font-bold text-sm text-gray-900 dark:text-white tracking-tight max-w-[min(10rem,35vw)]">
+              {t("platformName")}
+            </span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">

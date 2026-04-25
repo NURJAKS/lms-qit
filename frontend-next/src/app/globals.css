@@ -543,3 +543,7 @@ html.dark .glass-nav {
 .mb-safe {
   margin-bottom: env(safe-area-inset-bottom);
 }
+.prose {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}

@@ -129,6 +129,13 @@ def _ensure_student_profile(db: Session, user: User) -> StudentProfile | None:
             sp.status = "Активный"
             db.commit()
             db.refresh(sp)
+        return sp
+    if user.role != "student":
+        return None
+    sp = StudentProfile(user_id=user.id)
+    db.add(sp)
+    db.commit()
+    db.refresh(sp)
     return sp
 
 
@@ -149,7 +156,7 @@ def _ensure_admin_profile_fields(db: Session, user: User) -> None:
 
 def _ensure_curator_profile_fields(db: Session, user: User) -> None:
     """Ensure curator profile fields are normalized."""
-    if user.role != "teacher":
+    if user.role not in ("teacher", "curator"):
         return
 
     dirty = False
@@ -770,7 +777,7 @@ def get_my_profile_extended(
     if _ensure_parent_profile_fields(db, user):
         db.commit()
         db.refresh(user)
-    if user.role == "teacher":
+    if user.role in ("teacher", "curator"):
         _ensure_curator_profile_fields(db, user)
     if user.role in ("admin", "director"):
         _ensure_admin_profile_fields(db, user)
@@ -854,7 +861,7 @@ def get_my_profile_extended(
     elif user.role == "parent":
         children = db.query(User).filter(User.parent_id == user.id).all()
         out["children"] = [{"id": c.id, "full_name": c.full_name, "email": c.email, "role": c.role} for c in children]
-    elif user.role == "teacher":
+    elif user.role in ("teacher", "curator"):
         groups = db.query(TeacherGroup).filter(TeacherGroup.teacher_id == user.id).all()
         out["groups"] = [{"id": g.id, "name": g.group_name} for g in groups]
         student_ids = []
@@ -871,7 +878,7 @@ def _build_profile_extended(db: Session, user: User) -> dict:
     if _ensure_parent_profile_fields(db, user):
         db.commit()
         db.refresh(user)
-    if user.role == "teacher":
+    if user.role in ("teacher", "curator"):
         _ensure_curator_profile_fields(db, user)
     if user.role in ("admin", "director"):
         _ensure_admin_profile_fields(db, user)
@@ -956,7 +963,7 @@ def _build_profile_extended(db: Session, user: User) -> dict:
     elif user.role == "parent":
         children = db.query(User).filter(User.parent_id == user.id).all()
         out["children"] = [{"id": c.id, "full_name": c.full_name, "email": c.email, "role": c.role} for c in children]
-    elif user.role == "teacher":
+    elif user.role in ("teacher", "curator"):
         groups = db.query(TeacherGroup).filter(TeacherGroup.teacher_id == user.id).all()
         out["groups"] = [{"id": g.id, "name": g.group_name} for g in groups]
         student_ids = []
@@ -1037,9 +1044,11 @@ def _build_profile_public_summary(db: Session, user: User) -> dict:
         "phone": profile.get("phone"),
         "birth_date": profile.get("birth_date"),
         "city": profile.get("city"),
+        "address": profile.get("address"),
         "created_at": profile.get("created_at"),
         "points": profile.get("points", 0),
         "status": profile.get("status"),
+        "gender": profile.get("gender"),
     }
 
     if user.role == "student" and sp is not None:
@@ -1084,7 +1093,7 @@ def _build_profile_public_summary(db: Session, user: User) -> dict:
                 "children": profile.get("children"),
             }
         )
-    elif user.role == "teacher":
+    elif user.role in ("teacher", "curator"):
         safe.update(
             {
                 "education": profile.get("education"),

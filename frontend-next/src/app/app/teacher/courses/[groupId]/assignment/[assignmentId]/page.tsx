@@ -530,7 +530,7 @@ export default function TeacherAssignmentPage() {
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("profileDescription")}</h2>
               {details.description ? (
-                <div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: details.description }} />
+                <div className="prose prose-sm max-w-none dark:prose-invert break-words" dangerouslySetInnerHTML={{ __html: details.description }} />
               ) : (
                 <p className="text-sm text-gray-500">{t("teacherAssignmentNoDescription")}</p>
               )}

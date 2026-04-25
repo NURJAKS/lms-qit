@@ -205,7 +205,7 @@ export function ActivityFeedWidget() {
                           <p className="text-sm font-bold truncate leading-tight mb-0.5" style={{ color: textColors.primary }}>
                             {activity.message}
                           </p>
-                          <span className="text-[10px] font-medium whitespace-nowrap opacity-60" style={{ color: textColors.secondary }}>
+                          <span className="text-[10px] font-medium opacity-60 ml-auto text-right" style={{ color: textColors.secondary }}>
                             {timeAgo}
                           </span>
                         </div>
@@ -243,7 +243,7 @@ export function ActivityFeedWidget() {
                           <p className="text-sm font-bold truncate leading-tight mb-0.5" style={{ color: textColors.primary }}>
                             {activity.message}
                           </p>
-                          <span className="text-[10px] font-medium whitespace-nowrap opacity-60" style={{ color: textColors.secondary }}>
+                          <span className="text-[10px] font-medium opacity-60 ml-auto text-right" style={{ color: textColors.secondary }}>
                             {timeAgo}
                           </span>
                         </div>

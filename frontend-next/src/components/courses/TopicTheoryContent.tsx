@@ -6,13 +6,13 @@ import { BookOpen, Code2, Info, Lightbulb, ListChecks, Table as TableIcon } from
 import { useLanguage } from "@/context/LanguageContext";
 
 const proseClasses =
-  "prose prose-gray dark:prose-invert max-w-none " +
+  "prose prose-gray dark:prose-invert max-w-none break-words " +
   "prose-headings:font-bold prose-headings:tracking-tight " +
   "prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-6 " +
   "prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-4 " +
-  "prose-p:text-gray-600 dark:prose-p:text-gray-400 prose-p:leading-relaxed " +
-  "prose-li:text-gray-600 dark:prose-li:text-gray-400 " +
-  "prose-strong:text-purple-600 dark:prose-strong:text-purple-400 " +
+  "prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-loose prose-p:font-medium prose-p:break-words " +
+  "prose-li:text-gray-700 dark:prose-li:text-gray-300 prose-li:break-words " +
+  "prose-strong:text-purple-600 dark:prose-strong:text-purple-400 prose-strong:font-bold " +
   "prose-code:text-purple-600 dark:prose-code:text-purple-400 prose-code:font-medium " +
   "prose-blockquote:border-l-4 prose-blockquote:border-purple-500 prose-blockquote:bg-purple-500/5 prose-blockquote:py-1 prose-blockquote:rounded-r-lg";
 
@@ -47,7 +47,15 @@ export function TopicTheoryContent({ content }: { content: string }) {
           {/* Subtle grid pattern for content */}
           <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none z-0 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:24px_24px]" />
           
-          {/<[a-z][\s\S]*>/i.test(content) ? (
+          {(() => {
+            // Strip code blocks and inline code before checking for HTML,
+            // so markdown content that merely DISCUSSES HTML tags isn't falsely detected
+            const stripped = content
+              .replace(/```[\s\S]*?```/g, "")
+              .replace(/`[^`]*`/g, "");
+            const isHTML = /<(?:div|p|h[1-6]|section|article|ul|ol|li|table|blockquote|pre|br|hr|img|header|footer|main|nav|aside|figure)\b[^>]*>/i.test(stripped);
+            return isHTML;
+          })() ? (
             <div dangerouslySetInnerHTML={{ __html: content }} />
           ) : (
             <ReactMarkdown

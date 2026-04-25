@@ -153,7 +153,7 @@ export function PrivateCommentsSection({
                       • {formatRelativeDate(c.created_at || "", lang, t)}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                  <div className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
                     {c.text}
                   </div>
                 </div>

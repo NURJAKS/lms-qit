@@ -59,12 +59,15 @@ function TestScoreThresholdBar({
       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-1000 ${barClassName}`} style={{ width: `${pct}%` }} />
       </div>
-      <div className="relative mt-2 h-4 text-xs font-medium">
+      <div className="relative mt-2 h-4 text-xs font-medium max-sm:h-3.5">
         <span className="absolute left-0 text-gray-400 dark:text-gray-500">0%</span>
-        <span className={`absolute -translate-x-1/2 ${marker50ClassName}`} style={{ left: "50%" }}>
+        <span className={`absolute -translate-x-1/2 max-sm:hidden ${marker50ClassName}`} style={{ left: "50%" }}>
           50%
         </span>
-        <span className="absolute -translate-x-1/2 text-green-600 dark:text-green-500" style={{ left: "80%" }}>
+        <span
+          className="absolute -translate-x-1/2 text-green-600 dark:text-green-500 max-sm:hidden"
+          style={{ left: "80%" }}
+        >
           80%
         </span>
         <span className="absolute left-full -translate-x-full text-gray-400 dark:text-gray-500">100%</span>
@@ -85,7 +88,7 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
   const [step, setStep] = useState(0);
   const showConfirm = useNotificationStore((s) => s.showConfirm);
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [timeStart] = useState(Date.now());
+  const [timeStart] = useState(() => Date.now());
 
   const { data: questions = [], error: questionsError } = useQuery({
     queryKey: ["test-questions", testId],
@@ -361,19 +364,18 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
   ];
 
   return (
-    <div ref={containerRef} className="fixed inset-0 z-[50] flex flex-col items-center justify-center bg-white dark:bg-gray-900 overflow-auto p-4 transition-all duration-300">
-      
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-[50] flex flex-col items-center justify-center bg-white dark:bg-gray-900 overflow-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] transition-all duration-300"
+    >
       {!isFullscreen && !submitMutation.isSuccess && (
-        <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-white dark:bg-gray-900 p-6 text-center text-gray-800 dark:text-white">
-          <Maximize className="w-16 h-16 text-[var(--qit-primary)] mb-6 animate-pulse" />
-          <h2 className="text-2xl font-bold mb-4">{t("testFullscreenPrompt")}</h2>
-          <p className="text-gray-600 dark:text-gray-400 max-w-md mb-8">
-            {t("testFullscreenPrompt")}
-          </p>
-          <button 
-            type="button" 
+        <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-white dark:bg-gray-900 px-4 py-8 sm:p-6 text-center text-gray-800 dark:text-white">
+          <Maximize className="w-12 h-12 sm:w-16 sm:h-16 text-[var(--qit-primary)] mb-4 sm:mb-6 animate-pulse shrink-0" />
+          <h2 className="text-lg sm:text-2xl font-bold mb-6 max-w-md leading-snug">{t("testFullscreenPrompt")}</h2>
+          <button
+            type="button"
             onClick={enterFullscreen}
-            className="py-3 px-8 rounded-xl text-white font-bold shadow-lg hover:scale-105 transition-all text-lg"
+            className="w-full max-w-sm py-3.5 px-6 rounded-xl text-white font-bold shadow-lg active:scale-[0.98] transition-transform text-base sm:text-lg min-h-[3rem]"
             style={{ background: "var(--qit-primary)" }}
           >
             {t("profileContinue")}
@@ -382,16 +384,15 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
       )}
 
       {showCheatingWarning && !submitMutation.isSuccess && (
-        <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md p-6 text-center text-white">
-          <AlertTriangle className="w-20 h-20 text-red-500 mb-6 animate-bounce" />
-          <h2 className="text-2xl font-bold mb-4 text-red-500">{t("testCheatingWarning")}</h2>
-          <p className="text-gray-300 max-w-md mb-8">
-            {t("testCheatingWarning")}
-          </p>
-          <button 
-            type="button" 
+        <div className="absolute inset-0 z-[70] flex flex-col bg-black/90 backdrop-blur-md px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center text-white sm:items-center sm:justify-center sm:p-6">
+          <div className="flex min-h-0 w-full max-w-md flex-1 flex-col items-center justify-center mx-auto sm:flex-none">
+            <AlertTriangle className="w-14 h-14 sm:w-20 sm:h-20 text-red-500 mb-4 sm:mb-5 animate-bounce shrink-0" />
+            <p className="text-base sm:text-xl font-bold text-red-400 leading-snug">{t("testCheatingWarning")}</p>
+          </div>
+          <button
+            type="button"
             onClick={() => setShowCheatingWarning(false)}
-            className="py-3 px-8 rounded-xl bg-white text-black font-bold shadow-lg hover:bg-gray-200 transition-all text-lg"
+            className="mx-auto mt-4 w-full max-w-sm shrink-0 rounded-xl bg-white py-3.5 px-6 text-base font-bold text-black shadow-lg transition-colors hover:bg-gray-200 sm:mt-6 sm:text-lg min-h-[3rem]"
           >
             {t("profileContinue")}
           </button>
@@ -399,27 +400,29 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
       )}
 
       {showExitConfirm && !submitMutation.isSuccess && (
-        <div className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-6 text-center text-white">
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl max-w-md w-full shadow-2xl border border-red-200 dark:border-red-900 mx-4">
-            <h2 className="text-2xl font-bold mb-4 text-red-600 dark:text-red-400">{t("testFinishAndExit")}</h2>
-            <p className="text-gray-700 dark:text-gray-300 mb-8 leading-relaxed">
+        <div className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6 text-center text-white">
+          <div className="bg-white dark:bg-gray-800 p-5 sm:p-8 rounded-2xl max-w-md w-full shadow-2xl border border-red-200 dark:border-red-900 max-h-[90dvh] overflow-y-auto">
+            <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-red-600 dark:text-red-400 leading-tight">
+              {t("testFinishAndExit")}
+            </h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-6 sm:mb-8 text-sm sm:text-base leading-relaxed text-left sm:text-center">
               {t("testExitWarning")}
             </p>
-            <div className="flex gap-4 justify-center">
-              <button 
-                type="button" 
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-center sm:gap-4">
+              <button
+                type="button"
                 onClick={() => setShowExitConfirm(false)}
-                className="py-2.5 px-6 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex-1"
+                className="py-3 px-6 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all w-full sm:flex-1 min-h-[2.75rem]"
               >
                 {t("cancel")}
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   setShowExitConfirm(false);
                   submitMutation.mutate();
                 }}
-                className="py-2.5 px-6 rounded-xl bg-red-600 text-white font-semibold shadow-lg hover:bg-red-700 transition-all flex-1"
+                className="py-3 px-6 rounded-xl bg-red-600 text-white font-semibold shadow-lg hover:bg-red-700 transition-all w-full sm:flex-1 min-h-[2.75rem]"
               >
                 {t("testFinishConfirm")}
               </button>
@@ -428,39 +431,62 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
         </div>
       )}
 
-      <div 
-        className="max-w-2xl w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-2xl p-6 sm:p-10 select-none relative z-10"
+      <div
+        className="max-w-2xl w-full min-w-0 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-10 select-none relative z-10"
         onCopy={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <p className="text-sm font-bold text-[var(--qit-primary)] uppercase tracking-wider mb-1">{t("testQuestion")} {step + 1} / {questions.length}</p>
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white leading-tight">{q.question_text}</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start mb-5 sm:mb-6">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-bold text-[var(--qit-primary)] uppercase tracking-wider mb-1">
+              {t("testQuestion")} {step + 1} / {questions.length}
+            </p>
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-white leading-tight break-words">
+              {q.question_text}
+            </h2>
           </div>
-          <button 
+          <button
             type="button"
             onClick={handleFinishEarly}
-            className="text-xs font-semibold py-1.5 px-3 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+            className="shrink-0 self-stretch sm:self-auto text-xs font-semibold py-2.5 px-3 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/40 transition-colors min-h-[2.5rem] sm:min-h-0"
           >
             {t("testFinishAndExit")}
           </button>
         </div>
-      <ul className="space-y-2 mb-6">
+      <ul className="space-y-2 mb-5 sm:mb-6">
         {options.map((opt) => (
           <li key={opt.key}>
-            <label className="flex items-center gap-2 p-3 sm:p-3.5 border dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 has-[:checked]:bg-[var(--qit-primary)]/10 has-[:checked]:border-[var(--qit-primary)] min-h-[2.75rem]">
-              <input type="radio" name={`q-${q.id}`} value={opt.key} checked={answers[q.id] === opt.key} onChange={() => setAnswers((a) => ({ ...a, [q.id]: opt.key }))} className="w-4 h-4 shrink-0" style={{ accentColor: "var(--qit-primary)" }} />
-              <span className="mobile-safe-text">{opt.label}</span>
+            <label className="flex items-start gap-3 p-3 sm:p-3.5 border dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 has-[:checked]:bg-[var(--qit-primary)]/10 has-[:checked]:border-[var(--qit-primary)] min-h-[2.75rem]">
+              <input
+                type="radio"
+                name={`q-${q.id}`}
+                value={opt.key}
+                checked={answers[q.id] === opt.key}
+                onChange={() => setAnswers((a) => ({ ...a, [q.id]: opt.key }))}
+                className="w-4 h-4 shrink-0 mt-0.5"
+                style={{ accentColor: "var(--qit-primary)" }}
+              />
+              <span className="mobile-safe-text min-w-0 flex-1 break-words leading-snug">{opt.label}</span>
             </label>
           </li>
         ))}
       </ul>
-      <div className="flex flex-wrap justify-between gap-2">
-        <button type="button" onClick={handlePrev} disabled={step === 0} className="py-2.5 px-4 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 min-h-[2.5rem]">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-between">
+        <button
+          type="button"
+          onClick={handlePrev}
+          disabled={step === 0}
+          className="w-full sm:w-auto py-3 px-4 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 min-h-[2.75rem] font-medium"
+        >
           {t("testBack")}
         </button>
-        <button type="button" onClick={handleNext} disabled={!answers[q.id]} className="py-2.5 px-4 rounded-lg text-white disabled:opacity-50 min-h-[2.5rem]" style={{ background: "var(--qit-primary)" }}>
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!answers[q.id]}
+          className="w-full sm:w-auto py-3 px-4 rounded-lg text-white disabled:opacity-50 min-h-[2.75rem] font-semibold"
+          style={{ background: "var(--qit-primary)" }}
+        >
           {isLast ? t("testSubmit") : t("testNext")}
         </button>
       </div>

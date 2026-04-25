@@ -99,7 +99,7 @@ export default function MaterialsPage() {
                 </div>
                 {m.description && (
                   <div
-                    className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 mb-4"
+                    className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 mb-4 break-words"
                     dangerouslySetInnerHTML={{ __html: m.description }}
                   />
                 )}

@@ -88,7 +88,7 @@ export function AssignmentClassCommentsSection({
                   <span className="text-[11px] text-gray-500">{formatLocalizedDate(c.created_at, lang, t, { includeTime: true, shortMonth: true })}</span>
                 ) : null}
               </div>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900 dark:text-white">{c.text}</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900 dark:text-white break-words">{c.text}</p>
             </div>
           ))}
         </div>

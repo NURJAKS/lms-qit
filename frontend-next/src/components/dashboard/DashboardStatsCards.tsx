@@ -56,7 +56,7 @@ export function DashboardStatsCards() {
     {
       icon: Award,
       value: points.toLocaleString(lang === "kk" ? "kk-KZ" : lang === "ru" ? "ru-RU" : "en-US"),
-      label: t("statsPoints"),
+      label: t("profileCoins"),
       gradient: "from-purple-500 to-pink-600",
       bgGlow: "bg-purple-500/10 dark:bg-purple-500/5",
       iconBg: "bg-gradient-to-br from-purple-500 to-pink-600",
@@ -122,19 +122,19 @@ export function DashboardStatsCards() {
               {/* Decorative accent */}
               <div className={`absolute -top-8 -right-8 w-32 h-32 rounded-full ${card.iconBg} opacity-[0.06] group-hover:opacity-[0.1] transition-opacity`} />
 
-              <div className="relative flex items-start justify-between">
+              <div className="relative flex flex-row items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-2xl sm:text-3xl font-bold tracking-tight mb-1" style={{ color: textColors.primary }}>
+                  <p className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight mb-0.5 sm:mb-1 truncate leading-tight" style={{ color: textColors.primary }}>
                     {card.value}
                   </p>
-                  <p className="text-sm font-medium leading-tight break-words" style={{ color: textColors.secondary }}>
+                  <p className="text-[10px] sm:text-xs lg:text-sm font-bold uppercase tracking-tighter opacity-80 leading-tight" style={{ color: textColors.secondary }}>
                     {card.label}
                   </p>
                 </div>
                 <div
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center shrink-0 text-white shadow-sm ${card.iconBg}`}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 text-white shadow-lg shadow-black/10 group-hover:scale-110 transition-transform duration-300 ${card.iconBg}`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
               </div>
 

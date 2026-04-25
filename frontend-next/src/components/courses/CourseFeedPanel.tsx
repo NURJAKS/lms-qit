@@ -391,7 +391,7 @@ export function CourseFeedPanel({
                   </span>
                   <p className="mt-0.5 break-words font-medium text-gray-900 dark:text-white">{it.title}</p>
                   {it.body ? (
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{it.body}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">{it.body}</p>
                   ) : null}
                   <FeedAttachmentsBlock urls={attachments} t={t} />
                   {it.date ? (

@@ -128,15 +128,21 @@ export function CourseManagement() {
       
       {/* Вкладки и кнопка создания */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 border-b pb-2 w-full" style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)" }}>
-        <div className="w-full overflow-x-auto">
-          <div className="flex gap-2 min-w-max pr-1">
+        <div className="w-full overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            className="inline-flex min-w-max items-center gap-1.5 rounded-2xl p-1.5 pr-2"
+            style={{
+              background: isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(17, 24, 39, 0.05)",
+              border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(17,24,39,0.08)",
+            }}
+          >
           <BlurFade delay={0.15} duration={0.4} blur="4px" offset={10}>
             <Link
               href="/app/admin/courses"
-              className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
+              className={`px-4 sm:px-4 py-2.5 font-semibold rounded-xl transition-all whitespace-nowrap text-sm sm:text-base min-h-[42px] flex items-center justify-center ${
                 activeTab === "courses"
                   ? "text-white shadow-lg"
-                  : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : isDark ? "text-white/75 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-white/70"
               }`}
               style={activeTab === "courses" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
             >
@@ -146,10 +152,10 @@ export function CourseManagement() {
         <BlurFade delay={0.2} duration={0.4} blur="4px" offset={10}>
           <Link
             href="/app/admin/courses/tests"
-            className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
+            className={`px-4 sm:px-4 py-2.5 font-semibold rounded-xl transition-all whitespace-nowrap text-sm sm:text-base min-h-[42px] flex items-center justify-center ${
               activeTab === "tests"
                 ? "text-white shadow-lg"
-                : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                : isDark ? "text-white/75 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-white/70"
             }`}
             style={activeTab === "tests" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
           >
@@ -159,10 +165,10 @@ export function CourseManagement() {
         <BlurFade delay={0.25} duration={0.4} blur="4px" offset={10}>
           <Link
             href="/app/admin/courses/moderation"
-            className={`px-3 sm:px-4 py-2 font-medium rounded-lg transition-all whitespace-nowrap text-sm sm:text-base ${
+            className={`px-4 sm:px-4 py-2.5 font-semibold rounded-xl transition-all whitespace-nowrap text-sm sm:text-base min-h-[42px] flex items-center justify-center ${
               activeTab === "moderation"
                 ? "text-white shadow-lg"
-                : isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                : isDark ? "text-white/75 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-white/70"
             }`}
             style={activeTab === "moderation" ? { background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)", boxShadow: "0 0 12px rgba(255, 65, 129, 0.3)" } : undefined}
           >
