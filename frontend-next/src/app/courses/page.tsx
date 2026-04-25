@@ -715,7 +715,7 @@ function CatalogPageContent() {
                     className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20"
                     style={{ background: "var(--qit-primary)" }}
                   >
-                    {t("nextStep" as TranslationKey)} →
+                    {t("nextStep" as TranslationKey)}
                   </button>
                 </div>
               </div>
@@ -824,7 +824,7 @@ function CatalogPageContent() {
                     onClick={() => setSubmitStep("form_student")}
                     className="flex-1 min-h-[48px] py-3 px-6 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold active-tap-subtle"
                   >
-                    ← {t("back")}
+                    {t("back")}
                   </button>
                   <button
                     type="button"
@@ -837,7 +837,7 @@ function CatalogPageContent() {
                     className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20"
                     style={{ background: "var(--qit-primary)" }}
                   >
-                    {t("goToPaymentButton" as TranslationKey)} →
+                    {t("goToPaymentButton" as TranslationKey)}
                   </button>
                 </div>
               </div>
