@@ -230,7 +230,7 @@ export function TopicAssignmentCard({
 
       {assignment.description ? (
         <div
-          className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-200 [&_img]:max-w-full [&_pre]:overflow-x-auto break-words"
+          className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-200 [&_img]:max-w-full [&_pre]:overflow-x-auto break-words min-w-0"
           dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(assignment.description) }}
         />
       ) : null}

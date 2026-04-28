@@ -147,7 +147,7 @@ export function TopicLessonMaterialsSection({
                 <h4 className="font-bold text-gray-900 dark:text-white mb-2">{m.title}</h4>
                 {m.description && (
                   <div
-                    className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 mb-4"
+                    className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 mb-4 min-w-0 break-words"
                     dangerouslySetInnerHTML={{ __html: htmlLinksOpenInNewTab(m.description) }}
                   />
                 )}
@@ -271,7 +271,7 @@ export function TopicLessonMaterialsSection({
                               <MessageSquare className="w-4 h-4" />
                           </div>
                           <div>
-                            <span className="font-semibold text-gray-900 dark:text-white block line-clamp-1">{q.question_text}</span>
+                            <span className="font-semibold text-gray-900 dark:text-white block line-clamp-1">{q.text}</span>
                             <span className="text-xs font-bold text-green-600 dark:text-green-400">
                               {q.grade != null 
                                 ? `${t("gradedStatus")}: ${q.grade}/100`
@@ -324,7 +324,7 @@ export function TopicLessonMaterialsSection({
                 );
               } else {
                 // Render collapsed upcoming task
-                const title = task.type === 'assignment' ? task.data.title : task.data.question_text;
+                const title = task.type === 'assignment' ? task.data.title : task.data.text;
                 const Icon = task.type === 'assignment' ? ClipboardList : MessageSquare;
                 const isActive = activeTask && `${activeTask.type}-${activeTask.data.id}` === keyId;
 

@@ -597,9 +597,43 @@ export function CreateAssignmentFullPageModal({
         attachment_urls: payload.attachmentUrls?.length ? payload.attachmentUrls : undefined,
         attachment_links: payload.attachmentLinks?.length ? payload.attachmentLinks : undefined,
         video_urls: payload.videoUrls?.length ? payload.videoUrls : undefined,
-        isSupplementary: payload.isSupplementary,
+        is_supplementary: payload.isSupplementary,
         target_student_ids: payload.targetStudentIds?.length ? payload.targetStudentIds : undefined,
       });
+    },
+  });
+
+  const createQuestionMutation = useMutation({
+    mutationFn: async (payload: {
+      groupId: number;
+      courseId: number;
+      questionText: string;
+      questionType: string;
+      options?: string[];
+      correctOption?: string;
+      isSupplementary?: boolean;
+    }) => {
+      const isEdit = !!initialData?.isEdit;
+      const itemId = initialData?.id;
+      if (isEdit && itemId) {
+        await api.patch(`/teacher/questions/${itemId}`, {
+          question_text: payload.questionText,
+          question_type: payload.questionType,
+          options: payload.options,
+          correct_option: payload.correctOption,
+          is_supplementary: payload.isSupplementary,
+        });
+      } else {
+        await api.post("/teacher/questions", {
+          group_id: payload.groupId,
+          course_id: payload.courseId,
+          question_text: payload.questionText,
+          question_type: payload.questionType,
+          options: payload.options,
+          correct_option: payload.correctOption,
+          is_supplementary: payload.isSupplementary,
+        });
+      }
     },
   });
 

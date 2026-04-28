@@ -20,12 +20,12 @@ export function TopicTheoryContent({ content }: { content: string }) {
   const { t } = useLanguage();
 
   return (
-    <div className="relative group w-full overflow-hidden">
+    <div className="relative group w-full overflow-hidden min-w-0">
       {/* Decorative background accents */}
       <div className="absolute -top-10 -right-10 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl p-10 opacity-50 pointer-events-none group-hover:opacity-100 transition-opacity duration-1000" />
       <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl p-10 opacity-50 pointer-events-none group-hover:opacity-100 transition-opacity duration-1000" />
       
-      <div className="relative bg-white dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+      <div className="relative bg-white dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden min-w-0">
         {/* Top Header/Badge */}
         <div className="flex items-center gap-3 px-6 py-4 bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
           <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
@@ -43,7 +43,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
         </div>
 
         {/* Content Area */}
-        <div className={`p-4 md:p-8 lg:p-10 ${proseClasses} relative overflow-hidden`}>
+        <div className={`p-4 md:p-8 lg:p-10 ${proseClasses} relative overflow-hidden min-w-0 break-words`}>
           {/* Subtle grid pattern for content */}
           <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none z-0 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:24px_24px]" />
           

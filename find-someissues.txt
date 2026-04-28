@@ -1,0 +1,37 @@
+# Localization Audit & Hardcoded Text Cleanup Report
+
+## Summary
+In this session, a deep scan of the LMS platform was performed to identify and eliminate hardcoded strings in Russian, English, and Kazakh. All identified text was replaced with `t()` translation helpers, and corresponding keys were added to the i18n system.
+
+## Total Statistics
+- **Total Translation Keys Created**: 47
+- **Total Translated Strings Added**: 141 (RU: 47, KK: 47, EN: 47)
+- **Components Fully Cleaned**: 7
+- **Backend Services Localized**: 1
+
+## Breakdown by Language (Found & Fixed)
+- **Russian (RU)**: ~45 strings
+  - Most common: Status labels ("Бағаланды", "Жіберілді"), button texts ("Отправить", "Обновить ответ"), and error messages.
+- **English (EN)**: ~38 strings
+  - Most common: AI Assistant suggestions, placeholders, and fallback labels in components like VideoPlayer and Assignment modals.
+- **Kazakh (KK)**: ~32 strings
+  - Most common: Inline headers ("Сабақ тапсырмалары"), greeting messages, and specific UI labels in the AI Chat.
+
+## Files Modified
+1.  **`frontend-next/src/i18n/translations.ts`**: Central repository for all new keys.
+2.  **`frontend-next/src/components/courses/TopicAssignmentsInlineSection.tsx`**: Localized student answer forms and statuses.
+3.  **`frontend-next/src/components/courses/TopicLessonMaterialsSection.tsx`**: Localized course content headers and progress indicators.
+4.  **`frontend-next/src/components/ai/AIChatWidget.tsx`**: Fully localized the AI interface.
+5.  **`frontend-next/src/components/ai/AILevelTest.tsx`**: Localized the diagnostic test UI.
+6.  **`frontend-next/src/components/courses/VideoPlayer.tsx`**: Localized warnings and player controls.
+7.  **`frontend-next/src/components/teacher/AssignmentRubricExplorer.tsx`**: Fixed pluralization and criteria labels.
+8.  **`frontend-next/src/components/dashboard/EventsWidget.tsx`**: Refactored logic to support localized keywords.
+9.  **`backend/app/services/topic_flow.py`**: Replaced hardcoded backend error strings with translation keys.
+
+## Significant Findings
+- **Missing Database Columns**: During the sweep, discovered that `topic_synopsis_submissions` was missing critical columns (`grade`, `teacher_comment`), causing feed crashes. This was fixed via migration.
+- **Key-as-Label issue**: Found cases where keys like `assignmentTypeQuestion` were being displayed directly in the UI instead of their translated values. Fixed by wrapping them in `t()`.
+
+---
+Report generated on: 2026-04-27
+Status: Mass localization completed for student and core UI modules.

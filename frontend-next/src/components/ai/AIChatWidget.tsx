@@ -10,6 +10,7 @@ import { useSidebar } from "@/context/SidebarContext";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { TranslationKey } from "@/i18n/translations";
 
 export function AIChatWidget() {
   const { t, lang } = useLanguage();
