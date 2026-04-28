@@ -126,7 +126,7 @@ export default function MaterialsPage() {
                               controls
                               className="max-w-full rounded-lg"
                             >
-                              Ваш браузер не поддерживает видео.
+                              {t("videoNotSupported")}
                             </video>
                           )}
                         </div>

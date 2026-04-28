@@ -37,7 +37,7 @@ def mark_read(
     ).first()
     if not n:
         from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Уведомление не найдено")
+        raise HTTPException(status_code=404, detail="errorNotificationNotFound")
     n.is_read = True
     db.commit()
     return {"ok": True}

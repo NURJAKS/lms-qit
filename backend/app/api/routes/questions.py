@@ -154,6 +154,7 @@ def list_my_questions(
             "topic_id": q.topic_id,
             "topic_title": topics.get(q.topic_id) if q.topic_id else None,
             "status": "submitted" if ans else "not_submitted",
+            "answer_text": ans.answer_text if ans else None,
             "grade": ans.grade if ans else None,
             "teacher_comment": ans.teacher_comment if ans else None,
             "created_at": q.created_at.isoformat() if q.created_at else None,

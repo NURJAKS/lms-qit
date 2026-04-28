@@ -6,12 +6,12 @@ import { BookOpen, Code2, Info, Lightbulb, ListChecks, Table as TableIcon } from
 import { useLanguage } from "@/context/LanguageContext";
 
 const proseClasses =
-  "prose prose-gray dark:prose-invert max-w-none break-words " +
+  "prose prose-gray dark:prose-invert max-w-none break-normal " +
   "prose-headings:font-bold prose-headings:tracking-tight " +
   "prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-6 " +
   "prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-4 " +
-  "prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-loose prose-p:font-medium prose-p:break-words " +
-  "prose-li:text-gray-700 dark:prose-li:text-gray-300 prose-li:break-words " +
+  "prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed prose-p:font-medium " +
+  "prose-li:text-gray-700 dark:prose-li:text-gray-300 " +
   "prose-strong:text-purple-600 dark:prose-strong:text-purple-400 prose-strong:font-bold " +
   "prose-code:text-purple-600 dark:prose-code:text-purple-400 prose-code:font-medium " +
   "prose-blockquote:border-l-4 prose-blockquote:border-purple-500 prose-blockquote:bg-purple-500/5 prose-blockquote:py-1 prose-blockquote:rounded-r-lg";
@@ -20,7 +20,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
   const { t } = useLanguage();
 
   return (
-    <div className="relative group">
+    <div className="relative group w-full overflow-hidden">
       {/* Decorative background accents */}
       <div className="absolute -top-10 -right-10 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl p-10 opacity-50 pointer-events-none group-hover:opacity-100 transition-opacity duration-1000" />
       <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl p-10 opacity-50 pointer-events-none group-hover:opacity-100 transition-opacity duration-1000" />
@@ -43,7 +43,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
         </div>
 
         {/* Content Area */}
-        <div className={`p-6 md:p-8 lg:p-10 ${proseClasses} relative`}>
+        <div className={`p-4 md:p-8 lg:p-10 ${proseClasses} relative overflow-hidden`}>
           {/* Subtle grid pattern for content */}
           <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none z-0 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:24px_24px]" />
           
@@ -56,7 +56,7 @@ export function TopicTheoryContent({ content }: { content: string }) {
             const isHTML = /<(?:div|p|h[1-6]|section|article|ul|ol|li|table|blockquote|pre|br|hr|img|header|footer|main|nav|aside|figure)\b[^>]*>/i.test(stripped);
             return isHTML;
           })() ? (
-            <div dangerouslySetInnerHTML={{ __html: content }} />
+            <div className="overflow-x-auto w-full" dangerouslySetInnerHTML={{ __html: content }} />
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
@@ -73,13 +73,18 @@ export function TopicTheoryContent({ content }: { content: string }) {
                 </h3>
               ),
               table: ({ children }) => (
-                <div className="my-8 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg shadow-gray-200/20 dark:shadow-none">
-                  <div className="bg-gray-50 dark:bg-gray-800/50 py-2 px-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                    <TableIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{t("referenceData")}</span>
+                <div className="my-8 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg shadow-gray-200/20 dark:shadow-none w-full">
+                  <div className="bg-gray-50 dark:bg-gray-800/50 py-2.5 px-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TableIcon className="w-4 h-4 text-purple-500" />
+                      <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">{t("referenceData")}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-bold text-purple-500/50 uppercase tracking-tighter animate-pulse">← {t("scroll")} →</span>
+                    </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse !my-0">
+                  <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-800 [&_code]:whitespace-nowrap">
+                    <table className="w-full min-w-[600px] text-sm border-collapse !my-0 table-auto">
                       {children}
                     </table>
                   </div>
@@ -101,12 +106,12 @@ export function TopicTheoryContent({ content }: { content: string }) {
                 </tr>
               ),
               th: ({ children }) => (
-                <th className="px-4 py-3 text-left font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700">
+                <th className="px-3 py-4 md:px-5 text-left font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 bg-gray-50/30 dark:bg-gray-800/20 min-w-[120px]">
                   {children}
                 </th>
               ),
               td: ({ children }) => (
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                <td className="px-3 py-4 md:px-5 text-gray-600 dark:text-gray-400 align-top leading-relaxed min-w-[150px]">
                   {children}
                 </td>
               ),
@@ -164,8 +169,24 @@ export function TopicTheoryContent({ content }: { content: string }) {
               ),
               hr: () => (
                 <hr className="my-12 border-0 h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+              ),
+              img: ({ src, alt }) => (
+                <div className="my-10 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 shadow-2xl shadow-purple-500/5 group/img">
+                  <img 
+                    src={src} 
+                    alt={alt} 
+                    className="w-full h-auto transition-transform duration-700 group-hover/img:scale-[1.02]" 
+                    loading="lazy"
+                  />
+                  {alt && (
+                    <div className="px-6 py-3 bg-gray-50/80 dark:bg-gray-800/80 text-[11px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-center border-t border-gray-100 dark:border-gray-800 backdrop-blur-sm">
+                      {alt}
+                    </div>
+                  )}
+                </div>
               )
             }}
+
           >
             {content}
           </ReactMarkdown>

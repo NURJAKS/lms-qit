@@ -34,7 +34,6 @@ function LoginContent() {
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const registered = searchParams.get("registered") === "1";
   
@@ -150,10 +149,10 @@ function LoginContent() {
                 strokeWidth={1.5}
               />
               <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-                QIT Білім
+                QIT
               </span>
               <span className="text-xl font-bold text-indigo-600 tracking-tight">
-                платформасы
+                {t("loginBrandSubtitle")}
               </span>
             </div>
             <p className="text-xs text-indigo-600 font-medium mt-1 uppercase tracking-wider">
@@ -223,21 +222,6 @@ function LoginContent() {
                   {t("passwordRequired")}
                 </p>
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="remember"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <label
-                htmlFor="remember"
-                className="text-sm text-gray-600 dark:text-gray-300"
-              >
-                {t("rememberMe")}
-              </label>
             </div>
             <button
               type="submit"

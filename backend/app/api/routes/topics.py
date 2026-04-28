@@ -60,9 +60,9 @@ def _theory_unlocked(db: Session, user_id: int, topic: CourseTopic) -> bool:
 def _sanitize_synopsis_url(raw: str) -> str:
     value = (raw or "").strip()
     if not value:
-        raise HTTPException(status_code=400, detail="Файл не выбран")
+        raise HTTPException(status_code=400, detail="errorFileNotSelected")
     if len(value) > 500:
-        raise HTTPException(status_code=400, detail="Слишком длинный путь к файлу")
+        raise HTTPException(status_code=400, detail="errorFilePathTooLong")
     return value
 
 
@@ -118,7 +118,7 @@ def get_topic(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     unlocked = _theory_unlocked(db, current_user.id, topic)
     data = CourseTopicResponse.model_validate(topic)
@@ -136,10 +136,10 @@ def get_topic_test(
     from app.models.test import Test
     test = db.query(Test).filter(Test.topic_id == topic_id, Test.is_final == 0).first()
     if not test:
-        raise HTTPException(status_code=404, detail="Тест не найден")
+        raise HTTPException(status_code=404, detail="errorTestNotFound")
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     return {"test_id": test.id}
 
@@ -153,7 +153,7 @@ def check_topic_access(
     """Проверка: доступна ли тема (предыдущая пройдена)."""
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     # Первая тема по order_number в курсе — доступна
     first_topic = db.query(CourseTopic).filter(
@@ -187,7 +187,7 @@ def get_topic_flow_status(
     """Этапы цикла темы для студента: видео, конспект, домашка, тест."""
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     return topic_flow_status(db, current_user.id, topic)
 
@@ -201,15 +201,15 @@ async def upload_topic_synopsis_file(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     if not _theory_unlocked(db, current_user.id, topic):
         raise HTTPException(
             status_code=403,
-            detail="Конспект доступен после просмотра 100% видео по теме.",
+            detail="errorSynopsisVideoFirst",
         )
     if not file.filename:
-        raise HTTPException(status_code=400, detail="Файл не выбран")
+        raise HTTPException(status_code=400, detail="errorFileNotSelected")
     ext = Path(file.filename).suffix.lower()
     if ext not in SYNOPSIS_ALLOWED_EXT:
         raise HTTPException(
@@ -238,17 +238,17 @@ def save_topic_synopsis(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     if not _theory_unlocked(db, current_user.id, topic):
         raise HTTPException(
             status_code=403,
-            detail="Конспект доступен после просмотра 100% видео по теме.",
+            detail="errorSynopsisVideoFirst",
         )
     file_url = _sanitize_synopsis_url(body.file_url)
     rows = _get_topic_synopsis_rows(db, current_user.id, topic_id)
     if len(rows) >= 5:
-        raise HTTPException(status_code=400, detail="Можно загрузить не более 5 файлов конспекта по теме.")
+        raise HTTPException(status_code=400, detail="errorSynopsisMaxFiles")
     inherited_note = _extract_latest_note(rows)
     row = TopicSynopsisSubmission(
         user_id=current_user.id,
@@ -270,7 +270,7 @@ def get_my_topic_synopsis(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     rows = _get_topic_synopsis_rows(db, current_user.id, topic_id)
     return _serialize_topic_synopsis_list(rows)
@@ -285,11 +285,11 @@ def save_topic_synopsis_note(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     rows = _get_topic_synopsis_rows(db, current_user.id, topic_id)
     if not rows:
-        raise HTTPException(status_code=400, detail="Сначала загрузите хотя бы один файл конспекта.")
+        raise HTTPException(status_code=400, detail="errorFileNotSelected")
     note = (body.note_text or "").strip() or None
     now = datetime.utcnow()
     for row in rows:
@@ -309,7 +309,7 @@ def replace_topic_synopsis_file(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     row = (
         db.query(TopicSynopsisSubmission)
@@ -321,7 +321,7 @@ def replace_topic_synopsis_file(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Файл конспекта не найден")
+        raise HTTPException(status_code=404, detail="errorFileNotSelected")
     row.file_url = _sanitize_synopsis_url(body.file_url)
     row.updated_at = datetime.utcnow()
     db.commit()
@@ -337,7 +337,7 @@ def delete_topic_synopsis_file(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     row = (
         db.query(TopicSynopsisSubmission)
@@ -349,7 +349,7 @@ def delete_topic_synopsis_file(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Файл конспекта не найден")
+        raise HTTPException(status_code=404, detail="errorFileNotSelected")
     db.delete(row)
     db.commit()
     return _serialize_topic_synopsis_list(_get_topic_synopsis_rows(db, current_user.id, topic_id))
@@ -366,12 +366,12 @@ def get_topic_note(
     if not is_premium:
         raise HTTPException(
             status_code=403,
-            detail="Заметки доступны только для Premium пользователей. Оформите подписку."
+            detail="errorNotePremiumOnly"
         )
     
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     
     note = db.query(TopicNote).filter(
@@ -397,16 +397,16 @@ def create_or_update_topic_note(
     if not is_premium:
         raise HTTPException(
             status_code=403,
-            detail="Заметки доступны только для Premium пользователей. Оформите подписку."
+            detail="errorNotePremiumOnly"
         )
     
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     
     if not body.note_text.strip():
-        raise HTTPException(status_code=400, detail="Текст заметки не может быть пустым")
+        raise HTTPException(status_code=400, detail="errorNoteEmpty")
     
     note = db.query(TopicNote).filter(
         TopicNote.user_id == current_user.id,
@@ -441,12 +441,12 @@ def delete_topic_note(
     if not is_premium:
         raise HTTPException(
             status_code=403,
-            detail="Заметки доступны только для Premium пользователей. Оформите подписку."
+            detail="errorNotePremiumOnly"
         )
     
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     _check_enrollment(db, current_user, topic.course_id)
     
     note = db.query(TopicNote).filter(
@@ -455,8 +455,8 @@ def delete_topic_note(
     ).first()
     
     if not note:
-        raise HTTPException(status_code=404, detail="Заметка не найдена")
+        raise HTTPException(status_code=404, detail="errorNoteNotFound")
     
     db.delete(note)
     db.commit()
-    return {"message": "Заметка удалена"}
+    return {"message": "msgNoteDeleted"}

@@ -27,6 +27,7 @@ class TeacherAssignment(Base):
     is_supplementary = Column(Boolean, nullable=False, default=False)  # доп. задание — не оценивается, не обязательно
     allow_student_class_comments = Column(Boolean, nullable=False, default=True)
     allow_student_edit_submission = Column(Boolean, nullable=False, default=False)
+    target_student_ids = Column(Text, nullable=True)  # JSON array of user IDs, if null then for all group
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", back_populates="assignments_created")

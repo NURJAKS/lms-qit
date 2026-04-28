@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { Bot, X, Send } from "lucide-react";
+import { Bot, X, Send, ChevronDown } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuthStore } from "@/store/authStore";
 import { api } from "@/api/client";
 import { useSidebar } from "@/context/SidebarContext";
+import { type TranslationKey } from "@/i18n/translations";
 
 const STORAGE_KEY = "ai-chat-history";
 
@@ -41,7 +42,23 @@ export function LandingChatWidget() {
   const [messages, setMessages] = useState<Array<{ role: "user" | "bot"; text: string }>>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const suggestionPool = useMemo(() => {
+    const all: TranslationKey[] = [
+      "landingAiChatSuggestion1",
+      "landingAiChatSuggestion2",
+      "landingAiChatSuggestion3",
+      "landingAiChatSuggestion4",
+      "landingAiChatSuggestion5",
+      "landingAiChatSuggestion6",
+      "landingAiChatSuggestion7",
+      "landingAiChatSuggestion8",
+    ];
+    return [...all].sort(() => Math.random() - 0.5);
+  }, []);
+
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { mobileOpen } = useSidebar();
   
   useEffect(() => {
@@ -73,6 +90,17 @@ export function LandingChatWidget() {
     }
   };
 
+  const sendPreset = (key: TranslationKey) => {
+    const preset = t(key);
+    setSuggestionsOpen(false);
+    setInput(preset);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const textLength = preset.length;
+      inputRef.current?.setSelectionRange(textLength, textLength);
+    });
+  };
+
   const renderPanel = () => {
     return (
       <div className="absolute bottom-[calc(100%+0.75rem)] right-[-0.5rem] sm:right-0 w-[calc(100vw-2.5rem)] sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[min(35rem,80vh)]">
@@ -101,9 +129,43 @@ export function LandingChatWidget() {
               <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2 text-sm text-gray-500">{t("aiAnswerLoading")}</div>
             </div>
           )}
+          
+          <div className="pt-2 border-t border-dashed border-gray-200 dark:border-gray-700 mt-2">
+            <button
+              type="button"
+              onClick={() => setSuggestionsOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[var(--qit-primary)] hover:opacity-80 transition-opacity"
+            >
+              <span>{t("aiChatWhatCanIAsk")}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${suggestionsOpen ? "rotate-180" : ""}`} />
+            </button>
+            
+            {suggestionsOpen && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {suggestionPool.slice(0, 6).map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => sendPreset(s as TranslationKey)}
+                    className="text-left text-[11px] leading-snug bg-white dark:bg-gray-700 hover:bg-[var(--qit-primary)] hover:text-white border border-[var(--qit-primary)]/30 rounded-full px-2.5 py-1 text-[var(--qit-primary)] dark:text-gray-200 transition-all active:scale-95 shadow-sm font-medium"
+                  >
+                    {t(s as TranslationKey)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="p-3 border-t dark:border-gray-700 flex gap-2 shrink-0">
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={t("aiMessagePlaceholder")} className="flex-1 border dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)]" />
+          <input 
+            ref={inputRef}
+            type="text" 
+            value={input} 
+            onChange={(e) => setInput(e.target.value)} 
+            onKeyDown={(e) => e.key === "Enter" && send()} 
+            placeholder={t("aiMessagePlaceholder")} 
+            className="flex-1 border dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-[var(--qit-primary)]" 
+          />
           <button type="button" onClick={send} disabled={loading || !input.trim()} className="p-2 rounded-lg text-white disabled:opacity-50" style={{ background: "var(--qit-primary)" }}>
             <Send className="w-5 h-5" />
           </button>

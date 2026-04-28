@@ -33,13 +33,13 @@ def create_support_ticket(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     if current_user.role != "student":
-        raise HTTPException(status_code=403, detail="Только студенты могут отправлять обращения в поддержку.")
+        raise HTTPException(status_code=403, detail="errorOnlyStudentsSupport")
 
     course = None
     if body.course_id is not None:
         course = db.query(Course).filter(Course.id == body.course_id).first()
         if not course:
-            raise HTTPException(status_code=404, detail="Курс не найден")
+            raise HTTPException(status_code=404, detail="courseNotFound")
 
     ticket = SupportTicket(
         user_id=current_user.id,
@@ -63,7 +63,7 @@ def create_support_ticket(
             Notification(
                 user_id=staff.id,
                 type="support_ticket",
-                title="Новое обращение в поддержку",
+                title="notifNewSupportTicketTitle",
                 message=msg_json,
                 link="/app/admin/support",
             )
@@ -132,7 +132,7 @@ def update_support_ticket(
 ):
     ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Обращение не найдено")
+        raise HTTPException(status_code=404, detail="errorSupportTicketNotFound")
 
     ticket.status = body.status
     ticket.staff_note = (body.staff_note or "").strip() or None

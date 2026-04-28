@@ -29,7 +29,7 @@ _LOGIN_EMAIL_TYPOS: dict[str, str] = {
 def register(request: Request, data: UserRegister, db: Session = Depends(get_db)):
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Регистрация временно отключена",
+        detail="errorRegistrationDisabled",
     )
 
 
@@ -42,7 +42,7 @@ def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль",
+            detail="errorInvalidEmailOrPassword",
         )
     log_activity(db, user.id, "login", "user", user.id, {"email": user.email})
     db.commit()

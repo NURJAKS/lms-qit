@@ -196,15 +196,15 @@ def approve_application(
     from datetime import datetime, timezone
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
     if app.status != "pending":
-        raise HTTPException(status_code=400, detail="Заявка уже обработана")
+        raise HTTPException(status_code=400, detail="errorApplicationAlreadyProcessed")
     user = db.query(User).filter(User.id == app.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     course = db.query(Course).filter(Course.id == app.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
 
     is_first_approval = not user.is_approved
     user.is_approved = True
@@ -316,7 +316,7 @@ def assign_curator(
     """Назначить куратору/учителю задачу добавить студента в группу (для оплаченных заявок)."""
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
     if app.status != "paid":
         raise HTTPException(status_code=400, detail="Только оплаченные заявки можно назначить куратору")
     student = db.query(User).filter(User.id == app.user_id).first()
@@ -368,9 +368,9 @@ def reject_application(
     from datetime import datetime, timezone
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
     if app.status != "pending":
-        raise HTTPException(status_code=400, detail="Заявка уже обработана")
+        raise HTTPException(status_code=400, detail="errorApplicationAlreadyProcessed")
     app.status = "rejected"
     app.approved_at = datetime.now(timezone.utc)
     app.approved_by = current_user.id
@@ -386,7 +386,7 @@ def reopen_application(
 ):
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
     if app.status != "rejected":
         raise HTTPException(status_code=400, detail="Только отклоненную заявку можно вернуть на рассмотрение")
 
@@ -413,7 +413,7 @@ def update_application_status(
 
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
 
     app.status = next_status
     if next_status == "approved":
@@ -443,15 +443,15 @@ def grant_application_access(
 
     app = db.query(CourseApplication).filter(CourseApplication.id == app_id).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
+        raise HTTPException(status_code=404, detail="errorApplicationNotFound")
 
     user = db.query(User).filter(User.id == app.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
 
     course = db.query(Course).filter(Course.id == app.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
 
     now = datetime.now(timezone.utc)
     amount = float(course.price or 0)
@@ -831,7 +831,7 @@ def create_user(
     current_user: Annotated[User, Depends(get_current_admin_or_director)],
 ):
     if db.query(User).filter(User.email == data.email).first():
-        raise HTTPException(status_code=400, detail="Email уже занят")
+        raise HTTPException(status_code=400, detail="errorEmailOccupied")
     user = User(
         email=data.email,
         password_hash=get_password_hash(data.password),
@@ -860,7 +860,7 @@ def get_user_detail(
     """Полная информация о пользователе: профиль, родитель (если студент), заявки."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     parent = None
     if user.parent_id:
         parent = db.query(User).filter(User.id == user.parent_id).first()
@@ -917,7 +917,7 @@ def get_user(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     return user
 
 
@@ -930,7 +930,7 @@ def update_user(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     if data.full_name is not None:
         user.full_name = data.full_name
     if data.role is not None:
@@ -970,7 +970,7 @@ def reward_user_coins(
         )
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     if user.role != "student":
         raise HTTPException(status_code=400, detail="Награда доступна только для студентов")
     if not add_coins(
@@ -980,7 +980,7 @@ def reward_user_coins(
         "manual_admin_grant",
         apply_premium_multiplier=False,
     ):
-        raise HTTPException(status_code=500, detail="Не удалось начислить coins")
+        raise HTTPException(status_code=500, detail="errorFailedToGrantCoins")
     db.commit()
     new_balance = get_user_balance(db, user_id)
     log_activity(
@@ -1018,7 +1018,7 @@ def admin_get_student_profile(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     if user.role != "student":
         raise HTTPException(status_code=400, detail="Профиль доступен только для студентов")
     sp = _admin_ensure_student_profile(db, user)
@@ -1063,7 +1063,7 @@ def admin_update_student_profile(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     if user.role != "student":
         raise HTTPException(status_code=400, detail="Профиль доступен только для студентов")
     sp = _admin_ensure_student_profile(db, user)
@@ -1131,7 +1131,7 @@ def delete_user(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": user.email})
     db.delete(user)
     db.commit()
@@ -1427,7 +1427,7 @@ def get_course_admin(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     return course
 
 
@@ -1440,7 +1440,7 @@ def update_course(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(course, k, v)
     db.commit()
@@ -1457,7 +1457,7 @@ def delete_course(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     log_activity(db, current_user.id, "course_deleted", "course", course_id, {"title": course.title})
     db.delete(course)
     db.commit()
@@ -1556,7 +1556,7 @@ async def upload_topic_video(
     if not topic:
         raise HTTPException(status_code=404, detail="Тема не найдена")
     if not file.filename or not file.filename.lower().endswith((".mp4", ".webm", ".mov")):
-        raise HTTPException(status_code=400, detail="Только видео файлы (mp4, webm, mov)")
+        raise HTTPException(status_code=400, detail="errorOnlyVideosAllowed")
     uploads = Path(__file__).resolve().parent.parent.parent / "uploads" / "videos"
     course_dir = uploads / f"course{topic.course_id}"
     course_dir.mkdir(parents=True, exist_ok=True)
@@ -1579,7 +1579,7 @@ def list_tests_for_course(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     return db.query(Test).filter(Test.course_id == course_id).order_by(Test.id).all()
 
 

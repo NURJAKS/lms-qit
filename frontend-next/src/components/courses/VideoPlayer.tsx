@@ -235,12 +235,12 @@ export function VideoPlayer({
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 p-6">
               <div className="text-center text-white">
                 <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-                <p className="font-semibold mb-2">{t("videoLoadError") || "Error loading video"}</p>
+                <p className="font-semibold mb-2">{t("videoLoadError")}</p>
                 <button 
                   onClick={() => { setError(null); setIsReady(false); }}
                   className="px-4 py-2 bg-purple-600 rounded-lg text-sm hover:bg-purple-700 transition-colors"
                 >
-                  {t("retry") || "Retry"}
+                  {t("retry")}
                 </button>
               </div>
             </div>
@@ -262,7 +262,7 @@ export function VideoPlayer({
               onEnded={handleEnded}
               onError={(e: any) => {
                 console.error("Video error:", e);
-                setError("Failed to load video");
+                setError(t("videoLoadError"));
               }}
               onDuration={(dur: number) => {
                 if (onDurationLoaded) onDurationLoaded(Math.floor(dur));

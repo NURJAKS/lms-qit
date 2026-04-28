@@ -16,16 +16,12 @@ export type RubricCriterion = {
   levels?: { text: string; points: number }[];
 };
 
-function formatCriteriaCount(n: number, lang: Lang): string {
+function formatCriteriaCount(n: number, lang: Lang, t: any): string {
   if (lang === "ru") return formatCriteriaCountRu(n);
   if (lang === "kk") {
-    const mod10 = n % 10;
-    const mod100 = n % 100;
-    if (mod100 >= 11 && mod100 <= 14) return `${n} критерий`;
-    if (mod10 === 1) return `${n} критерий`;
-    return `${n} критерий`;
+    return `${n} ${t("rubricCriterion_1")}`;
   }
-  return n === 1 ? `1 criterion` : `${n} criteria`;
+  return n === 1 ? `1 ${t("rubricCriterion_1")}` : `${n} ${t("rubricCriterion_5")}`;
 }
 
 function formatPointsLabel(points: number, lang: Lang, t: ReturnType<typeof useLanguage>["t"]): string {
@@ -52,7 +48,7 @@ export function AssignmentRubricExplorer({
   if (!rubric.length) return null;
 
   const pillLabel = t("teacherRubricPill")
-    .replace("{criteria}", formatCriteriaCount(rubric.length, lang as Lang))
+    .replace("{criteria}", formatCriteriaCount(rubric.length, lang as Lang, t))
     .replace("{points}", total % 1 === 0 ? String(total) : total.toFixed(1));
 
   return (

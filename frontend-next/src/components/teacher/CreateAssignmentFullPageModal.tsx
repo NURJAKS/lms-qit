@@ -85,7 +85,7 @@ type Props = {
   teacherGroups: Group[];
   topics: CourseTopic[];
   onInviteStudents: () => void;
-  mode?: "assignment" | "assignmentWithTest" | "question" | "material";
+  mode?: "assignment" | "assignmentWithTest" | "material";
   initialData?: any;
 };
 
@@ -228,6 +228,9 @@ export function CreateAssignmentFullPageModal({
   const [maxPointsFollowsRubric, setMaxPointsFollowsRubric] = useState(true);
 
   const [topicId, setTopicId] = useState<number | null>(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+  const [testPassingScore, setTestPassingScore] = useState<number>(70);
+
   const [topicCreateOpen, setTopicCreateOpen] = useState(false);
   const [topicCreateTitle, setTopicCreateTitle] = useState("");
   const [topicCreateDesc, setTopicCreateDesc] = useState("");
@@ -252,11 +255,6 @@ export function CreateAssignmentFullPageModal({
     { question: "", options: ["", ""], correct_option_index: 0 },
   ]);
 
-  // Question mode specific state
-  const [questionType, setQuestionType] = useState<"short_answer" | "multiple_choice">("short_answer");
-  const [questionOptions, setQuestionOptions] = useState<string[]>([""]);
-  const [canComment, setCanComment] = useState(true);
-  const [canEdit, setCanEdit] = useState(false);
 
   const rubricPayload: RubricCriterionPayload[] = useMemo(() => {
     const raw = rubricConditions
@@ -407,6 +405,8 @@ export function CreateAssignmentFullPageModal({
       } else if (initialData.deadline) {
         setRejectAfterDeadline(true);
       }
+      setIsSynopsis(!!initialData.is_synopsis);
+      setIsSupplementary(!!initialData.is_supplementary);
     } else {
       setTitle("");
       setInstructionsHtml("");
@@ -444,17 +444,6 @@ export function CreateAssignmentFullPageModal({
     setRubricSortDesc(true);
     setHasQuiz(mode === "assignmentWithTest");
     setQuizQuestions([{ question: "", options: ["", ""], correct_option_index: 0 }]);
-    if (initialData?.type === "question") {
-      setQuestionType(initialData.question_type === "single_choice" ? "multiple_choice" : "short_answer");
-      setQuestionOptions(Array.isArray(initialData.options) ? initialData.options : [""]);
-      setCanComment(initialData.can_comment !== false);
-      setCanEdit(!!initialData.can_edit);
-    } else {
-      setQuestionType("short_answer");
-      setQuestionOptions([""]);
-      setCanComment(true);
-      setCanEdit(false);
-    }
     setYoutubeDialogOpen(false);
     setYoutubeSearch("");
     setYoutubeUrl("");
@@ -470,6 +459,8 @@ export function CreateAssignmentFullPageModal({
     setMaxPointsFollowsRubric(!initialData);
     setIsSynopsis(initialData?.is_synopsis || false);
     setIsSupplementary(initialData?.is_supplementary || false);
+    setSelectedStudentIds(initialData?.target_student_ids ? JSON.parse(initialData.target_student_ids) : []);
+    setTestPassingScore(initialData?.test_passing_score || 70);
 
   }, [isOpen, currentGroup.id, initialData, mode, t]);
 
@@ -537,9 +528,11 @@ export function CreateAssignmentFullPageModal({
       videoUrls: string[];
       rubric: RubricCriterionPayload[];
       testQuestions?: TestQuestionApi[];
+      testPassingScore?: number;
       rejectSubmissionsAfterDeadline?: boolean;
       isSynopsis?: boolean;
       isSupplementary?: boolean;
+      targetStudentIds?: number[];
     }) => {
       await api.post("/teacher/assignments", {
         group_id: payload.groupId,
@@ -554,48 +547,15 @@ export function CreateAssignmentFullPageModal({
         video_urls: payload.videoUrls.length ? payload.videoUrls : undefined,
         rubric: payload.rubric.length ? payload.rubric : undefined,
         test_questions: payload.testQuestions?.length ? payload.testQuestions : undefined,
+        test_passing_score: payload.testPassingScore,
         reject_submissions_after_deadline: payload.rejectSubmissionsAfterDeadline,
         is_synopsis: payload.isSynopsis,
         is_supplementary: payload.isSupplementary,
+        target_student_ids: payload.targetStudentIds?.length ? payload.targetStudentIds : undefined,
       });
     },
   });
 
-  const createQuestionMutation = useMutation({
-    mutationFn: async (payload: {
-      groupId: number;
-      courseId: number;
-      topicId: number;
-      questionText: string;
-      instructions?: string;
-      questionType: string;
-      options?: string[];
-      deadlineIso?: string;
-      maxPoints: number;
-      attachmentUrls: string[];
-      attachmentLinks: string[];
-      videoUrls: string[];
-      canComment: boolean;
-      canEdit: boolean;
-    }) => {
-      await api.post("/teacher/questions", {
-        group_id: payload.groupId,
-        course_id: payload.courseId,
-        topic_id: payload.topicId,
-        question_text: payload.questionText,
-        instructions: payload.instructions || undefined,
-        question_type: payload.questionType,
-        options: payload.options?.length ? payload.options : undefined,
-        deadline: payload.deadlineIso || undefined,
-        max_points: payload.maxPoints,
-        attachment_urls: payload.attachmentUrls.length ? payload.attachmentUrls : undefined,
-        attachment_links: payload.attachmentLinks.length ? payload.attachmentLinks : undefined,
-        video_urls: payload.videoUrls.length ? payload.videoUrls : undefined,
-        can_comment: payload.canComment,
-        can_edit: payload.canEdit,
-      });
-    },
-  });
 
   const createMaterialMutation = useMutation({
     mutationFn: async (payload: {
@@ -608,6 +568,7 @@ export function CreateAssignmentFullPageModal({
       attachmentLinks: string[];
       videoUrls: string[];
       isSupplementary?: boolean;
+      targetStudentIds?: number[];
     }) => {
       await api.post("/teacher/materials", {
         group_id: payload.groupId,
@@ -615,10 +576,11 @@ export function CreateAssignmentFullPageModal({
         topic_id: payload.topicId,
         title: payload.title,
         description: payload.description || undefined,
-        attachment_urls: payload.attachmentUrls.length ? payload.attachmentUrls : undefined,
-        attachment_links: payload.attachmentLinks.length ? payload.attachmentLinks : undefined,
-        video_urls: payload.videoUrls.length ? payload.videoUrls : undefined,
+        attachment_urls: payload.attachmentUrls?.length ? payload.attachmentUrls : undefined,
+        attachment_links: payload.attachmentLinks?.length ? payload.attachmentLinks : undefined,
+        video_urls: payload.videoUrls?.length ? payload.videoUrls : undefined,
         is_supplementary: payload.isSupplementary,
+        target_student_ids: payload.targetStudentIds?.length ? payload.targetStudentIds : undefined,
       });
     },
   });
@@ -661,6 +623,8 @@ export function CreateAssignmentFullPageModal({
               attachment_urls: attachmentUrls.length ? attachmentUrls : undefined,
               attachment_links: attachmentLinks.length ? attachmentLinks : undefined,
               video_urls: videoUrls.length ? videoUrls : undefined,
+              is_supplementary: isSupplementary,
+              target_student_ids: selectedStudentIds.length ? selectedStudentIds : undefined,
             });
           } else {
             await createMaterialMutation.mutateAsync({
@@ -673,40 +637,7 @@ export function CreateAssignmentFullPageModal({
               attachmentLinks,
               videoUrls,
               isSupplementary,
-            });
-          }
-        } else if (mode === "question") {
-          if (isEdit && itemId) {
-            await api.patch(`/teacher/questions/${itemId}`, {
-              question_text: cleanedTitle,
-              instructions: instructionsHtml || undefined,
-              topic_id: resolvedTopic,
-              question_type: questionType === "multiple_choice" ? "single_choice" : "open",
-              options: questionType === "multiple_choice" ? questionOptions.filter(o => o.trim()) : undefined,
-              deadline: deadlineIso,
-              max_points: payloadMaxPoints,
-              attachment_urls: attachmentUrls.length ? attachmentUrls : undefined,
-              attachment_links: attachmentLinks.length ? attachmentLinks : undefined,
-              video_urls: videoUrls.length ? videoUrls : undefined,
-              can_comment: canComment,
-              can_edit: canEdit,
-            });
-          } else {
-            await createQuestionMutation.mutateAsync({
-              groupId: gid,
-              courseId: g.course_id,
-              topicId: resolvedTopic,
-              questionText: cleanedTitle,
-              instructions: instructionsHtml || undefined,
-              questionType,
-              options: questionType === "multiple_choice" ? questionOptions.filter(o => o.trim()) : undefined,
-              deadlineIso,
-              maxPoints: payloadMaxPoints,
-              attachmentUrls,
-              attachmentLinks,
-              videoUrls,
-              canComment,
-              canEdit,
+              targetStudentIds: selectedStudentIds,
             });
           }
         } else {
@@ -728,6 +659,9 @@ export function CreateAssignmentFullPageModal({
               rubric: rubricToSend,
               reject_submissions_after_deadline: rejectPayload,
               is_synopsis: mainIsSynopsis,
+              is_supplementary: isSupplementary,
+              target_student_ids: selectedStudentIds.length ? selectedStudentIds : undefined,
+              test_passing_score: testPassingScore,
             });
           } else {
             await createAssignmentMutation.mutateAsync({
@@ -743,9 +677,11 @@ export function CreateAssignmentFullPageModal({
               videoUrls,
               rubric: rubricToSend,
               testQuestions: apiTestQuestions.length ? apiTestQuestions : undefined,
+              testPassingScore: testPassingScore,
               rejectSubmissionsAfterDeadline: rejectPayload,
               isSynopsis: mainIsSynopsis,
               isSupplementary,
+              targetStudentIds: selectedStudentIds,
             });
           }
         }
@@ -798,9 +734,7 @@ export function CreateAssignmentFullPageModal({
               <h2 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
                 {initialData?.isEdit ? t("teacherEditAssignment") : (mode === "material"
                   ? t("assignmentTypeMaterial")
-                  : mode === "question"
-                    ? t("assignmentTypeQuestion")
-                    : mode === "assignmentWithTest"
+                  : mode === "assignmentWithTest"
                       ? t("assignmentTypeAssignmentWithTest")
                       : t("assignmentTypeAssignment"))}
               </h2>
@@ -808,9 +742,7 @@ export function CreateAssignmentFullPageModal({
             <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
               {mode === "material"
                 ? t("assignmentCreateMaterial")
-                : mode === "question"
-                  ? t("assignmentCreateQuestion")
-                  : mode === "assignmentWithTest"
+                : mode === "assignmentWithTest"
                     ? t("assignmentCreateAssignmentWithTest")
                     : t("createAssignment")}
             </p>
@@ -849,13 +781,13 @@ export function CreateAssignmentFullPageModal({
                   {/* Title */}
                   <div className="space-y-1">
                     <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                      {mode === "material" ? t("assignmentTitleLabel") : mode === "question" ? t("assignmentQuestionLabel") : t("assignmentTitleLabel")}
+                      {mode === "material" ? t("assignmentTitleLabel") : t("assignmentTitleLabel")}
                     </label>
                     <input
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       onBlur={() => setTitleTouched(true)}
-                      placeholder={mode === "question" ? t("assignmentQuestionPlaceholder") : t("assignmentTitlePlaceholder")}
+                      placeholder={t("assignmentTitlePlaceholder")}
                       className="w-full px-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/40"
                       style={{ ...inputStyle, color: textColors.primary }}
                     />
@@ -866,95 +798,6 @@ export function CreateAssignmentFullPageModal({
                     ) : null}
                   </div>
 
-                  {mode === "question" && (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                          {t("assignmentQuestionType")}
-                        </label>
-                        <select
-                          value={questionType}
-                          onChange={(e) => setQuestionType(e.target.value as any)}
-                          className="w-full px-4 py-3 rounded-2xl text-sm font-semibold outline-none"
-                          style={{ ...inputStyle, color: textColors.primary }}
-                        >
-                          <option value="short_answer">{t("assignmentShortAnswer")}</option>
-                          <option value="multiple_choice">{t("assignmentMultipleChoice")}</option>
-                        </select>
-                      </div>
-
-                      {questionType === "multiple_choice" && (
-                        <div className="space-y-3">
-                          <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                            {t("questionOptionsLabel")}
-                          </label>
-                          <div className="space-y-2">
-                            {questionOptions.map((opt, idx) => {
-                              const isDuplicate = questionOptions.some((o, i) => i !== idx && o.trim() !== "" && o.trim() === opt.trim());
-                              return (
-                                <div key={idx} className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />
-                                    <input
-                                      value={opt}
-                                      onChange={(e) => {
-                                        const newOpts = [...questionOptions];
-                                        newOpts[idx] = e.target.value;
-                                        setQuestionOptions(newOpts);
-                                      }}
-                                      placeholder={t("teacherOptionPlaceholder").replace("{n}", String(idx + 1))}
-                                      className="flex-1 px-4 py-2 rounded-xl outline-none text-sm"
-                                      style={{ ...inputStyle, color: textColors.primary, borderColor: isDuplicate ? "#F87171" : undefined }}
-                                    />
-                                    <div className="flex items-center gap-1">
-                                      {questionOptions.length > 1 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setQuestionOptions(prev => prev.filter((_, i) => i !== idx))}
-                                          className="p-2 text-gray-400 hover:text-red-400"
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </button>
-                                      )}
-                                      <QuestionOptionMenu
-                                        onDuplicate={() => {
-                                          const newOpts = [...questionOptions];
-                                          newOpts.splice(idx + 1, 0, opt);
-                                          setQuestionOptions(newOpts);
-                                        }}
-                                        onMoveUp={idx > 0 ? () => {
-                                          const newOpts = [...questionOptions];
-                                          [newOpts[idx - 1], newOpts[idx]] = [newOpts[idx], newOpts[idx - 1]];
-                                          setQuestionOptions(newOpts);
-                                        } : undefined}
-                                        onMoveDown={idx < questionOptions.length - 1 ? () => {
-                                          const newOpts = [...questionOptions];
-                                          [newOpts[idx], newOpts[idx + 1]] = [newOpts[idx + 1], newOpts[idx]];
-                                          setQuestionOptions(newOpts);
-                                        } : undefined}
-                                      />
-                                    </div>
-                                  </div>
-                                  {isDuplicate && (
-                                    <p className="text-[10px] ml-6" style={{ color: "#F87171" }}>
-                                      {t("teacherOptionDuplicate")}
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            <button
-                              type="button"
-                              onClick={() => setQuestionOptions([...questionOptions, ""])}
-                              className="text-sm font-semibold text-blue-500 hover:text-blue-600 ml-6"
-                            >
-                              + {t("teacherAddOption")}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Instructions */}
                   <div className="space-y-3">
@@ -972,20 +815,8 @@ export function CreateAssignmentFullPageModal({
                       {t("teacherAttachLabel")}
                     </label>
                     <div className="grid grid-cols-2 gap-2 min-w-0 sm:flex sm:flex-wrap sm:gap-3">
-                      <DriveButton />
+                      <UploadButton />
                       <YoutubeButton />
-                      <CreateDocsDropdown />
-                      {mode !== "material" && (mode !== "assignmentWithTest" || !hasQuiz) && (
-                        <button
-                          type="button"
-                          className="flex items-center justify-center gap-2 px-3 py-2.5 sm:px-4 rounded-2xl text-sm font-semibold transition-all hover:bg-black/10 dark:hover:bg-white/10 w-full min-w-0 sm:w-auto sm:justify-start"
-                          style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#F1F5F9", color: textColors.primary }}
-                          onClick={() => setHasQuiz(true)}
-                        >
-                          <Plus className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{t("quiz")}</span>
-                        </button>
-                      )}
                       <LinkButton />
                     </div>
 
@@ -1037,129 +868,6 @@ export function CreateAssignmentFullPageModal({
                             </div>
                           </div>
                         ) : null}
-
-                        {hasQuiz && (
-                          <div className="mt-4">
-                            <p className="text-xs font-semibold mb-2" style={{ color: textColors.secondary }}>
-                              {t("quiz")}
-                            </p>
-                            <div className="rounded-2xl p-4 flex items-center justify-between" style={glassStyle}>
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center text-white">
-                                  <Plus className="w-6 h-6" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold" style={{ color: textColors.primary }}>{t("teacherBlankQuiz")}</p>
-                                  <p className="text-xs" style={{ color: textColors.secondary }}>{t("googleForms")}</p>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setHasQuiz(false)}
-                                className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                              >
-                                <X className="w-5 h-5" style={{ color: textColors.secondary }} />
-                              </button>
-                            </div>
-
-                            {/* Quiz Editor */}
-                            <div className="mt-4 space-y-4">
-                              {quizQuestions.map((q, qIdx) => (
-                                <div key={qIdx} className="rounded-2xl p-5 space-y-4" style={glassStyle}>
-                                  <div className="flex items-center justify-between gap-4">
-                                    <input
-                                      value={q.question}
-                                      onChange={(e) => {
-                                        const newQuestions = [...quizQuestions];
-                                        newQuestions[qIdx].question = e.target.value;
-                                        setQuizQuestions(newQuestions);
-                                      }}
-                                      placeholder={t("assignmentTypeQuestion")}
-                                      className="flex-1 bg-transparent border-b border-gray-300 dark:border-gray-700 py-2 outline-none focus:border-blue-500 transition-colors"
-                                      style={{ color: textColors.primary }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => setQuizQuestions(prev => prev.filter((_, i) => i !== qIdx))}
-                                      className="p-2 text-red-400 hover:text-red-500"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    {q.options.map((opt, oIdx) => (
-                                      <label
-                                        key={oIdx}
-                                        className="flex items-center gap-3 cursor-pointer rounded-xl px-1 py-0.5 -mx-1 hover:bg-black/5 dark:hover:bg-white/5"
-                                      >
-                                        <input
-                                          type="radio"
-                                          checked={q.correct_option_index === oIdx}
-                                          onChange={() => {
-                                            const newQuestions = [...quizQuestions];
-                                            newQuestions[qIdx].correct_option_index = oIdx;
-                                            setQuizQuestions(newQuestions);
-                                          }}
-                                          className="w-4 h-4 accent-blue-500 shrink-0 cursor-pointer"
-                                        />
-                                        <input
-                                          value={opt}
-                                          onChange={(e) => {
-                                            const newQuestions = [...quizQuestions];
-                                            newQuestions[qIdx].options[oIdx] = e.target.value;
-                                            setQuizQuestions(newQuestions);
-                                          }}
-                                          placeholder={t("teacherOptionPlaceholder").replace("{n}", String(oIdx + 1))}
-                                          className="flex-1 min-w-0 bg-transparent border-b border-gray-200 dark:border-gray-700 py-1 outline-none text-sm"
-                                          style={{ color: textColors.primary }}
-                                          onClick={(e) => e.stopPropagation()}
-                                        />
-                                        {q.options.length > 2 && (
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              const newQuestions = [...quizQuestions];
-                                              newQuestions[qIdx].options = newQuestions[qIdx].options.filter((_, i) => i !== oIdx);
-                                              if (q.correct_option_index >= newQuestions[qIdx].options.length) {
-                                                newQuestions[qIdx].correct_option_index = 0;
-                                              }
-                                              setQuizQuestions(newQuestions);
-                                            }}
-                                            className="p-1 text-gray-400 hover:text-red-400 shrink-0"
-                                          >
-                                            <X className="w-3 h-3" />
-                                          </button>
-                                        )}
-                                      </label>
-                                    ))}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newQuestions = [...quizQuestions];
-                                        newQuestions[qIdx].options.push("");
-                                        setQuizQuestions(newQuestions);
-                                      }}
-                                      className="text-xs font-semibold text-blue-500 hover:text-blue-600 mt-2"
-                                    >
-                                      + {t("teacherAddOption")}
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                onClick={() => setQuizQuestions([...quizQuestions, { question: "", options: ["", ""], correct_option_index: 0 }])}
-                                className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm font-semibold hover:border-blue-500 hover:text-blue-500 transition-all"
-                                style={{ color: textColors.secondary }}
-                              >
-                                + {t("addQuestion")}
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div className="rounded-2xl p-5 text-center" style={glassStyle}>
@@ -1275,8 +983,8 @@ export function CreateAssignmentFullPageModal({
                     </div>
                   </div>
 
-                  {/* Standalone synopsis assignment (reuse / clone only) */}
-                  {mode === "assignment" && initialData?.is_synopsis ? (
+                  {/* Synopsis assignment checkbox (visible for all non-material modes) */}
+                  {mode !== "material" && (
                     <div className="space-y-2">
                       <label
                         className="flex items-start gap-3 cursor-pointer p-4 rounded-2xl border transition-all hover:shadow-md"
@@ -1308,7 +1016,37 @@ export function CreateAssignmentFullPageModal({
                         </div>
                       </label>
                     </div>
-                  ) : null}
+                  )}
+
+                  {/* Supplementary checkbox (visible for all modes) */}
+                  <div className="space-y-2">
+                    <label
+                      className="flex items-start gap-3 cursor-pointer p-4 rounded-2xl border transition-all hover:shadow-md"
+                      style={{
+                        borderColor: isSupplementary ? "#3B82F6" : isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+                        background: isSupplementary
+                          ? isDark
+                            ? "rgba(59,130,246,0.1)"
+                            : "rgba(219,234,254,0.3)"
+                          : "transparent",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSupplementary}
+                        onChange={(e) => setIsSupplementary(e.target.checked)}
+                        className="mt-1 w-4 h-4 rounded accent-blue-500 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                          {t("teacherCreateSupplementary")}
+                        </div>
+                        <div className="text-xs mt-0.5 leading-relaxed" style={{ color: textColors.secondary }}>
+                          {t("teacherCreateSupplementaryHint")}
+                        </div>
+                      </div>
+                    </label>
+                  </div>
 
                   {/* Assign */}
                   <div className="space-y-2">
@@ -1322,7 +1060,11 @@ export function CreateAssignmentFullPageModal({
                       style={{ background: "linear-gradient(135deg,#10B981,#06B6D4)", color: "#FFFFFF" }}
                     >
                       <Users className="w-4 h-4 shrink-0" />
-                      <span className="min-w-0 break-words">{t("allStudents")}</span>
+                      <span className="min-w-0 break-words">
+                        {selectedStudentIds.length === 0
+                          ? t("allStudents")
+                          : t("studentsSelectedCount").replace("{count}", String(selectedStudentIds.length))}
+                      </span>
                     </button>
                   </div>
 
@@ -1547,32 +1289,6 @@ export function CreateAssignmentFullPageModal({
                   )}
 
                   {/* Question specific checkboxes */}
-                  {mode === "question" && (
-                    <div className="space-y-3 pt-2">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={canComment}
-                          onChange={(e) => setCanComment(e.target.checked)}
-                          className="w-4 h-4 rounded accent-blue-500"
-                        />
-                        <span className="text-sm" style={{ color: textColors.primary }}>
-                          {t("teacherQuestionStudentsMayCommentPeers")}
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={canEdit}
-                          onChange={(e) => setCanEdit(e.target.checked)}
-                          className="w-4 h-4 rounded accent-blue-500"
-                        />
-                        <span className="text-sm" style={{ color: textColors.primary }}>
-                          {t("teacherQuestionStudentsMayEditAnswers")}
-                        </span>
-                      </label>
-                    </div>
-                  )}
 
                   {/* Small rubric preview */}
                   {isAssignmentLike && rubricPayload.length > 0 ? (
@@ -1678,6 +1394,31 @@ export function CreateAssignmentFullPageModal({
                           <option value="asc">{t("sortByPointsAsc")}</option>
                         </select>
                       </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-semibold" style={{ color: textColors.primary }}>
+                          {t("passingScore")} (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={testPassingScore}
+                          onChange={(e) => setTestPassingScore(Number(e.target.value))}
+                          className="w-20 px-3 py-2 rounded-xl text-center font-semibold"
+                          style={{ ...inputStyle, color: textColors.primary }}
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={testPassingScore}
+                        onChange={(e) => setTestPassingScore(Number(e.target.value))}
+                        className="w-full accent-blue-500"
+                      />
                     </div>
                   </div>
 
@@ -2064,20 +1805,40 @@ export function CreateAssignmentFullPageModal({
                   <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: textColors.secondary }}>
                     {t("assignmentGroupRosterTitle")}
                   </p>
-                  {students.map((s) => (
-                    <div
-                      key={s.id}
-                      className="px-4 py-3 rounded-2xl"
-                      style={{ border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}
-                    >
-                      <span className="block text-sm font-semibold break-words" style={{ color: textColors.primary }}>
-                        {s.full_name || s.email}
-                      </span>
-                      <span className="block text-xs mt-0.5 break-all" style={{ color: textColors.secondary }}>
-                        {s.email}
-                      </span>
-                    </div>
-                  ))}
+                  {students.map((s) => {
+                    const isSelected = selectedStudentIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-black/5 dark:hover:bg-white/5 border"
+                        style={{ 
+                          borderColor: isSelected ? "#10B981" : isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                          background: isSelected ? (isDark ? "rgba(16,185,129,0.1)" : "rgba(209,250,229,0.3)") : "transparent"
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 rounded-md accent-emerald-500 shrink-0"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedStudentIds(prev => 
+                              prev.includes(s.id) 
+                                ? prev.filter(id => id !== s.id) 
+                                : [...prev, s.id]
+                            );
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold truncate" style={{ color: textColors.primary }}>
+                            {s.full_name || s.email}
+                          </span>
+                          <span className="block text-xs mt-0.5 truncate" style={{ color: textColors.secondary }}>
+                            {s.email}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
 
@@ -2434,59 +2195,6 @@ export function CreateAssignmentFullPageModal({
             ))}
           </div>
         ) : null}
-      </div>
-    );
-  }
-
-  function QuestionOptionMenu({ onDuplicate, onMoveUp, onMoveDown }: { onDuplicate: () => void; onMoveUp?: () => void; onMoveDown?: () => void }) {
-    const [open, setOpen] = useState(false);
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="p-2 text-gray-400 hover:text-gray-600"
-        >
-          <ChevronDown className="w-4 h-4" />
-        </button>
-        {open && (
-          <div
-            className="absolute right-0 mt-1 z-[100] w-48 rounded-xl overflow-hidden shadow-xl border"
-            style={{
-              background: isDark ? "rgba(26,34,56,0.98)" : "#FFFFFF",
-              borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
-            }}
-          >
-            <button
-              type="button"
-              className="w-full text-left px-4 py-2 text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/10"
-              onClick={() => { onDuplicate(); setOpen(false); }}
-              style={{ color: textColors.primary }}
-            >
-              {t("duplicate")}
-            </button>
-            {onMoveUp && (
-              <button
-                type="button"
-                className="w-full text-left px-4 py-2 text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/10"
-                onClick={() => { onMoveUp(); setOpen(false); }}
-                style={{ color: textColors.primary }}
-              >
-                {t("moveUp")}
-              </button>
-            )}
-            {onMoveDown && (
-              <button
-                type="button"
-                className="w-full text-left px-4 py-2 text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/10"
-                onClick={() => { onMoveDown(); setOpen(false); }}
-                style={{ color: textColors.primary }}
-              >
-                {t("moveDown")}
-              </button>
-            )}
-          </div>
-        )}
       </div>
     );
   }

@@ -7,7 +7,7 @@ export async function POST(request: Request) {
 
     if (!to || !subject || !html) {
       return NextResponse.json(
-        { error: "Не указаны обязательные поля: to, subject, html" },
+        { error: "Missing required fields: to, subject, html" },
         { status: 400 }
       );
     }
@@ -16,9 +16,9 @@ export async function POST(request: Request) {
     const emailPass = process.env.EMAIL_PASS;
 
     if (!emailUser || !emailPass) {
-      console.warn("EMAIL_USER или EMAIL_PASS не настроены в .env.local");
+      console.warn("EMAIL_USER or EMAIL_PASS not configured in .env.local");
       return NextResponse.json(
-        { error: "SMTP не настроен" },
+        { error: "SMTP not configured" },
         { status: 500 }
       );
     }
@@ -47,18 +47,18 @@ export async function POST(request: Request) {
     await transporter.sendMail(mailOptions);
 
     return NextResponse.json(
-      { message: "Письмо успешно отправлено!" },
+      { message: "Email sent successfully!" },
       { status: 200 }
     );
   } catch (error: unknown) {
-    console.error("Ошибка при отправке письма:", error);
+    console.error("Error sending email:", error);
     const err = error as { message?: string; code?: string };
-    const errorMessage = err?.message || "Неизвестная ошибка";
+    const errorMessage = err?.message || "Unknown error";
     const errorCode = err?.code || "UNKNOWN";
     
     return NextResponse.json(
       { 
-        error: "Не удалось отправить письмо",
+        error: "Failed to send email",
         details: errorMessage,
         code: errorCode,
       },

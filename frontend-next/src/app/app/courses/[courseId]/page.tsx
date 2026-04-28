@@ -18,7 +18,6 @@ import type { Course } from "@/types";
 import { getLocalizedCourseDesc, getLocalizedCourseTitle, getCourseBannerUrl } from "@/lib/courseUtils";
 import { StudentCourseClasswork } from "@/components/courses/StudentCourseClasswork";
 import { CourseFeedPanel } from "@/components/courses/CourseFeedPanel";
-import { SupplementaryMaterials } from "@/components/courses/SupplementaryMaterials";
 
 interface Structure {
   course_id: number;
@@ -134,11 +133,12 @@ export default function CourseDetailPage() {
   const { data: progressList = [] } = useQuery({
     queryKey: ["progress", id, userId],
     queryFn: async () => {
-      const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean }>>(`/progress/course/${id}`);
+      const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean; test_score?: number | null }>>(`/progress/course/${id}`);
       return data;
     },
     enabled: !!id && enrolled && !waitingForGroup && userId != null,
   });
+
 
   const { data: stats } = useQuery({
     queryKey: ["dashboard-stats"],
@@ -217,18 +217,16 @@ export default function CourseDetailPage() {
   const router = useRouter();
 
   const rawTab = searchParams.get("tab");
-  const courseTab: "tasks" | "people" | "classwork" | "feed" | "supplementary" =
+  const courseTab: "tasks" | "people" | "classwork" | "feed" =
     rawTab === "classwork"
       ? "classwork"
       : rawTab === "people"
         ? "people"
         : rawTab === "feed"
           ? "feed"
-          : rawTab === "supplementary"
-            ? "supplementary"
             : "tasks";
 
-  const setCourseTab = (next: "tasks" | "people" | "classwork" | "feed" | "supplementary") => {
+  const setCourseTab = (next: "tasks" | "people" | "classwork" | "feed") => {
     const q = new URLSearchParams(searchParams.toString());
     if (next === "tasks") {
       q.delete("tab");
@@ -241,7 +239,7 @@ export default function CourseDetailPage() {
   };
 
   useEffect(() => {
-    const allowed = new Set(["people", "tasks", "classwork", "feed", "supplementary"]);
+    const allowed = new Set(["people", "tasks", "classwork", "feed"]);
     const tab = searchParams.get("tab");
     if (tab && !allowed.has(tab)) {
       const q = new URLSearchParams(searchParams.toString());
@@ -672,17 +670,6 @@ export default function CourseDetailPage() {
             >
               {t("courseFeedTab")}
             </button>
-            <button
-              type="button"
-              onClick={() => setCourseTab("supplementary")}
-              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-                courseTab === "supplementary"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
-              }`}
-            >
-              {t("supplementaryMaterialsTab" as TranslationKey)}
-            </button>
           </nav>
           )}
 
@@ -758,11 +745,6 @@ export default function CourseDetailPage() {
             </div>
           )}
 
-          {!waitingForGroup && courseTab === "supplementary" && (
-            <div className="mb-6 min-w-0">
-              <SupplementaryMaterials courseId={id} />
-            </div>
-          )}
 
           {!waitingForGroup && courseTab === "tasks" && (
             <>

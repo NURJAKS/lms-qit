@@ -113,20 +113,20 @@ def pay_application(
 ):
     course = db.query(Course).filter(Course.id == body.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     if not course.is_active:
-        raise HTTPException(status_code=400, detail="Курс пока недоступен для записи.")
+        raise HTTPException(status_code=400, detail="errorCourseUnavailable")
 
     if body.parent_email.strip():
         email_re = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
         if not email_re.match(body.parent_email.strip()):
-            raise HTTPException(status_code=400, detail="Некорректный email родителя.")
+            raise HTTPException(status_code=400, detail="errorInvalidParentEmail")
 
     existing_user = db.query(User).filter(User.email == body.email).first()
     if existing_user and getattr(existing_user, "is_approved", True):
         raise HTTPException(
             status_code=400,
-            detail="У вас уже есть аккаунт. Войдите в систему и купите курс из личного кабинета.",
+            detail="errorHasAccountLoginNeeded",
         )
 
     if existing_user:
@@ -146,7 +146,7 @@ def pay_application(
             CourseApplication.status.in_(["paid", "approved"]),
         ).first()
         if existing_paid:
-            raise HTTPException(status_code=400, detail="Вы уже оплатили этот курс.")
+            raise HTTPException(status_code=400, detail="errorCourseAlreadyPaid")
     else:
         temp_password = _generate_password()
         user = User(
@@ -331,7 +331,7 @@ def confirm_purchase(
         CourseApplication.confirmation_token == token,
     ).first()
     if not app:
-        raise HTTPException(status_code=404, detail="Ссылка для подтверждения недействительна.")
+        raise HTTPException(status_code=404, detail="errorInvalidConfirmLink")
 
     if app.confirmed_at is not None:
         user = db.query(User).filter(User.id == app.user_id).first()
@@ -339,15 +339,15 @@ def confirm_purchase(
         parent_user = db.query(User).filter(User.id == user.parent_id).first() if user and user.parent_id else None
         raise HTTPException(
             status_code=400,
-            detail="Покупка уже подтверждена. Войдите в систему с логином и паролем из письма.",
+            detail="errorPurchaseAlreadyConfirmed",
         )
 
     user = db.query(User).filter(User.id == app.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден.")
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
     course = db.query(Course).filter(Course.id == app.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден.")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     temp_password = _generate_password()
     user.password_hash = get_password_hash(temp_password)
@@ -421,21 +421,21 @@ def submit_application(
     """Публичный эндпоинт: заявка на покупку курса без авторизации."""
     course = db.query(Course).filter(Course.id == body.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
     if not course.is_active:
-        raise HTTPException(status_code=400, detail="Курс пока недоступен для записи.")
+        raise HTTPException(status_code=400, detail="errorCourseUnavailable")
 
     if body.parent_email.strip():
         email_re = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
         if not email_re.match(body.parent_email.strip()):
-            raise HTTPException(status_code=400, detail="Некорректный email родителя.")
+            raise HTTPException(status_code=400, detail="errorInvalidParentEmail")
 
     existing_user = db.query(User).filter(User.email == body.email).first()
 
     if existing_user and getattr(existing_user, "is_approved", True):
         raise HTTPException(
             status_code=400,
-            detail="У вас уже есть аккаунт. Войдите в систему и купите курс из личного кабинета.",
+            detail="errorHasAccountLoginNeeded",
         )
 
     if existing_user:
@@ -450,7 +450,7 @@ def submit_application(
             CourseApplication.status == "pending",
         ).first()
         if existing_app:
-            raise HTTPException(status_code=400, detail="Заявка на этот курс уже отправлена.")
+            raise HTTPException(status_code=400, detail="errorApplicationAlreadySent")
     else:
         temp_password = _generate_password()
         user = User(

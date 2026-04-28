@@ -20,9 +20,13 @@ const ICON_COLORS = [
 const iconByNotes = (notes: string | null) => {
   if (!notes) return Calendar;
   const n = (notes || "").toLowerCase();
-  if (n.includes("quiz") || n.includes("тест")) return HelpCircle;
-  if (n.includes("homework") || n.includes("тапсырма")) return FolderCode;
-  if (n.includes("code") || n.includes("код")) return Code;
+  const isQuiz = n.includes("quiz") || n.includes("тест") || n.includes("квиз") || n.includes("test");
+  const isHomework = n.includes("homework") || n.includes("тапсырма") || n.includes("задание") || n.includes("үй");
+  const isCode = n.includes("code") || n.includes("код") || n.includes("программ");
+  
+  if (isQuiz) return HelpCircle;
+  if (isHomework) return FolderCode;
+  if (isCode) return Code;
   return Calendar;
 };
 

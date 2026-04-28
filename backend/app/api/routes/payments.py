@@ -49,12 +49,12 @@ def confirm_payment(
     """Simulate payment success: set completed, create enrollment."""
     payment = db.query(Payment).filter(Payment.id == payment_id, Payment.user_id == current_user.id).first()
     if not payment:
-        raise HTTPException(status_code=404, detail="Платёж не найден")
+        raise HTTPException(status_code=404, detail="errorPaymentNotFound")
     if payment.status != "pending":
-        raise HTTPException(status_code=400, detail="Платёж уже обработан")
+        raise HTTPException(status_code=400, detail="errorPaymentProcessed")
     course = db.query(Course).filter(Course.id == payment.course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     existing = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
         CourseEnrollment.course_id == payment.course_id,
@@ -63,7 +63,7 @@ def confirm_payment(
         payment.status = "completed"
         db.commit()
         return {
-            "message": "Вы уже записаны на этот курс",
+            "message": "errorAlreadyEnrolled",
             "enrollment_id": existing.id,
             "payment_id": payment.id,
             "transaction_id": f"TXN-{payment.id:08d}",
@@ -81,8 +81,8 @@ def confirm_payment(
     notif = Notification(
         user_id=current_user.id,
         type="course_purchased",
-        title="Курс куплен",
-        message=f"Оплата за курс «{course.title}» принята. Менеджер/куратор добавит вас в учебную группу в ближайшее время.",
+        title="notifCoursePurchasedTitle",
+        message="notifCoursePurchasedBody",
         link=f"/app/courses/{payment.course_id}",
     )
     db.add(notif)
@@ -122,8 +122,8 @@ def confirm_payment(
                 teacher_notif = Notification(
                     user_id=group.teacher_id,
                     type="add_student_task",
-                    title="Добавьте студента в группу",
-                    message=f"Студент {current_user.full_name or current_user.email} оплатил курс «{course.title}». Добавьте его в группу «{group.group_name}».",
+                    title="notifAddStudentTaskTitle",
+                    message="notifAddStudentTaskBody",
                     link="/app/teacher?tab=requests"
                 )
                 db.add(teacher_notif)
@@ -131,7 +131,7 @@ def confirm_payment(
     db.commit()
     db.refresh(enrollment)
     return {
-        "message": "Оплата принята. Доступ к материалам откроется после добавления в учебную группу.",
+        "message": "msgPaymentAcceptedWait",
         "enrollment_id": enrollment.id,
         "payment_id": payment.id,
         "transaction_id": f"TXN-{payment.id:08d}",

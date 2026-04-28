@@ -35,6 +35,7 @@ import { TestComponent } from "@/components/tests/TestComponent";
 import { PrivateCommentsSection } from "@/components/courses/PrivateCommentsSection";
 import { AssignmentClassCommentsSection } from "@/components/courses/AssignmentClassCommentsSection";
 import { cn } from "@/lib/utils";
+import { getLocalizedTopicTitle } from "@/lib/courseUtils";
 import { htmlLinksOpenInNewTab } from "@/lib/htmlLinkNewTab";
 import { formatLocalizedDate, formatRelativeDate } from "@/utils/dateUtils";
 import { TopicTheoryContent } from "@/components/courses/TopicTheoryContent";
@@ -80,6 +81,8 @@ type AssignmentRow = {
   submission_text?: string | null;
   class_comments_count?: number;
   allow_student_class_comments?: boolean;
+  is_synopsis?: boolean;
+  is_supplementary?: boolean;
   is_locked?: boolean;
 };
 
@@ -95,6 +98,7 @@ type MaterialRow = {
   attachment_urls: string[];
   attachment_links: string[];
   created_at: string | null;
+  is_supplementary?: boolean;
   is_locked?: boolean;
 };
 
@@ -502,8 +506,6 @@ export function StudentCourseClasswork({
   const [workActionError, setWorkActionError] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [showTest, setShowTest] = useState(false);
-  const [testAttemptKey, setTestAttemptKey] = useState(0);
 
   const [topicFilter, setTopicFilter] = useState<"all" | number>("all");
   const [topicFilterOpen, setTopicFilterOpen] = useState(false);
@@ -620,7 +622,7 @@ export function StudentCourseClasswork({
         ...materialItems(filterM(courseMaterials.filter((m) => m.topic_id === tp.id))),
         ...questionItems(filterQ(courseQuestions.filter((q) => q.topic_id === tp.id))),
       ];
-      sections.push({ key: `t-${tp.id}`, topicId: tp.id, title: tp.title, items });
+      sections.push({ key: `t-${tp.id}`, topicId: tp.id, title: getLocalizedTopicTitle(tp.title, t as any), items });
     }
 
     const uncatItems: ClassworkItem[] = [
@@ -1191,32 +1193,7 @@ export function StudentCourseClasswork({
                 </div>
               )}
 
-              {/* Quiz section */}
-              {a.test_id && !a.submitted && !a.closed && (
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowTest(true)}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-purple-500/30 hover:from-purple-700 hover:to-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <Sparkles className="w-5 h-5" />
-                    {t("startQuiz" as TranslationKey)}
-                  </button>
-                </div>
-              )}
 
-              {showTest && a.test_id && (
-                <TestComponent
-                  testId={a.test_id}
-                  onComplete={() => {
-                    setShowTest(false);
-                    refetchAssignments();
-                  }}
-                  onCancel={() => setShowTest(false)}
-                  onRetake={() => setTestAttemptKey((k) => k + 1)}
-                  key={testAttemptKey}
-                />
-              )}
 
               {!a.submitted ? (
                 <button
@@ -1376,7 +1353,7 @@ export function StudentCourseClasswork({
           >
             <div className="flex items-center gap-2 min-w-0">
               <Filter className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors shrink-0" />
-              <span className="truncate">{topicFilter === "all" ? t("allTopics") : topics.find((tp) => tp.id === topicFilter)?.title ?? t("allTopics")}</span>
+              <span className="truncate">{topicFilter === "all" ? t("allTopics") : getLocalizedTopicTitle(topics.find((tp) => tp.id === topicFilter)?.title || "", t as any) || t("allTopics")}</span>
             </div>
             <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform duration-200 shrink-0", topicFilterOpen && "rotate-180")} />
           </button>
@@ -1407,7 +1384,7 @@ export function StudentCourseClasswork({
                   )}
                   onClick={() => { setTopicFilter(tp.id); setTopicFilterOpen(false); }}
                 >
-                  {tp.title}
+                  {getLocalizedTopicTitle(tp.title, t as any)}
                 </button>
               ))}
             </div>

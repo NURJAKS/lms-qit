@@ -274,7 +274,7 @@ export function AppDashboardSidebar() {
                         title={compact ? label : undefined}
                       >
                         <Icon className="w-5 h-5 shrink-0" />
-                        {!compact && <span>{label}</span>}
+                        {!compact && <span className="text-sm font-semibold">{label}</span>}
                       </Link>
                     );
                   })}
@@ -309,7 +309,7 @@ export function AppDashboardSidebar() {
                         title={compact ? label : undefined}
                       >
                         <Icon className="w-5 h-5 shrink-0" />
-                        {!compact && <span>{label}</span>}
+                        {!compact && <span className="text-sm font-semibold">{label}</span>}
                       </Link>
                     );
                   })}

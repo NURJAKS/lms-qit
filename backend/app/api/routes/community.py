@@ -93,7 +93,7 @@ def list_posts(
     limit: int = Query(default=100, ge=1, le=200),
 ):
     if current_user.role == "parent":
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     q = (
         db.query(CommunityPost)
@@ -113,7 +113,7 @@ def create_post(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     if current_user.role == "parent":
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     post = CommunityPost(
         user_id=current_user.id,
@@ -133,7 +133,7 @@ def toggle_post_like(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     if current_user.role == "parent":
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     post = (
         db.query(CommunityPost)
@@ -142,7 +142,7 @@ def toggle_post_like(
         .first()
     )
     if not post:
-        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        raise HTTPException(status_code=404, detail="errorPostNotFound")
 
     existing = db.query(CommunityPostLike).filter(
         CommunityPostLike.post_id == post_id,
@@ -165,13 +165,13 @@ def update_post(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     if current_user.role == "parent":
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     post = db.query(CommunityPost).filter(CommunityPost.id == post_id, CommunityPost.is_deleted == False).first()  # noqa: E712
     if not post:
-        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        raise HTTPException(status_code=404, detail="errorPostNotFound")
     if not _can_manage_post(current_user, post):
-        raise HTTPException(status_code=403, detail="Нельзя редактировать это сообщение")
+        raise HTTPException(status_code=403, detail="errorPostEditForbidden")
 
     if body.text is not None:
         post.text = body.text.strip()
@@ -190,13 +190,13 @@ def delete_post(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     if current_user.role == "parent":
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
 
     post = db.query(CommunityPost).filter(CommunityPost.id == post_id, CommunityPost.is_deleted == False).first()  # noqa: E712
     if not post:
-        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        raise HTTPException(status_code=404, detail="errorPostNotFound")
     if not _can_manage_post(current_user, post):
-        raise HTTPException(status_code=403, detail="Нельзя удалить это сообщение")
+        raise HTTPException(status_code=403, detail="errorPostDeleteForbidden")
 
     post.is_deleted = True
     post.updated_at = datetime.now(timezone.utc)

@@ -32,10 +32,26 @@ def deadline_passed_utc(deadline: datetime | None, now: datetime) -> bool:
 
 
 def submission_closed_http_detail(a: TeacherAssignment) -> str:
-    """Human-readable reason (RU) for HTTP 400 when submission is blocked."""
+    """Human-readable reason key for HTTP 400 when submission is blocked."""
     if getattr(a, "closed_at", None) is not None:
-        return "Задание закрыто преподавателем. Сдача работ недоступна."
+        return "errorAssignmentClosedTeacher"
     dl = getattr(a, "deadline", None)
     if dl is not None and getattr(a, "reject_submissions_after_deadline", True):
-        return "Срок сдачи истёк. Работы больше не принимаются."
-    return "Сдача работ по этому заданию сейчас недоступна."
+        return "errorAssignmentDeadlinePassed"
+    return "errorAssignmentSubmissionUnavailable"
+
+
+def can_student_see_item(item: any, student_id: int) -> bool:
+    """True if target_student_ids is null or contains student_id."""
+    raw = getattr(item, "target_student_ids", None)
+    if not raw:
+        return True
+    import json
+    try:
+        ids = json.loads(raw)
+        if not ids:
+            return True
+        return student_id in ids
+    except Exception:
+        return True
+

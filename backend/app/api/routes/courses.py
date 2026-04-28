@@ -160,7 +160,7 @@ def get_course(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     return course
 
 
@@ -172,7 +172,7 @@ def get_course_topics(
     """Плоский список тем курса (для формы задания)."""
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     topics = db.query(CourseTopic).filter(CourseTopic.course_id == course_id).order_by(CourseTopic.order_number).all()
     return [{"id": t.id, "title": t.title, "module_id": t.module_id} for t in topics]
 
@@ -186,7 +186,7 @@ def get_course_structure(
     """Модули и темы курса (для отображения структуры)."""
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     modules = db.query(CourseModule).filter(CourseModule.course_id == course_id).order_by(CourseModule.order_number).all()
     include_video_urls = can_view_course_structure_video_urls(db, current_user, course)
     result = []
@@ -286,15 +286,15 @@ def initiate_payment(
     """Create pending payment for course purchase."""
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     if not course.is_active:
-        raise HTTPException(status_code=400, detail="Курс пока недоступен для записи.")
+        raise HTTPException(status_code=400, detail="errorCourseNotActive")
     existing = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
         CourseEnrollment.course_id == course_id,
     ).first()
     if existing:
-        return {"message": "Вы уже записаны на этот курс", "enrollment_id": existing.id, "payment_id": None}
+        return {"message": "errorAlreadyEnrolled", "enrollment_id": existing.id, "payment_id": None}
     payment = Payment(
         user_id=current_user.id,
         course_id=course_id,
@@ -315,17 +315,17 @@ def enroll_course(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     if not course.is_active:
-        raise HTTPException(status_code=400, detail="Курс пока недоступен для записи.")
+        raise HTTPException(status_code=400, detail="errorCourseNotActive")
     if getattr(course, "is_premium_only", False) and getattr(current_user, "is_premium", 0) != 1:
-        raise HTTPException(status_code=403, detail="Курс доступен только для Premium. Оформите подписку.")
+        raise HTTPException(status_code=403, detail="errorPremiumOnly")
     existing = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
         CourseEnrollment.course_id == course_id,
     ).first()
     if existing:
-        return {"message": "Вы уже записаны на этот курс", "enrollment_id": existing.id}
+        return {"message": "errorAlreadyEnrolled", "enrollment_id": existing.id}
     is_premium_course = getattr(course, "is_premium_only", False)
     payment_amt = Decimal("0") if is_premium_course else (course.price or 0)
     enrollment = CourseEnrollment(
@@ -337,9 +337,8 @@ def enroll_course(
     db.add(enrollment)
     notif = Notification(
         user_id=current_user.id,
-        type="course_purchased",
-        title="Курс куплен",
-        message=f"Оплата за курс «{course.title}» принята. Менеджер/куратор добавит вас в учебную группу в ближайшее время.",
+        title="notifCoursePurchasedTitle",
+        message="notifCoursePurchasedBody",
         link=f"/app/courses/{course_id}",
     )
     db.add(notif)
@@ -381,15 +380,15 @@ def enroll_course(
                 teacher_notif = Notification(
                     user_id=group.teacher_id,
                     type="add_student_task",
-                    title="Добавьте студента в группу",
-                    message=f"Студент {current_user.full_name or current_user.email} оплатил курс «{course.title}». Добавьте его в группу «{group.group_name}».",
-                    link="/app/teacher?tab=requests"
+                title="notifAddStudentTaskTitle",
+                message="notifAddStudentTaskBody",
+                link="/app/teacher?tab=requests"
                 )
                 db.add(teacher_notif)
     
     db.commit()
     db.refresh(enrollment)
-    return {"message": "Оплата принята. Доступ к материалам откроется после добавления в учебную группу.", "enrollment_id": enrollment.id}
+    return {"message": "msgPaymentAcceptedWait", "enrollment_id": enrollment.id}
 
 
 @router.get("/{course_id}/feed")
@@ -401,7 +400,7 @@ def get_student_course_feed(
     """Лента курса для студента: дедлайны, расписание, посты."""
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     enr = (
         db.query(CourseEnrollment)
         .filter(
@@ -411,14 +410,17 @@ def get_student_course_feed(
         .first()
     )
     if not enr:
-        raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+        raise HTTPException(status_code=403, detail="errorNotEnrolled")
 
     gids = [
-        gs.group_id
-        for gs in db.query(GroupStudent).join(TeacherGroup, TeacherGroup.id == GroupStudent.group_id).filter(
+        g.id
+        for g in db.query(TeacherGroup)
+        .join(GroupStudent, GroupStudent.group_id == TeacherGroup.id)
+        .filter(
             GroupStudent.student_id == current_user.id,
             TeacherGroup.course_id == course_id,
-        ).all()
+        )
+        .all()
     ]
 
     now = datetime.now(timezone.utc)
@@ -488,7 +490,7 @@ def get_student_course_feed(
             {
                 "kind": "schedule",
                 "id": f"sch-{r.id}",
-                "title": (r.notes or "")[:200] or "Событие в расписании",
+                "title": (r.notes or "")[:200] or "scheduleEventDefault",
                 "body": r.notes,
                 "link": f"/app/courses/{course_id}",
                 "date": str(r.scheduled_date),
@@ -542,8 +544,8 @@ def get_student_course_feed(
         items.append({
             "kind": "graded",
             "id": f"gr-asg-{gs.id}",
-            "title": f"Оценено: {gs.assignment.title}",
-            "body": f"Ваша работа проверена. Оценка: {gs.grade}",
+            "title": "notifGradedTitle",
+            "body": "notifGradedBody",
             "link": f"/app/courses/{course_id}?tab=classwork&assignmentId={gs.assignment_id}",
             "date": gs.graded_at.isoformat() if gs.graded_at else None,
             "meta": {"submission_id": gs.id}
@@ -566,8 +568,8 @@ def get_student_course_feed(
         items.append({
             "kind": "graded",
             "id": f"gr-syn-{gs.id}",
-            "title": f"Проверено: Конспект ({gs.topic.title})",
-            "body": "Ваш конспект проверен учителем.",
+            "title": "notifSynopsisCheckedTitle",
+            "body": "notifSynopsisCheckedBody",
             "link": f"/app/courses/{course_id}/topic/{gs.topic_id}",
             "date": gs.graded_at.isoformat() if gs.graded_at else None,
             "meta": {"synopsis_id": gs.id}
@@ -577,7 +579,7 @@ def get_student_course_feed(
         d = it.get("date") or ""
         return d
 
-    items.sort(key=sort_key)
+    items.sort(key=sort_key, reverse=True)
     return {"items": items}
 
 
@@ -590,16 +592,16 @@ def create_course_feed_post(
 ):
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
+        raise HTTPException(status_code=404, detail="courseNotFound")
     if not _teacher_can_post_feed(db, current_user, course_id, body.group_id):
-        raise HTTPException(status_code=403, detail="Нет прав публиковать в ленте этого курса")
+        raise HTTPException(status_code=403, detail="errorNoFeedPostPermission")
     kind = (body.kind or "text").strip().lower()
     if kind not in ("text", "survey", "event", "recommendation"):
         kind = "text"
     if body.group_id is not None:
         g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
         if not g or g.course_id != course_id:
-            raise HTTPException(status_code=400, detail="Группа не относится к этому курсу")
+            raise HTTPException(status_code=400, detail="errorGroupMismatch")
     att = _normalize_feed_attachment_urls(body.attachment_urls)
     row = CourseFeedPost(
         author_id=current_user.id,
@@ -632,9 +634,9 @@ def delete_course_feed_post(
         .first()
     )
     if not post:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
     if not _teacher_can_post_feed(db, current_user, course_id, post.group_id):
-        raise HTTPException(status_code=403, detail="Нет прав удалять эту запись")
+        raise HTTPException(status_code=403, detail="errorNoDeletePermission")
     db.delete(post)
     db.commit()
     return {"ok": True}

@@ -19,7 +19,7 @@ import { CreateAssignmentFullPageModal } from "@/components/teacher/CreateAssign
 import { TeacherGradebook } from "@/components/teacher/TeacherGradebook";
 import InviteTeacherModal from "@/components/teacher/InviteTeacherModal";
 import { cn } from "@/lib/utils";
-import { getLocalizedCourseTitle } from "@/lib/courseUtils";
+import { getLocalizedCourseTitle, getLocalizedTopicTitle } from "@/lib/courseUtils";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -41,6 +41,10 @@ import {
   StickyNote,
   Edit,
   Pencil,
+  ClipboardList,
+  Sparkles,
+  RotateCcw,
+  Globe,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 
@@ -205,7 +209,7 @@ export default function TeacherCourseGroupPage() {
   const [synopsisModalTopic, setSynopsisModalTopic] = useState<{ id: number; title: string } | null>(null);
 
   const [assignmentModalMode, setAssignmentModalMode] = useState<
-    "assignment" | "assignmentWithTest" | "question" | "material"
+    "assignment" | "question" | "material"
   >("assignment");
   const [clonedItemData, setClonedItemData] = useState<any>(null);
 
@@ -229,7 +233,7 @@ export default function TeacherCourseGroupPage() {
   const [classworkItemMenu, setClassworkItemMenu] = useState<{ type: Assignment["type"]; id: number } | null>(null);
   const classworkItemMenuRef = useRef<HTMLDivElement>(null);
   useClickOutside(classworkItemMenuRef, () => setClassworkItemMenu(null));
-  const [deleteAssignmentConfirmId, setDeleteAssignmentConfirmId] = useState<number | null>(null);
+  const [deleteAssignmentConfirmItem, setDeleteAssignmentConfirmItem] = useState<{ id: number; type: string } | null>(null);
   const [confirmMounted, setConfirmMounted] = useState(false);
   useEffect(() => {
     setConfirmMounted(true);
@@ -320,12 +324,15 @@ export default function TeacherCourseGroupPage() {
   });
 
   const incompleteTopics = useMemo(() => {
-    return localTopics.map(tp => {
-      const topicAssignments = localAssignments.filter(a => a.topic_id === tp.id);
-      const hasSynopsis = topicAssignments.some(a => a.is_synopsis);
-      const hasTask = topicAssignments.some(a => !a.is_synopsis);
-      return { ...tp, hasSynopsis, hasTask };
-    }).filter(tp => !tp.hasSynopsis || !tp.hasTask);
+    return localTopics
+      .filter(tp => !!tp)
+      .map(tp => {
+        const topicAssignments = localAssignments.filter(a => a && a.topic_id === tp.id);
+        const hasSynopsis = topicAssignments.some(a => a.is_synopsis);
+        const hasTask = topicAssignments.some(a => !a.is_synopsis);
+        return { ...tp, hasSynopsis, hasTask };
+      })
+      .filter(tp => !tp.hasSynopsis || !tp.hasTask);
   }, [localTopics, localAssignments]);
 
   const { data: topicSynopsesList = [], isFetching: topicSynopsesLoading } = useQuery({
@@ -379,7 +386,7 @@ export default function TeacherCourseGroupPage() {
   }, [assignments]);
 
   useEffect(() => {
-    setLocalTopics(topics);
+    setLocalTopics(topics.filter(tp => !!tp));
   }, [topics]);
 
   useEffect(() => {
@@ -527,22 +534,27 @@ export default function TeacherCourseGroupPage() {
   });
 
   const deleteClassworkAssignmentMutation = useMutation({
-    mutationFn: async (assignmentId: number) => {
-      await api.delete(`/teacher/assignments/${assignmentId}`);
+    mutationFn: async ({ id, type }: { id: number; type: string }) => {
+      const endpoint = type === "material"
+        ? `/teacher/materials/${id}`
+        : type === "question"
+          ? `/teacher/questions/${id}`
+          : `/teacher/assignments/${id}`;
+      await api.delete(endpoint);
     },
-    onSuccess: (_, assignmentId) => {
+    onSuccess: (_, { id, type }) => {
       queryClient.invalidateQueries({ queryKey: ["teacher-assignments", groupId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-submissions-inbox", groupId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-topics-missing-assignments", groupId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-gradebook", groupId] });
       setClassworkItemMenu(null);
-      setDeleteAssignmentConfirmId(null);
-      setExpandedItem((prev) => (prev?.type === "assignment" && prev.id === assignmentId ? null : prev));
+      setDeleteAssignmentConfirmItem(null);
+      setExpandedItem((prev) => (prev?.type === type && prev.id === id ? null : prev));
     },
   });
 
   const handleBulkDeleteUncategorized = async () => {
-    const topicIdSet = new Set(localTopics.map((tp) => tp.id));
+    const topicIdSet = new Set(localTopics.filter(tp => !!tp).map((tp) => tp.id));
     const uniqueAssignments = Array.from(new Map(localAssignments.map(a => [a.id, a])).values());
     const uncategorizedItems = uniqueAssignments.filter(
       (a) => a.topic_id == null || !topicIdSet.has(a.topic_id as number)
@@ -562,7 +574,7 @@ export default function TeacherCourseGroupPage() {
             : `/teacher/assignments/${item.id}`;
         return api.delete(endpoint);
       }));
-      toast.success(t("teacherWorkDeleted") || "Success");
+      toast.success(t("teacherWorkDeleted"));
       queryClient.invalidateQueries({ queryKey: ["teacher-assignments", groupId] });
       setIsDeletingUncategorized(false);
     } catch {
@@ -571,13 +583,15 @@ export default function TeacherCourseGroupPage() {
   };
 
   const topicSections = useMemo(() => {
-    const byId = new Map<number, Assignment>();
+    const byId = new Map<string, Assignment>();
     for (const a of localAssignments) {
-      byId.set(a.id, a);
+      if (a.type !== "question") {
+        byId.set(`${a.type}-${a.id}`, a);
+      }
     }
     const uniqueAssignments = Array.from(byId.values());
 
-    const topicIdSet = new Set(localTopics.map((tp) => tp.id));
+    const topicIdSet = new Set(localTopics.filter(tp => !!tp).map((tp) => tp.id));
 
     const filtered = (arr: Assignment[]) =>
       topicFilter === "all" ? arr : arr.filter((a) => a.topic_id === topicFilter);
@@ -591,6 +605,7 @@ export default function TeacherCourseGroupPage() {
     const sections: { key: string; topicId: number | null; title: string; items: Assignment[] }[] = [];
 
     if (uncategorized.length > 0) {
+      uncategorized.sort((a, b) => (a.is_supplementary ? 1 : -1) - (b.is_supplementary ? 1 : -1));
       sections.push({
         key: "uncategorized",
         topicId: null,
@@ -600,16 +615,13 @@ export default function TeacherCourseGroupPage() {
     }
 
     for (const tp of localTopics) {
-      const items = filtered(uniqueAssignments.filter((a) => a.topic_id === tp.id))
-        .sort((a, b) => {
-          if (!!a.is_supplementary === !!b.is_supplementary) return 0;
-          return a.is_supplementary ? 1 : -1;
-        });
+      const items = filtered(uniqueAssignments.filter((a) => a.topic_id === tp.id));
+      items.sort((a, b) => (a.is_supplementary ? 1 : -1) - (b.is_supplementary ? 1 : -1));
 
       sections.push({
         key: `t-${tp.id}`,
         topicId: tp.id,
-        title: tp.title,
+        title: getLocalizedTopicTitle(tp.title, t),
         items,
       });
     }
@@ -624,21 +636,33 @@ export default function TeacherCourseGroupPage() {
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
     if (type === "TOPIC") {
+      const hasUncategorized = topicSections[0]?.key === "uncategorized";
+      const offset = hasUncategorized ? 1 : 0;
+      const sourceIdx = source.index - offset;
+      const destIdx = destination.index - offset;
+
+      if (sourceIdx < 0 || destIdx < 0) return;
+
       const newTopics = Array.from(localTopics);
-      const [removed] = newTopics.splice(source.index, 1);
-      newTopics.splice(destination.index, 0, removed);
-      setLocalTopics(newTopics);
-      // API call for reordering topics could go here
+      const [removed] = newTopics.splice(sourceIdx, 1);
+      if (removed) {
+        newTopics.splice(destIdx, 0, removed);
+        setLocalTopics(newTopics);
+        // API call for reordering topics could go here
+      }
       return;
     }
 
-    // Assignment drag
-    const assignmentId = Number(draggableId.split("-")[1]);
+    // Item drag
+    const parts = draggableId.split("-");
+    const itemType = parts[0] as "assignment" | "material" | "question";
+    const itemId = Number(parts[1]);
+    
     const sourceTopicId = source.droppableId === "uncategorized" ? null : Number(source.droppableId.split("-")[1]);
     const destTopicId = destination.droppableId === "uncategorized" ? null : Number(destination.droppableId.split("-")[1]);
 
     const newAssignments = Array.from(localAssignments);
-    const assignmentIndex = newAssignments.findIndex(a => a.id === assignmentId);
+    const assignmentIndex = newAssignments.findIndex(a => a.id === itemId && a.type === itemType);
     if (assignmentIndex === -1) return;
 
     const [movedAssignment] = newAssignments.splice(assignmentIndex, 1);
@@ -652,12 +676,16 @@ export default function TeacherCourseGroupPage() {
     const otherItems = newAssignments.filter(a => a.topic_id !== destTopicId);
     setLocalAssignments([...otherItems, ...destItems]);
 
-    // API call to update assignment's topic
+    // API call to update item's topic
     try {
-      await api.patch(`/teacher/assignments/${assignmentId}`, { topic_id: destTopicId });
+      const endpoint = itemType === "material" ? `/teacher/materials/${itemId}` :
+                       itemType === "question" ? `/teacher/questions/${itemId}` :
+                       `/teacher/assignments/${itemId}`;
+                       
+      await api.patch(endpoint, { topic_id: destTopicId });
       queryClient.invalidateQueries({ queryKey: ["teacher-assignments", groupId] });
     } catch (e) {
-      console.error("Failed to update assignment topic", e);
+      console.error("Failed to update item topic", e);
       setLocalAssignments(assignments); // revert on error
     }
   };
@@ -703,38 +731,10 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
-  const openTeacherCreateSupplementaryAssignment = () => {
-    setCreateOpen(false);
-    setAssignmentModalMode("assignment");
-    setClonedItemData({ is_supplementary: true, is_synopsis: false });
-    setAssignmentModalOpen(true);
-  };
-
-  const openTeacherCreateSupplementarySynopsis = () => {
-    setCreateOpen(false);
-    setAssignmentModalMode("assignment");
-    setClonedItemData({ is_supplementary: true, is_synopsis: true });
-    setAssignmentModalOpen(true);
-  };
-
-  const openTeacherCreateSupplementaryMaterial = () => {
-    setCreateOpen(false);
-    setAssignmentModalMode("material");
-    setClonedItemData({ is_supplementary: true, is_synopsis: false });
-    setAssignmentModalOpen(true);
-  };
-
   const openCreateAssignmentForTopic = (topicId: number) => {
     setCreateOpen(false);
     setAssignmentModalMode("assignment");
     setClonedItemData({ topic_id: topicId, is_supplementary: false, is_synopsis: false });
-    setAssignmentModalOpen(true);
-  };
-
-  const openTeacherCreateAssignmentWithTest = () => {
-    setCreateOpen(false);
-    setAssignmentModalMode("assignmentWithTest");
-    setClonedItemData(null);
     setAssignmentModalOpen(true);
   };
 
@@ -752,12 +752,20 @@ export default function TeacherCourseGroupPage() {
     setAssignmentModalOpen(true);
   };
 
-  const openTeacherCreateQuestion = () => {
+  const openTeacherCreateSupplementaryAssignment = () => {
     setCreateOpen(false);
-    setAssignmentModalMode("question");
-    setClonedItemData(null);
+    setAssignmentModalMode("assignment");
+    setClonedItemData({ is_supplementary: true, is_synopsis: false });
     setAssignmentModalOpen(true);
   };
+
+  const openTeacherCreateSupplementaryMaterial = () => {
+    setCreateOpen(false);
+    setAssignmentModalMode("material");
+    setClonedItemData({ is_supplementary: true });
+    setAssignmentModalOpen(true);
+  };
+
 
   const openTeacherCreateTopic = () => {
     setCreateOpen(false);
@@ -791,7 +799,7 @@ export default function TeacherCourseGroupPage() {
       setClonedItemData({ ...data, isEdit: true });
       setAssignmentModalOpen(true);
     } catch (e) {
-      console.error("Error fetching item details for edit", e);
+      toast.error((e as any).response?.data?.detail || t("error"));
     }
   };
 
@@ -906,7 +914,7 @@ export default function TeacherCourseGroupPage() {
                       className="flex flex-wrap items-center gap-2 text-sm"
                       style={{ color: textColors.primary }}
                     >
-                      <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{tp.title}</span>
+                      <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{getLocalizedTopicTitle(tp.title, t)}</span>
                       {!tp.hasSynopsis && (
                         <button
                           type="button"
@@ -954,38 +962,29 @@ export default function TeacherCourseGroupPage() {
                 >
                   {(
                     [
-                      "teacherCreateAssignment",
-                      "teacherCreateAssignmentWithTest",
-                      "teacherCreateSynopsis",
-                      "teacherCreateQuestion",
-                      "teacherCreateMaterial",
-                      "teacherCreateSupplementaryAssignment",
-                      "teacherCreateSupplementarySynopsis",
-                      "teacherCreateSupplementaryMaterial",
-                      "teacherCreateTopic",
-                      "teacherCreateReuse",
+                      { key: "teacherCreateAssignment", icon: ClipboardList },
+                      { key: "teacherCreateSynopsis", icon: FileText },
+                      { key: "teacherCreateMaterial", icon: BookOpen },
+                      { key: "teacherCreateTopic", icon: Plus },
+                      { key: "teacherCreateReuse", icon: RotateCcw },
                     ] as const
-                  ).map((key) => (
+                  ).map(({ key, icon: Icon }) => (
                     <button
                       key={key}
                       type="button"
                       role="menuitem"
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-3"
                       style={{ color: textColors.primary }}
                       onClick={() => {
+                        setCreateOpen(false);
                         if (key === "teacherCreateAssignment") openTeacherCreateAssignment();
-                        else if (key === "teacherCreateAssignmentWithTest") openTeacherCreateAssignmentWithTest();
                         else if (key === "teacherCreateSynopsis") openTeacherCreateSynopsis();
                         else if (key === "teacherCreateMaterial") openTeacherCreateMaterial();
-                        else if (key === "teacherCreateSupplementaryAssignment") openTeacherCreateSupplementaryAssignment();
-                        else if (key === "teacherCreateSupplementarySynopsis") openTeacherCreateSupplementarySynopsis();
-                        else if (key === "teacherCreateSupplementaryMaterial") openTeacherCreateSupplementaryMaterial();
-                        else if (key === "teacherCreateQuestion") openTeacherCreateQuestion();
                         else if (key === "teacherCreateTopic") openTeacherCreateTopic();
                         else if (key === "teacherCreateReuse") openTeacherReuse();
-                        else goTeacherCreate();
                       }}
                     >
+                      <Icon className="w-4 h-4 opacity-60" />
                       {t(key)}
                     </button>
                   ))}
@@ -1002,7 +1001,7 @@ export default function TeacherCourseGroupPage() {
                 style={{ ...glassStyle, color: textColors.primary, borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)" }}
               >
                 <Filter className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                {topicFilter === "all" ? t("allTopics") : topics.find((tp) => tp.id === topicFilter)?.title ?? t("allTopics")}
+                {topicFilter === "all" ? t("allTopics") : getLocalizedTopicTitle(topics.find((tp) => tp.id === topicFilter)?.title || "", t) || t("allTopics")}
                 <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform duration-200", topicFilterOpen && "rotate-180")} />
               </button>
               {topicFilterOpen ? (
@@ -1043,7 +1042,7 @@ export default function TeacherCourseGroupPage() {
                         setTopicFilterOpen(false);
                       }}
                     >
-                      {tp.title}
+                      {getLocalizedTopicTitle(tp.title, t)}
                     </button>
                   ))}
                 </div>
@@ -1078,8 +1077,9 @@ export default function TeacherCourseGroupPage() {
                     <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
                       {topicSections.map((section, index) => {
                         const collapsed = !!collapsedTopics[section.key];
+                        const isUncategorized = section.key === "uncategorized";
                         return (
-                          <Draggable key={section.key} draggableId={section.key} index={index}>
+                          <Draggable key={section.key} draggableId={section.key} index={index} isDragDisabled={isUncategorized}>
                             {(provided) => (
                               <div
                                 ref={provided.innerRef}
@@ -1198,23 +1198,19 @@ export default function TeacherCourseGroupPage() {
                                           </li>
                                         ) : null}
                                         {section.items.map((item, iIndex) => {
+                                          const isFirstMain = !item.is_supplementary && (iIndex === 0 || section.items[iIndex - 1].is_supplementary);
                                           const isFirstSupplementary = item.is_supplementary && (iIndex === 0 || !section.items[iIndex - 1].is_supplementary);
-                                          const isFirstMain = !item.is_supplementary && iIndex === 0 && section.items.some(x => x.is_supplementary);
                                           
                                           return (
                                             <Fragment key={`${item.type}-${item.id}`}>
                                               {isFirstMain && (
-                                                <div className="px-4 py-3 bg-black/[0.02] dark:bg-white/[0.02] border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
-                                                  <span className="text-[10px] font-bold tracking-wider uppercase opacity-50" style={{ color: textColors.primary }}>
-                                                    {t("teacherMainContentsHeading")}
-                                                  </span>
+                                                <div className="px-4 py-1.5 bg-gray-50/50 dark:bg-white/5 text-[9px] font-bold uppercase tracking-widest text-gray-500 border-b border-gray-100 dark:border-white/5">
+                                                  {t("teacherMainContentsHeading")}
                                                 </div>
                                               )}
                                               {isFirstSupplementary && (
-                                                <div className="px-4 py-3 bg-purple-500/[0.03] dark:bg-purple-500/[0.05] border-y" style={{ borderColor: isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.1)" }}>
-                                                  <span className="text-[10px] font-bold tracking-wider uppercase text-purple-600 dark:text-purple-400">
-                                                    {t("teacherSupplementaryHeading")}
-                                                  </span>
+                                                <div className="px-4 py-1.5 bg-amber-50/50 dark:bg-amber-900/10 text-[9px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 border-b border-t border-amber-100 dark:border-amber-900/30">
+                                                  {t("teacherSupplementaryHeading")}
                                                 </div>
                                               )}
                                               <Draggable draggableId={`${item.type}-${item.id}`} index={iIndex}>
@@ -1293,8 +1289,22 @@ export default function TeacherCourseGroupPage() {
                                                               {item.title}
                                                             </span>
                                                           )}
-                                                          <p className="text-xs font-medium px-2 py-0.5 rounded-md hidden sm:block" style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3B82F6" }}>
-                                                            {item.type === "question" ? t("quiz") : item.type === "material" ? t("studentMaterials") : t("courseClasswork")}
+                                                          <p
+                                                            className="text-xs font-medium px-2 py-0.5 rounded-md hidden sm:block"
+                                                            style={{
+                                                              background: "rgba(59, 130, 246, 0.1)",
+                                                              color: "#3B82F6",
+                                                            }}
+                                                          >
+                                                            {(() => {
+                                                              if (item.is_supplementary) {
+                                                                if (item.is_synopsis) return t("teacherCreateSupplementarySynopsis");
+                                                                if (item.type === "material") return t("teacherCreateSupplementaryMaterial");
+                                                                return t("teacherCreateSupplementaryAssignment");
+                                                              }
+                                                              if (item.is_synopsis) return t("teacherCreateSynopsis");
+                                                              return item.type === "question" ? t("quiz") : item.type === "material" ? t("studentMaterials") : t("courseClasswork");
+                                                            })()}
                                                           </p>
                                                         </div>
 
@@ -1364,7 +1374,7 @@ export default function TeacherCourseGroupPage() {
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
                                                                   setClassworkItemMenu(null);
-                                                                  setDeleteAssignmentConfirmId(item.id);
+                                                                  setDeleteAssignmentConfirmItem({ id: item.id, type: item.type });
                                                                 }}
                                                               >
                                                                 <Trash2 className="w-4 h-4 shrink-0" />
@@ -2335,14 +2345,14 @@ export default function TeacherCourseGroupPage() {
       )}
 
       {confirmMounted &&
-        deleteAssignmentConfirmId != null &&
+        deleteAssignmentConfirmItem != null &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
             <button
               type="button"
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"
               aria-label={t("back")}
-              onClick={() => setDeleteAssignmentConfirmId(null)}
+              onClick={() => setDeleteAssignmentConfirmItem(null)}
             />
             <div
               className="relative w-full max-w-md rounded-2xl border p-6 shadow-2xl"
@@ -2365,7 +2375,7 @@ export default function TeacherCourseGroupPage() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => setDeleteAssignmentConfirmId(null)}
+                  onClick={() => setDeleteAssignmentConfirmItem(null)}
                   className="flex-1 py-3 rounded-xl font-semibold text-sm"
                   style={{
                     background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
@@ -2377,7 +2387,7 @@ export default function TeacherCourseGroupPage() {
                 <button
                   type="button"
                   disabled={deleteClassworkAssignmentMutation.isPending}
-                  onClick={() => deleteClassworkAssignmentMutation.mutate(deleteAssignmentConfirmId)}
+                  onClick={() => deleteClassworkAssignmentMutation.mutate({ id: deleteAssignmentConfirmItem.id, type: deleteAssignmentConfirmItem.type })}
                   className="flex-1 py-3 rounded-xl font-semibold text-sm text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {deleteClassworkAssignmentMutation.isPending ? (

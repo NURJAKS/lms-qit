@@ -117,10 +117,10 @@ export default function RegisterPage() {
                 strokeWidth={1.5}
               />
               <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-                QIT Білім
+                QIT
               </span>
               <span className="text-xl font-bold text-indigo-600 tracking-tight">
-                платформасы
+                {t("loginBrandSubtitle")}
               </span>
             </div>
             <p className="text-xs text-indigo-600 font-medium mt-1 uppercase tracking-wider">

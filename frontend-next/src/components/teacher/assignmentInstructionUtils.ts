@@ -33,12 +33,12 @@ export function detectAttachmentKind(filename: string): AttachmentVisualKind {
   return "generic";
 }
 
-/** Russian plural for «условие» (1 / 2–4 / 5+) */
+/** Russian plural for «критерий» (1 / 2–4 / 5+) */
 export function formatCriteriaCountRu(n: number): string {
   const mod100 = n % 100;
   const mod10 = n % 10;
-  if (mod100 >= 11 && mod100 <= 14) return `${n} условий`;
-  if (mod10 === 1) return `${n} условие`;
-  if (mod10 >= 2 && mod10 <= 4) return `${n} условия`;
-  return `${n} условий`;
+  if (mod100 >= 11 && mod100 <= 14) return `${n} критериев`;
+  if (mod10 === 1) return `${n} критерий`;
+  if (mod10 >= 2 && mod10 <= 4) return `${n} критерия`;
+  return `${n} критериев`;
 }

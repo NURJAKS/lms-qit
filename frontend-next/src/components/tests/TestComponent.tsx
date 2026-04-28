@@ -347,7 +347,7 @@ export function TestComponent({ testId, onComplete, onCancel, onRetake, passedCo
     return (
       <div className="max-w-xl mx-auto bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6 text-center">
         <h2 className="text-xl font-bold text-amber-800 dark:text-amber-200 mb-2">{t("testError")}</h2>
-        <p className="text-amber-700 dark:text-amber-300 mb-4">{errorMessage}</p>
+        <p className="text-amber-700 dark:text-amber-300 mb-4">{t(errorMessage as TranslationKey)}</p>
         <button type="button" onClick={onCancel} className="py-2 px-4 rounded-lg bg-amber-600 text-white hover:bg-amber-700">{t("testBack")}</button>
       </div>
     );

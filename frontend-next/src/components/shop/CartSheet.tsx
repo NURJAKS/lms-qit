@@ -261,7 +261,7 @@ export function CartSheet({
                   </div>
                   {items.some(i => i.has_premium_discount) && (
                     <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-pink-500">{t("shopPremiumSavings") || "Premium Savings"}:</span>
+                      <span className="text-pink-500">{t("shopPremiumSavings")}:</span>
                       <div className="flex items-center gap-1 text-pink-500">
                         <Sparkles className="w-3 h-3" />
                         <span>

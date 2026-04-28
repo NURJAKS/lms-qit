@@ -168,7 +168,7 @@ def get_test(
 ):
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
-        raise HTTPException(status_code=404, detail="Тест не найден")
+        raise HTTPException(status_code=404, detail="errorTestNotFound")
     _check_enrollment(db, current_user, test.course_id)
     return test
 
@@ -182,7 +182,7 @@ def get_test_questions(
 ):
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
-        raise HTTPException(status_code=404, detail="Тест не найден")
+        raise HTTPException(status_code=404, detail="errorTestNotFound")
     _check_enrollment(db, current_user, test.course_id)
     
     # Проверяем, что все темы пройдены и все задания выполнены перед доступом к контрольному тесту
@@ -219,7 +219,7 @@ def submit_test(
 ):
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
-        raise HTTPException(status_code=404, detail="Тест не найден")
+        raise HTTPException(status_code=404, detail="errorTestNotFound")
     _check_enrollment(db, current_user, test.course_id)
     
     # Проверяем, что все темы пройдены и все задания выполнены перед сдачей контрольного теста

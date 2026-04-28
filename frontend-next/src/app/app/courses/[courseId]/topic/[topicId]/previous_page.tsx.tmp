@@ -14,7 +14,6 @@ import { TopicNotes } from "@/components/courses/TopicNotes";
 import { TopicTheoryContent } from "@/components/courses/TopicTheoryContent";
 import { TopicSynopsisSection } from "@/components/courses/TopicSynopsisSection";
 import { TopicAssignmentsInlineSection } from "@/components/courses/TopicAssignmentsInlineSection";
-import { TopicLessonMaterialsSection } from "@/components/courses/TopicLessonMaterialsSection";
 import { ChevronLeft, Lock, Sparkles, Coins, CheckCircle2 } from "lucide-react";
 import { getLocalizedTopicTitle } from "@/lib/courseUtils";
 import type { TranslationKey } from "@/i18n/translations";
@@ -78,7 +77,6 @@ export default function TopicViewPage() {
   const tId = Number(topicId);
   const validTopicId = Number.isFinite(tId) && tId > 0;
   const queryClient = useQueryClient();
-
   const [showTest, setShowTest] = useState(false);
   const [testAttemptKey, setTestAttemptKey] = useState(0);
   const [testId, setTestId] = useState<number | null>(null);
@@ -147,7 +145,7 @@ export default function TopicViewPage() {
   const { data: progressList = [] } = useQuery({
     queryKey: ["progress", cId, userId],
     queryFn: async () => {
-      const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean; test_score: number | null; video_watched_seconds?: number }>>(`/progress/course/${cId}`);
+      const { data } = await api.get<Array<{ topic_id: number; is_completed: boolean; video_watched_seconds?: number }>>(`/progress/course/${cId}`);
       return data;
     },
     enabled: !!cId && userId != null,
@@ -453,19 +451,17 @@ export default function TopicViewPage() {
           >
             {t("topicTabMain")}
           </button>
-          {progress?.test_score !== null && progress?.test_score !== undefined && progress.test_score < 80 && (
-            <button
-              type="button"
-              onClick={() => setTopicTab("supplementary")}
-              className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-                topicTab === "supplementary"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
-              }`}
-            >
-              {t("supplementaryMaterialsTab")}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setTopicTab("supplementary")}
+            className={`shrink-0 whitespace-nowrap pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              topicTab === "supplementary"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 dark:text-gray-400 hover:opacity-90"
+            }`}
+          >
+            {t("supplementaryMaterialsTab")}
+          </button>
         </nav>
       )}
 
@@ -505,7 +501,7 @@ export default function TopicViewPage() {
                 )}
                 <span>
                   <strong className="text-amber-600 dark:text-amber-400">
-                    {t("topicRewardsCompletion") || t("topicRewardsTest").replace("{coins}", "25")}
+                    {t("topicRewardsTest").replace("{coins}", "25")}
                   </strong>
                   {progress?.is_completed && (
                     <span className="text-green-600 dark:text-green-400 ml-1">✓</span>
@@ -537,9 +533,7 @@ export default function TopicViewPage() {
                         {t("videoDailyLimitReached")}
                       </p>
                       <p className="text-yellow-700 dark:text-yellow-300 text-sm mb-2">
-                        {t("videoDailyLimitMessage")
-                          ?.replace("{used}", String(Math.floor(dailyVideoLimit.used_seconds / 60)))
-                          ?.replace("{limit}", String(Math.floor(dailyVideoLimit.limit_seconds / 60)))}
+                        {t("videoDailyLimitMessage")?.replace("{used}", String(Math.floor(dailyVideoLimit.used_seconds / 60)))?.replace("{limit}", String(Math.floor(dailyVideoLimit.limit_seconds / 60))) || `Просмотрено сегодня: ${Math.floor(dailyVideoLimit.used_seconds / 60)} мин / ${Math.floor(dailyVideoLimit.limit_seconds / 60)} мин`}
                       </p>
                       <Link
                         href="/app/premium"
@@ -555,7 +549,7 @@ export default function TopicViewPage() {
               {!isPremium && dailyVideoLimit && dailyVideoLimit.is_allowed && dailyVideoLimit.remaining_seconds < 1800 && (
                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-blue-800 dark:text-blue-200 text-sm">
-                    {t("videoDailyLimitWarning")?.replace("{remaining}", String(Math.floor(dailyVideoLimit.remaining_seconds / 60)))}
+                    {t("videoDailyLimitWarning")?.replace("{remaining}", String(Math.floor(dailyVideoLimit.remaining_seconds / 60))) || `Осталось времени просмотра сегодня: ${Math.floor(dailyVideoLimit.remaining_seconds / 60)} мин`}
                   </p>
                 </div>
               )}
@@ -598,7 +592,7 @@ export default function TopicViewPage() {
                 </p>
                 {!isPremium && dailyVideoLimit && (
                   <p className="text-sm text-gray-500">
-                    {t("videoDailyLimitIndicator")?.replace("{used}", String(Math.floor(dailyVideoLimit.used_seconds / 60)))?.replace("{limit}", String(Math.floor(dailyVideoLimit.limit_seconds / 60)))}
+                    {t("videoDailyLimitIndicator")?.replace("{used}", String(Math.floor(dailyVideoLimit.used_seconds / 60)))?.replace("{limit}", String(Math.floor(dailyVideoLimit.limit_seconds / 60))) || `Время просмотра сегодня: ${Math.floor(dailyVideoLimit.used_seconds / 60)} мин / ${Math.floor(dailyVideoLimit.limit_seconds / 60)} мин`}
                   </p>
                 )}
               </div>
@@ -611,7 +605,6 @@ export default function TopicViewPage() {
               {canViewTheory && topic.description && (
                 <div className="mb-6">
                   <TopicTheoryContent content={topic.description} />
-                  <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
                 </div>
               )}
             </>
@@ -619,10 +612,7 @@ export default function TopicViewPage() {
             <>
               <div className="mb-6">
                 {topic.description ? (
-                  <>
-                    <TopicTheoryContent content={topic.description} />
-                    <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
-                  </>
+                  <TopicTheoryContent content={topic.description} />
                 ) : (
                   <p className="text-gray-600 dark:text-gray-300">{t("materialPreparing")}</p>
                 )}
@@ -630,7 +620,6 @@ export default function TopicViewPage() {
               {isPremium && <TopicNotes topicId={tId} />}
             </>
           )}
-
           {flow && !progress?.is_completed && !flow.can_take_test && flow.block_reason && flow.block_reason !== "ok" && (
             <div className="mt-4 mb-2 flex flex-col gap-2 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20">
               <p className="text-sm text-amber-900 dark:text-amber-100">{topicFlowBlockMessage(flow.block_reason, t)}</p>
@@ -644,11 +633,9 @@ export default function TopicViewPage() {
               )}
             </div>
           )}
-
           {!flow && isVideoTopic && !theoryUnlockedLocal && (
             <p className="text-amber-600 dark:text-amber-400 mt-2">{t("topicWatchEnoughToUnlock")}</p>
           )}
-
           {flow?.can_take_test && (
             <div className="mt-6 space-y-3">
               <h3 className="text-base font-semibold text-gray-800 dark:text-white">{t("topicControlTestTitle")}</h3>

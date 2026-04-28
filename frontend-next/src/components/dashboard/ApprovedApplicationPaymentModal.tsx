@@ -130,7 +130,7 @@ export function ApprovedApplicationPaymentModal({
                   K
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-800 dark:text-white">Kaspi.kz</p>
+                  <p className="font-semibold text-gray-800 dark:text-white">{t("paymentKaspiBrand")}</p>
                   <p className="text-xs text-gray-500">{t("paymentViaApp")}</p>
                 </div>
               </button>
@@ -144,8 +144,8 @@ export function ApprovedApplicationPaymentModal({
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-800 dark:text-white">Halyk Bank</p>
-                  <p className="text-xs text-gray-500">Halyk Pay / QR</p>
+                  <p className="font-semibold text-gray-800 dark:text-white">{t("halyk")}</p>
+                  <p className="text-xs text-gray-500">{t("halykPay")}</p>
                 </div>
               </button>
 

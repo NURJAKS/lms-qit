@@ -662,7 +662,7 @@ export default function TeacherPage() {
       });
       setCreateModalType("material");
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Error loading material");
+      toast.error(err.response?.data?.detail || t("errorLoadingMaterial"));
       setEditingMaterialId(null);
     }
   };
@@ -682,7 +682,7 @@ export default function TeacherPage() {
       });
       setCreateModalType("question");
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Error loading question");
+      toast.error(err.response?.data?.detail || t("errorLoadingQuestion"));
       setEditingQuestionId(null);
     }
   };
@@ -1546,13 +1546,8 @@ export default function TeacherPage() {
                     >
                       {[
                         { type: "assignment" as const, icon: FileText, label: t("teacherCreateAssignment") },
-                        { type: "assignmentWithTest" as const, icon: FileText, label: t("teacherCreateAssignmentWithTest") },
-                        { type: "synopsis" as const, icon: BookOpen, label: t("teacherCreateSynopsis") },
                         { type: "question" as const, icon: MessageCircle, label: t("teacherCreateQuestion") },
                         { type: "material" as const, icon: BookOpen, label: t("teacherCreateMaterial") },
-                        { type: "supplementaryAssignment" as const, icon: Sparkles, label: t("teacherCreateSupplementaryAssignment") },
-                        { type: "supplementarySynopsis" as const, icon: Sparkles, label: t("teacherCreateSupplementarySynopsis") },
-                        { type: "supplementaryMaterial" as const, icon: Sparkles, label: t("teacherCreateSupplementaryMaterial") },
                         { type: "topic" as const, icon: List, label: t("teacherCreateTopic") },
                         { type: "reuse" as const, icon: Copy, label: t("teacherCreateReuse") },
                       ].map((item) => {
@@ -1562,25 +1557,11 @@ export default function TeacherPage() {
                             key={item.type}
                             type="button"
                             onClick={() => { 
-                              if (item.type === "supplementaryAssignment") {
-                                setCreateModalType("assignment");
-                                setNewAssignment(prev => ({ ...prev, is_supplementary: true, is_synopsis: false }));
-                              } else if (item.type === "supplementarySynopsis") {
-                                setCreateModalType("assignment");
-                                setNewAssignment(prev => ({ ...prev, is_supplementary: true, is_synopsis: true }));
-                              } else if (item.type === "supplementaryMaterial") {
-                                setCreateModalType("material");
-                                setNewAssignment(prev => ({ ...prev, is_supplementary: true }));
-                              } else if (item.type === "synopsis") {
-                                setCreateModalType("assignment");
-                                setNewAssignment(prev => ({ ...prev, is_synopsis: true }));
-                              } else {
-                                setCreateModalType(item.type); 
-                                if (item.type === "assignment") {
-                                  setNewAssignment(prev => ({ ...prev, is_supplementary: false, is_synopsis: false }));
-                                } else if (item.type === "material") {
-                                  setNewAssignment(prev => ({ ...prev, is_supplementary: false }));
-                                }
+                              setCreateModalType(item.type); 
+                              if (item.type === "assignment") {
+                                setNewAssignment(prev => ({ ...prev, is_supplementary: false, is_synopsis: false }));
+                              } else if (item.type === "material") {
+                                setNewMaterial(prev => ({ ...prev, is_supplementary: false }));
                               }
                               setCreateDropdownOpen(false); 
                             }}
@@ -1659,6 +1640,39 @@ export default function TeacherPage() {
                     className={inputClasses}
                     style={inputStyle}
                   />
+
+                  {/* Synopsis & Supplementary Checkboxes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl border transition-all"
+                      style={{ 
+                        borderColor: newAssignment.is_synopsis ? "#3B82F6" : isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                        background: newAssignment.is_synopsis ? (isDark ? "rgba(59,130,246,0.1)" : "rgba(59,130,246,0.05)") : "transparent"
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newAssignment.is_synopsis}
+                        onChange={(e) => setNewAssignment(prev => ({ ...prev, is_synopsis: e.target.checked }))}
+                        className="w-4 h-4 rounded accent-blue-500"
+                      />
+                      <span className="text-sm font-medium" style={{ color: textColors.primary }}>{t("assignmentIsSynopsisLabel")}</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl border transition-all"
+                      style={{ 
+                        borderColor: newAssignment.is_supplementary ? "#10B981" : isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                        background: newAssignment.is_supplementary ? (isDark ? "rgba(16,185,129,0.1)" : "rgba(16,185,129,0.05)") : "transparent"
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newAssignment.is_supplementary}
+                        onChange={(e) => setNewAssignment(prev => ({ ...prev, is_supplementary: e.target.checked }))}
+                        className="w-4 h-4 rounded accent-emerald-500"
+                      />
+                      <span className="text-sm font-medium" style={{ color: textColors.primary }}>{t("teacherCreateSupplementary")}</span>
+                    </label>
+                  </div>
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: textColors.secondary }}>
@@ -1812,7 +1826,8 @@ export default function TeacherPage() {
                     </div>
                   </div>
 
-                  {createModalType === "assignmentWithTest" && (
+                  {/* Always allow adding test questions for assignments */}
+                  {(createModalType === "assignment" || createModalType === "assignmentWithTest") && (
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: textColors.secondary }}>
                         {t("teacherTestQuestions")}
@@ -2188,7 +2203,27 @@ export default function TeacherPage() {
                                 ) : (
                                   <FileText className="w-4 h-4 text-purple-500" />
                                 )}
-                                <p className="font-semibold text-sm" style={{ color: textColors.primary }}>{a.title}</p>
+                                <p className="font-semibold text-sm flex items-center gap-2" style={{ color: textColors.primary }}>
+                                  {a.title}
+                                  {(a.is_supplementary || a.is_synopsis) && (
+                                    <span
+                                      className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                                      style={{
+                                        background: a.is_supplementary ? "rgba(139, 92, 246, 0.1)" : "rgba(59, 130, 246, 0.1)",
+                                        color: a.is_supplementary ? "#8B5CF6" : "#3B82F6"
+                                      }}
+                                    >
+                                      {(() => {
+                                        if (a.is_supplementary) {
+                                          if (a.is_synopsis) return t("teacherCreateSupplementarySynopsis");
+                                          if (a.type === "material") return t("teacherCreateSupplementaryMaterial");
+                                          return t("teacherCreateSupplementaryAssignment");
+                                        }
+                                        return t("teacherCreateSynopsis");
+                                      })()}
+                                    </span>
+                                  )}
+                                </p>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span
@@ -2540,6 +2575,21 @@ export default function TeacherPage() {
                 className={inputClasses}
                 style={inputStyle}
               />
+
+              <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl border transition-all"
+                style={{ 
+                  borderColor: newMaterial.is_supplementary ? "#10B981" : isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                  background: newMaterial.is_supplementary ? (isDark ? "rgba(16,185,129,0.1)" : "rgba(16,185,129,0.05)") : "transparent"
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newMaterial.is_supplementary}
+                  onChange={(e) => setNewMaterial(prev => ({ ...prev, is_supplementary: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-emerald-500"
+                />
+                <span className="text-sm font-medium" style={{ color: textColors.primary }}>{t("teacherCreateSupplementary")}</span>
+              </label>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: textColors.secondary }}>{t("teacherAssignmentDesc")}</label>
                 <RichTextEditor value={newMaterial.description} onChange={(html) => setNewMaterial((prev) => ({ ...prev, description: html }))} />

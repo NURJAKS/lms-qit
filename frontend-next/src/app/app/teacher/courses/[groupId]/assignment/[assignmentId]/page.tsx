@@ -59,6 +59,7 @@ type AssignmentDetails = {
   attachment_links?: string[];
   video_urls?: string[];
   is_synopsis?: boolean;
+  is_supplementary?: boolean;
   rubric?: RubricCriterion[];
 };
 
@@ -468,6 +469,14 @@ export default function TeacherAssignmentPage() {
             <h1 className="flex items-start gap-2 text-lg font-bold text-gray-900 sm:text-xl dark:text-white">
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--qit-primary)]" />
               <span className="min-w-0 break-words">{details.title}</span>
+              {details.is_supplementary && (
+                <span
+                  className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                  style={{ background: "rgba(139, 92, 246, 0.1)", color: "#8B5CF6" }}
+                >
+                  {details.is_synopsis ? t("teacherCreateSupplementarySynopsis") : t("teacherCreateSupplementaryAssignment")}
+                </span>
+              )}
             </h1>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 text-sm text-gray-500 dark:text-gray-400">
               <span className="min-w-0">
@@ -528,7 +537,20 @@ export default function TeacherAssignmentPage() {
         <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-gray-100/60 p-4 sm:p-6 dark:from-gray-950 dark:to-gray-950">
           <div className="mx-auto max-w-4xl space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 dark:border-gray-700 dark:bg-gray-900">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("profileDescription")}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">{t("profileDescription")}</h2>
+                  <p className="text-xs text-gray-400">ID: {assignmentId}</p>
+                </div>
+                {details.is_synopsis && (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800">
+                    <FileText className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                    <span className="text-xs font-bold text-teal-700 dark:text-teal-300">
+                      {details.is_supplementary ? t("teacherCreateSupplementarySynopsis") : t("teacherCreateSynopsis")}
+                    </span>
+                  </div>
+                )}
+              </div>
               {details.description ? (
                 <div className="prose prose-sm max-w-none dark:prose-invert break-words" dangerouslySetInnerHTML={{ __html: details.description }} />
               ) : (

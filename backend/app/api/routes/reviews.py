@@ -36,21 +36,21 @@ def create_review(
 ):
     """Студент оставляет отзыв. Один отзыв на курс."""
     if body.rating < 1 or body.rating > 5:
-        raise HTTPException(status_code=400, detail="Рейтинг: от 1 до 5")
+        raise HTTPException(status_code=400, detail="errorRatingRange")
     # Check enrollment
     enrolled = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
         CourseEnrollment.course_id == body.course_id,
     ).first()
     if not enrolled:
-        raise HTTPException(status_code=403, detail="Вы не записаны на этот курс")
+        raise HTTPException(status_code=403, detail="errorNotEnrolled")
     # Check if already reviewed
     existing = db.query(CourseReview).filter(
         CourseReview.user_id == current_user.id,
         CourseReview.course_id == body.course_id,
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Вы уже оставили отзыв на этот курс")
+        raise HTTPException(status_code=400, detail="errorAlreadyReviewed")
     review = CourseReview(
         user_id=current_user.id,
         course_id=body.course_id,
@@ -60,7 +60,7 @@ def create_review(
     db.add(review)
     db.commit()
     db.refresh(review)
-    return {"id": review.id, "message": "Отзыв отправлен на модерацию"}
+    return {"id": review.id, "message": "msgReviewModeration"}
 
 
 @router.get("/reviews")
@@ -154,7 +154,7 @@ def approve_review(
 ):
     review = db.query(CourseReview).filter(CourseReview.id == review_id).first()
     if not review:
-        raise HTTPException(status_code=404, detail="Отзыв не найден")
+        raise HTTPException(status_code=404, detail="errorReviewNotFound")
     review.is_approved = True
     review.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -169,7 +169,7 @@ def reject_review(
 ):
     review = db.query(CourseReview).filter(CourseReview.id == review_id).first()
     if not review:
-        raise HTTPException(status_code=404, detail="Отзыв не найден")
+        raise HTTPException(status_code=404, detail="errorReviewNotFound")
     review.is_approved = False
     review.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -185,7 +185,7 @@ def reply_review(
 ):
     review = db.query(CourseReview).filter(CourseReview.id == review_id).first()
     if not review:
-        raise HTTPException(status_code=404, detail="Отзыв не найден")
+        raise HTTPException(status_code=404, detail="errorReviewNotFound")
     review.admin_reply = body.admin_reply
     review.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -200,7 +200,7 @@ def toggle_featured(
 ):
     review = db.query(CourseReview).filter(CourseReview.id == review_id).first()
     if not review:
-        raise HTTPException(status_code=404, detail="Отзыв не найден")
+        raise HTTPException(status_code=404, detail="errorReviewNotFound")
     review.is_featured = not review.is_featured
     review.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -215,7 +215,7 @@ def delete_review(
 ):
     review = db.query(CourseReview).filter(CourseReview.id == review_id).first()
     if not review:
-        raise HTTPException(status_code=404, detail="Отзыв не найден")
+        raise HTTPException(status_code=404, detail="errorReviewNotFound")
     db.delete(review)
     db.commit()
     return {"ok": True}

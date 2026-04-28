@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 import { Trophy, Medal, Award } from "lucide-react";
 import { SparklesText } from "@/components/ui/sparkles-text";
 import { BorderBeam } from "@/components/ui/border-beam";
@@ -58,6 +59,7 @@ export function TopThreeBadge({
   name,
   showConfetti = false,
 }: TopThreeBadgeProps) {
+  const { t } = useLanguage();
   const config = rankConfig[rank as keyof typeof rankConfig];
   const Icon = config.icon;
   const confettiRef = useRef<{ fire: (options?: any) => void } | null>(null);
@@ -114,7 +116,7 @@ export function TopThreeBadge({
         </div>
         <div className="flex-1">
           <div className="text-xs font-medium mb-1 opacity-70">
-            {config.label} Место #{rank}
+            {config.label} {t("place")} #{rank}
           </div>
           <SparklesText
             className={cn("text-lg font-bold", config.colors.text)}

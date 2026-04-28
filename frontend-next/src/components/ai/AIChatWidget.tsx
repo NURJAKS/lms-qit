@@ -22,15 +22,15 @@ export function AIChatWidget() {
   const [loading, setLoading] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionPool] = useState(() => {
-    const all = [
-      "Маған оқу жоспарын құруға көмектесші",
-      "Бүгінгі сабақ бойынша сұрақтарым бар",
-      "Қалай тиімді оқуға болады?",
-      "Осы курстың ең қиын тақырыптары қандай?",
-      "Маған тестке дайындалуға көмектесші",
-      "Программалау негіздерін түсіндіріп берші",
-      "Бұл тақырыпты қарапайым тілмен түсіндірші",
-      "Маған практикалық тапсырма берші",
+    const all: TranslationKey[] = [
+      "aiChatSuggestion1",
+      "aiChatSuggestion2",
+      "aiChatSuggestion3",
+      "aiChatSuggestion4",
+      "aiChatSuggestion5",
+      "aiChatSuggestion6",
+      "aiChatSuggestion7",
+      "aiChatSuggestion8",
     ];
     return [...all].sort(() => Math.random() - 0.5);
   });
@@ -213,7 +213,7 @@ export function AIChatWidget() {
             setMessages([
               {
                 role: "bot",
-                text: "Сәлем! Мен саған оқу процесінде көмектесуге дайынмын. Өзіңді қызықтырған сұрақты қой немесе төмендегі дайын нұсқауларды пайдалан. 👇",
+                text: t("aiChatGreeting"),
               },
             ]);
           }
@@ -225,7 +225,7 @@ export function AIChatWidget() {
         setMessages([
           {
             role: "bot",
-            text: "Сәлем! Мен саған оқу процесінде көмектесуге дайынмын. Өзіңді қызықтырған сұрақты қой немесе төмендегі дайын нұсқауларды пайдалан. 👇",
+            text: t("aiChatGreeting"),
           },
         ]);
       }
@@ -273,7 +273,8 @@ export function AIChatWidget() {
 
   const send = () => void sendMessage(input);
 
-  const sendPreset = (preset: string) => {
+  const sendPreset = (key: TranslationKey) => {
+    const preset = t(key);
     setSuggestionsOpen(false);
     setInput(preset);
     requestAnimationFrame(() => {
@@ -380,25 +381,25 @@ export function AIChatWidget() {
                   {msg.role === "user" ? (
                     msg.text
                   ) : (
-                    <div className="markdown-content whitespace-pre-wrap [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <div className="markdown-content [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
-                          h1: ({ ...props }) => <h1 className="text-xl font-bold mb-4 mt-6 border-b pb-1 border-gray-200 dark:border-gray-700" {...props} />,
-                          h2: ({ ...props }) => <h2 className="text-lg font-bold mb-3 mt-5 border-b pb-1 border-gray-200 dark:border-gray-700" {...props} />,
-                          h3: ({ ...props }) => <h3 className="text-base font-bold mb-2 mt-4 text-[var(--qit-primary)] dark:text-[var(--qit-secondary)]" {...props} />,
-                          h4: ({ ...props }) => <h4 className="text-sm font-bold mb-2 mt-3 uppercase tracking-wider text-gray-500" {...props} />,
-                          ul: ({ ...props }) => <ul className="list-disc ml-5 mb-4 space-y-2 marker:text-[var(--qit-primary)]" {...props} />,
-                          ol: ({ ...props }) => <ol className="list-decimal ml-5 mb-4 space-y-2 marker:text-[var(--qit-primary)]" {...props} />,
+                          h1: ({ ...props }) => <h1 className="text-xl font-bold mb-2 mt-4 border-b pb-1 border-gray-200 dark:border-gray-700" {...props} />,
+                          h2: ({ ...props }) => <h2 className="text-lg font-bold mb-2 mt-3 border-b pb-1 border-gray-200 dark:border-gray-700" {...props} />,
+                          h3: ({ ...props }) => <h3 className="text-base font-bold mb-1.5 mt-3 text-[var(--qit-primary)] dark:text-[var(--qit-secondary)]" {...props} />,
+                          h4: ({ ...props }) => <h4 className="text-sm font-bold mb-1 mt-2 uppercase tracking-wider text-gray-500" {...props} />,
+                          ul: ({ ...props }) => <ul className="list-disc ml-5 mb-2 space-y-1 marker:text-[var(--qit-primary)]" {...props} />,
+                          ol: ({ ...props }) => <ol className="list-decimal ml-5 mb-2 space-y-1 marker:text-[var(--qit-primary)]" {...props} />,
                           li: ({ ...props }) => <li className="pl-1" {...props} />,
-                          p: ({ ...props }) => <p className="mb-4 last:mb-0 leading-relaxed" {...props} />,
+                          p: ({ ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
                           code: ({ ...props }) => <code className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded px-1.5 py-0.5 font-mono text-[0.9em] font-medium" {...props} />,
                           pre: ({ ...props }) => (
-                            <pre className="bg-gray-900 text-gray-100 rounded-xl p-4 my-4 overflow-x-auto font-mono text-sm shadow-inner border border-gray-800" {...props} />
+                            <pre className="bg-gray-900 text-gray-100 rounded-xl p-4 my-2 overflow-x-auto font-mono text-sm shadow-inner border border-gray-800" {...props} />
                           ),
                           strong: ({ ...props }) => <strong className="font-bold text-[var(--qit-primary)] dark:text-[var(--qit-secondary)]" {...props} />,
                           blockquote: ({ ...props }) => (
-                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 italic text-gray-600 dark:text-gray-400" {...props} />
+                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-2 italic text-gray-600 dark:text-gray-400" {...props} />
                           ),
                         }}
                       >
@@ -443,7 +444,7 @@ export function AIChatWidget() {
                       disabled={loading || (!isPremium && dailyLimit && !dailyLimit.is_allowed)}
                       className="max-w-[calc(100%-0.25rem)] text-left text-[11px] sm:text-[12px] leading-snug bg-white dark:bg-gray-700 hover:bg-[var(--qit-primary)] hover:text-white border border-[var(--qit-primary)]/90 dark:border-[var(--qit-primary)] rounded-full px-2 py-1 text-[var(--qit-primary)] dark:text-gray-200 transition-colors active:scale-[0.98] shadow-sm font-bold disabled:opacity-50 disabled:pointer-events-none"
                     >
-                      {s}
+                      {t(s)}
                     </button>
                   ))}
                 </div>

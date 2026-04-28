@@ -196,7 +196,7 @@ def get_course_progress(
         out.append({
             "topic_id": p.topic_id,
             "is_completed": p.topic_id in completed_in_order,
-            "test_score": float(p.test_score) if p.test_score else None,
+            "test_score": float(p.test_score) if p.test_score is not None else None,
             "video_watched_seconds": p.video_watched_seconds,
         })
     return out
@@ -208,4 +208,4 @@ def my_progress(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     items = db.query(StudentProgress).filter(StudentProgress.user_id == current_user.id).all()
-    return [{"course_id": p.course_id, "topic_id": p.topic_id, "is_completed": p.is_completed, "test_score": float(p.test_score) if p.test_score else None} for p in items]
+    return [{"course_id": p.course_id, "topic_id": p.topic_id, "is_completed": p.is_completed, "test_score": float(p.test_score) if p.test_score is not None else None} for p in items]

@@ -36,6 +36,7 @@ from app.models.group_teacher import GroupTeacher
 from app.models.topic_synopsis import TopicSynopsisSubmission
 from app.models.course_feed_post import CourseFeedPost
 from app.api.assignment_access import is_assignment_submission_closed
+from app.services.file_service import move_files_to_permanent_storage
 
 
 router = APIRouter(prefix="/teacher", tags=["teacher"])
@@ -208,9 +209,11 @@ class AssignmentCreate(BaseModel):
     video_urls: list[str] | None = None
     rubric: list[RubricCriterionCreate] | None = None
     test_questions: list[TestQuestionCreate] | None = None  # for assignment with test
+    test_passing_score: int | None = 70  # configurable passing score
     reject_submissions_after_deadline: bool | None = None
     is_synopsis: bool = False
     is_supplementary: bool = False
+    target_student_ids: list[int] | None = None
 
 
 class AssignmentUpdate(BaseModel):
@@ -227,6 +230,7 @@ class AssignmentUpdate(BaseModel):
     reject_submissions_after_deadline: bool | None = None
     is_synopsis: bool | None = None
     is_supplementary: bool | None = None
+    target_student_ids: list[int] | None = None
 
 
 def _parse_rubric_levels_json(raw: str | None) -> list[dict]:
@@ -263,7 +267,7 @@ def _validate_rubric_max_matches_levels(c: RubricCriterionCreate) -> None:
     if abs(computed - float(c.max_points)) > 0.01:
         raise HTTPException(
             status_code=400,
-            detail="max_points must equal the highest level points when levels are provided",
+            detail="errorMaxPointsMismatch",
         )
 
 
@@ -278,21 +282,10 @@ class MaterialCreate(BaseModel):
     attachment_urls: list[str] | None = None
     attachment_links: list[str] | None = None
     is_supplementary: bool = False
+    target_student_ids: list[int] | None = None
 
 
-class QuestionCreate(BaseModel):
-    group_id: int
-    course_id: int
-    topic_id: int | None = None
-    question_text: str
-    question_type: str = "single_choice"  # single_choice, open
-    options: list[str] | None = None
-    correct_option: str | None = None
-    instructions: str | None = None
-    deadline: str | None = None
-    max_points: int = 100
-    attachment_urls: list[str] | None = None
-    attachment_links: list[str] | None = None
+    target_student_ids: list[int] | None = None
     video_urls: list[str] | None = None
     can_comment: bool = True
     can_edit: bool = False
@@ -306,6 +299,7 @@ class MaterialUpdate(BaseModel):
     image_urls: list[str] | None = None
     attachment_urls: list[str] | None = None
     attachment_links: list[str] | None = None
+    target_student_ids: list[int] | None = None
 
 
 class QuestionUpdate(BaseModel):
@@ -347,7 +341,7 @@ async def upload_assignment_file(
 ):
     """Загрузить файл для вложения к заданию (временное хранение)."""
     if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="Файл не выбран")
+        raise HTTPException(status_code=400, detail="errorFileNotSelected")
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_ASSIGNMENT_EXTENSIONS:
         raise HTTPException(
@@ -361,7 +355,7 @@ async def upload_assignment_file(
     dest = temp_dir / name
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Файл слишком большой (макс 50MB)")
+        raise HTTPException(status_code=400, detail="errorFileTooLarge")
     dest.write_bytes(content)
     url = f"/uploads/assignments/temp/{name}"
     return {"url": url}
@@ -376,9 +370,12 @@ def teacher_stats(
     from datetime import datetime, timedelta, timezone
 
     is_admin = current_user.role in ("admin", "director", "curator")
+    from app.models.group_teacher import GroupTeacher
     q_groups = db.query(TeacherGroup)
     if not is_admin:
-        q_groups = q_groups.filter(TeacherGroup.teacher_id == current_user.id)
+        q_groups = q_groups.outerjoin(GroupTeacher).filter(
+            (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
+        ).distinct()
     groups = q_groups.all()
     group_ids = [g.id for g in groups]
     groups_count = len(groups)
@@ -412,12 +409,15 @@ def teacher_stats(
     start_prev = today - timedelta(days=14)
 
     # Собираем группы текущего учителя/админа в выбранном интервале
+    from app.models.group_teacher import GroupTeacher
     groups_in_window = (
         db.query(TeacherGroup)
         .filter(TeacherGroup.created_at >= start_prev)
     )
     if not is_admin:
-        groups_in_window = groups_in_window.filter(TeacherGroup.teacher_id == current_user.id)
+        groups_in_window = groups_in_window.outerjoin(GroupTeacher).filter(
+            (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
+        ).distinct()
     groups_in_window = groups_in_window.all()
 
     def build_daily_counts(items, get_created_at):
@@ -494,9 +494,12 @@ def get_recent_submissions(
 ):
     """Последние сдачи заданий студентами для групп текущего учителя."""
     is_admin = current_user.role in ("admin", "director", "curator")
+    from app.models.group_teacher import GroupTeacher
     q_groups = db.query(TeacherGroup)
     if not is_admin:
-        q_groups = q_groups.filter(TeacherGroup.teacher_id == current_user.id)
+        q_groups = q_groups.outerjoin(GroupTeacher).filter(
+            (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
+        ).distinct()
     group_ids = [g.id for g in q_groups.all()]
     
     if not group_ids:
@@ -692,7 +695,7 @@ def create_group(
 ):
     """Создать новую учебную группу (только для админов и директоров)."""
     if current_user.role not in ("admin", "director"):
-        raise HTTPException(status_code=403, detail="У вас нет прав для создания групп. Это действие доступно только администраторам.")
+        raise HTTPException(status_code=403, detail="errorOnlyAdminCreateGroup")
     g = TeacherGroup(
         teacher_id=current_user.id,
         course_id=body.course_id,
@@ -714,11 +717,11 @@ def update_group(
     """Обновить данные группы (название или курс)."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     
     # Allow teachers to archive their own groups
     if not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="У вас нет прав для редактирования этой группы.")
+        raise HTTPException(status_code=403, detail="errorNoEditGroupPermission")
     
     if body.group_name is not None:
         g.group_name = body.group_name
@@ -741,14 +744,14 @@ def delete_group(
     """Удалить группу полностью."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     
     # Allow only primary teacher or admin to delete
     is_owner = g.teacher_id == current_user.id
     is_admin = current_user.role in ("admin", "director", "curator")
     
     if not is_owner and not is_admin:
-        raise HTTPException(status_code=403, detail="У вас нет прав для удаления этой группы. Это может сделать только основной преподаватель.")
+        raise HTTPException(status_code=403, detail="errorNoDeleteGroupPermission")
         
     db.delete(g)
     db.commit()
@@ -764,15 +767,15 @@ def add_student_to_group(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     if not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа к этой группе")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     enrollment = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == body.student_id,
         CourseEnrollment.course_id == g.course_id,
     ).first()
     if not enrollment:
-        raise HTTPException(status_code=400, detail="Студент не записан на этот курс")
+        raise HTTPException(status_code=400, detail="errorStudentNotEnrolled")
     try:
         gs = GroupStudent(group_id=group_id, student_id=body.student_id)
         db.add(gs)
@@ -788,7 +791,7 @@ def add_student_to_group(
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Студент уже в группе или не найден")
+        raise HTTPException(status_code=400, detail="errorStudentAlreadyInGroup")
     return {"ok": True}
 
 
@@ -800,7 +803,7 @@ def list_group_students(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     students = [gs.student for gs in g.students]
     return [{"id": u.id, "full_name": u.full_name or "", "email": u.email or ""} for u in students]
 
@@ -815,10 +818,10 @@ def list_topic_synopses_for_group(
     """Конспекты студентов группы по теме."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g, db):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic or topic.course_id != g.course_id:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     student_ids = [
         gs.student_id
         for gs in db.query(GroupStudent).filter(GroupStudent.group_id == group_id).all()
@@ -880,7 +883,7 @@ def list_topics_missing_assignments(
     """Темы курса группы, по которым ещё нет ни одного задания (для предупреждений)."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g, db):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     all_topics = (
         db.query(CourseTopic)
         .filter(CourseTopic.course_id == g.course_id)
@@ -913,7 +916,7 @@ def get_teacher_group_feed(
     """Лента для учителя: темы без заданий, посты, работы на проверке."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g, db):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     course_id = g.course_id
     now = datetime.now(timezone.utc)
     items: list[dict] = []
@@ -924,26 +927,7 @@ def get_teacher_group_feed(
         .order_by(CourseTopic.order_number)
         .all()
     )
-    topics_with_a = {
-        a.topic_id
-        for a in db.query(TeacherAssignment).filter(
-            TeacherAssignment.group_id == group_id,
-            TeacherAssignment.topic_id.isnot(None),
-        ).all()
-    }
-    for tp in all_topics:
-        if tp.id not in topics_with_a:
-            items.append(
-                {
-                    "kind": "missing_topic_assignment",
-                    "id": f"mis-{tp.id}",
-                    "title": tp.title,
-                    "body": None,
-                    "link": f"/app/teacher/courses/{group_id}?tab=classwork",
-                    "date": now.isoformat(),
-                    "meta": {"topic_id": tp.id},
-                }
-            )
+    # Removed missing_topic_assignment logic as per user request
 
     posts = (
         db.query(CourseFeedPost)
@@ -1028,7 +1012,7 @@ def list_group_teachers(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g, db):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     
     # Primary teacher
     primary = {
@@ -1061,14 +1045,14 @@ def add_teacher_to_group(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     
     # Only primary teacher or admin can add/remove secondary teachers
     if current_user.role not in ("admin", "director") and g.teacher_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец группы может добавлять других преподавателей.")
+        raise HTTPException(status_code=403, detail="errorOnlyOwnerAddTeacher")
         
     if body.teacher_id == g.teacher_id:
-        raise HTTPException(status_code=400, detail="Этот преподаватель уже является основным.")
+        raise HTTPException(status_code=400, detail="errorTeacherAlreadyPrimary")
         
     exists = db.query(GroupTeacher).filter(
         GroupTeacher.group_id == group_id,
@@ -1104,7 +1088,7 @@ def remove_teacher_from_group(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
         
     # Only primary teacher or admin can remove
     if current_user.role not in ("admin", "director") and g.teacher_id != current_user.id:
@@ -1119,7 +1103,7 @@ def remove_teacher_from_group(
     ).first()
     
     if not gt:
-        raise HTTPException(status_code=404, detail="Преподаватель не найден в списке со-преподавателей этой группы.")
+        raise HTTPException(status_code=404, detail="errorTeacherNotFoundInGroup")
         
     db.delete(gt)
     db.commit()
@@ -1186,7 +1170,7 @@ def get_group_gradebook(
     """Матрица оценок: учащиеся × все задания группы (по одному столбцу на задание, по всем темам курса)."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
 
     student_ids = [gs.student_id for gs in g.students]
     users = (
@@ -1298,12 +1282,12 @@ def remove_student_from_group(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     if not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     gs = db.query(GroupStudent).filter(GroupStudent.group_id == group_id, GroupStudent.student_id == student_id).first()
     if not gs:
-        raise HTTPException(status_code=404, detail="Студент не в этой группе")
+        raise HTTPException(status_code=404, detail="errorStudentNotInGroup")
     db.delete(gs)
     db.commit()
     return {"ok": True}
@@ -1318,7 +1302,7 @@ def group_progress(
 ):
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     student_ids = [gs.student_id for gs in g.students]
     if not student_ids:
         return []
@@ -1415,7 +1399,7 @@ def complete_add_student_task(
         AddStudentTask.teacher_id == current_user.id,
     ).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Задача не найдена")
+        raise HTTPException(status_code=404, detail="errorTaskNotFound")
     if task.status == "done":
         return {"ok": True, "message": "Уже выполнено"}
     gs = db.query(GroupStudent).filter(
@@ -1425,7 +1409,7 @@ def complete_add_student_task(
     if not gs:
         raise HTTPException(
             status_code=400,
-            detail="Сначала добавьте студента в группу",
+            detail="errorAddStudentToGroupFirst",
         )
     task.status = "done"
     task.completed_at = datetime.now(timezone.utc)
@@ -1492,6 +1476,7 @@ def list_assignments(
             "is_closed": _is_assignment_closed(r),
             "created_at": _dt_to_utc_z(r.created_at) if r.created_at else None,
             "is_synopsis": bool(getattr(r, "is_synopsis", False)),
+            "is_supplementary": bool(getattr(r, "is_supplementary", False)),
         })
 
     for r in materials:
@@ -1509,6 +1494,7 @@ def list_assignments(
             "closed_at": None,
             "is_closed": False,
             "created_at": _dt_to_utc_z(r.created_at) if r.created_at else None,
+            "is_supplementary": bool(getattr(r, "is_supplementary", False)),
         })
 
     for r in questions:
@@ -1556,11 +1542,15 @@ def create_assignment(
             pass
     test_id_val = None
     if body.test_questions:
+        test_title = f"Тест: {body.title}"
+        if len(test_title) > 255:
+            test_title = test_title[:252] + "..."
+            
         test = Test(
             course_id=body.course_id,
             topic_id=body.topic_id,
-            title=f"Тест: {body.title}",
-            passing_score=70,
+            title=test_title,
+            passing_score=body.test_passing_score or 70,
             question_count=len(body.test_questions),
         )
         db.add(test)
@@ -1578,17 +1568,20 @@ def create_assignment(
                 order_number=i + 1,
             )
             db.add(tq)
-    if body.is_synopsis:
-        # Check if one already exists for this topic in this group
+    if body.is_synopsis and not body.is_supplementary:
+        # Check if a MAIN synopsis already exists for this topic in this group
         existing = db.query(TeacherAssignment).filter(
             TeacherAssignment.group_id == body.group_id,
             TeacherAssignment.topic_id == body.topic_id,
-            TeacherAssignment.is_synopsis == True
+            TeacherAssignment.is_synopsis == True,
+            TeacherAssignment.is_supplementary == False
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail={"code": "synopsis_assignment_exists"})
 
-    rej_after = True if body.reject_submissions_after_deadline is None else body.reject_submissions_after_deadline
+    is_supp = body.is_supplementary
+    target_ids = json.dumps(body.target_student_ids) if body.target_student_ids else None
+    
     a = TeacherAssignment(
         teacher_id=current_user.id,
         group_id=body.group_id,
@@ -1601,13 +1594,22 @@ def create_assignment(
         attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
         video_urls=json.dumps(body.video_urls) if body.video_urls else None,
         test_id=test_id_val,
-        reject_submissions_after_deadline=rej_after,
+        reject_submissions_after_deadline=body.reject_submissions_after_deadline,
         is_synopsis=body.is_synopsis,
-        is_supplementary=body.is_supplementary,
+        is_supplementary=is_supp,
         max_points=100 if body.is_synopsis else body.max_points,
+        target_student_ids=target_ids,
     )
     db.add(a)
     db.flush()
+
+    # Move files to permanent storage
+    if body.attachment_urls:
+        new_urls = move_files_to_permanent_storage("assignments", a.id, body.attachment_urls)
+        a.attachment_urls = json.dumps(new_urls)
+    if body.video_urls:
+        new_video_urls = move_files_to_permanent_storage("assignments", a.id, body.video_urls)
+        a.video_urls = json.dumps(new_video_urls)
     if body.rubric:
         for c in body.rubric:
             _validate_rubric_max_matches_levels(c)
@@ -1624,13 +1626,17 @@ def create_assignment(
     db.refresh(a)
 
     # Notify each student in the group about the new assignment
+    notif_msg = f"Преподаватель создал задание «{a.title}» для группы «{g.group_name}»."
+    if len(notif_msg) > 1000: # Safe limit for message
+        notif_msg = notif_msg[:997] + "..."
+        
     for gs in g.students:
         notif = Notification(
             user_id=gs.student_id,
             type="assignment_created",
             title="Новое задание",
-            message=f"Преподаватель создал задание «{a.title}» для группы «{g.group_name}».",
-            link=f"/app/courses/{body.course_id}?tab=classwork&assignmentId={a.id}",
+            message=notif_msg,
+            link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
         )
         db.add(notif)
     db.commit()
@@ -1647,10 +1653,10 @@ def get_assignment(
     """Полные данные задания для формы редактирования."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     rubric = [_rubric_row_to_api(c) for c in a.rubric_criteria]
     return {
         "id": a.id,
@@ -1669,6 +1675,7 @@ def get_assignment(
         "rubric": rubric,
         "reject_submissions_after_deadline": bool(getattr(a, "reject_submissions_after_deadline", True)),
         "is_synopsis": bool(getattr(a, "is_synopsis", False)),
+        "is_supplementary": bool(getattr(a, "is_supplementary", False)),
     }
 
 
@@ -1756,10 +1763,10 @@ def close_assignment(
     from datetime import datetime, timezone
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     a.closed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(a)
@@ -1775,10 +1782,10 @@ def reopen_assignment(
     """Открыть задание снова (снять ручное закрытие)."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     a.closed_at = None
     db.commit()
     db.refresh(a)
@@ -1796,10 +1803,10 @@ def update_assignment_deadline(
     from datetime import datetime, timezone
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа к этому заданию")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     
     deadline = None
     if body.get("deadline"):
@@ -1811,7 +1818,7 @@ def update_assignment_deadline(
             if deadline.tzinfo is None:
                 deadline = deadline.replace(tzinfo=timezone.utc)
         except Exception:
-            raise HTTPException(status_code=400, detail="Неверный формат даты")
+            raise HTTPException(status_code=400, detail="errorInvalidDateFormat")
     
     a.deadline = deadline
     db.commit()
@@ -1833,10 +1840,10 @@ def update_assignment(
     from datetime import datetime
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     if body.title is not None:
         a.title = body.title
@@ -1844,27 +1851,32 @@ def update_assignment(
         a.description = body.description
     if body.max_points is not None:
         a.max_points = body.max_points
-    if body.topic_id is not None:
-        topic = db.query(CourseTopic).filter(
-            CourseTopic.id == body.topic_id, CourseTopic.course_id == a.course_id
-        ).first()
-        if not topic:
-            raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
-        a.topic_id = body.topic_id
+    if "topic_id" in body.__fields_set__:
+        if body.topic_id and body.topic_id != 0:
+            topic = db.query(CourseTopic).filter(
+                CourseTopic.id == body.topic_id, CourseTopic.course_id == a.course_id
+            ).first()
+            if not topic:
+                raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
+            a.topic_id = body.topic_id
+        else:
+            a.topic_id = None
     if body.deadline is not None:
         deadline = None
         if body.deadline:
             try:
                 deadline = datetime.fromisoformat(body.deadline.replace("Z", "+00:00"))
             except Exception:
-                raise HTTPException(status_code=400, detail="Неверный формат даты")
+                raise HTTPException(status_code=400, detail="errorInvalidDateFormat")
         a.deadline = deadline
     if body.attachment_urls is not None:
-        a.attachment_urls = json.dumps(body.attachment_urls) if body.attachment_urls else None
+        new_urls = move_files_to_permanent_storage("assignments", a.id, body.attachment_urls)
+        a.attachment_urls = json.dumps(new_urls) if new_urls else None
     if body.attachment_links is not None:
         a.attachment_links = json.dumps(body.attachment_links) if body.attachment_links else None
     if body.video_urls is not None:
-        a.video_urls = json.dumps(body.video_urls) if body.video_urls else None
+        new_video_urls = move_files_to_permanent_storage("assignments", a.id, body.video_urls)
+        a.video_urls = json.dumps(new_video_urls) if new_video_urls else None
     if body.reject_submissions_after_deadline is not None:
         a.reject_submissions_after_deadline = body.reject_submissions_after_deadline
     if body.is_synopsis is not None:
@@ -1873,6 +1885,8 @@ def update_assignment(
             a.max_points = 100
     if body.is_supplementary is not None:
         a.is_supplementary = body.is_supplementary
+    if body.target_student_ids is not None:
+        a.target_student_ids = json.dumps(body.target_student_ids) if body.target_student_ids else None
 
     if body.rubric is not None:
         db.query(TeacherAssignmentRubric).filter(
@@ -1904,10 +1918,10 @@ def delete_assignment(
     """Удалить задание группы (вместе с сдачами)."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     db.delete(a)
     db.commit()
     return {"ok": True}
@@ -1921,10 +1935,10 @@ def list_submissions(
 ):
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     import json
     rows = db.query(AssignmentSubmission).filter(AssignmentSubmission.assignment_id == assignment_id).all()
     submissions_by_student = {r.student_id: r for r in rows}
@@ -2008,13 +2022,13 @@ def bootstrap_absent_submission(
     """Создать запись сдачи без работы студента, чтобы можно было выставить оценку (например 0) после дедлайна."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     student_ids = {gs.student_id for gs in g.students}
     if body.student_id not in student_ids:
-        raise HTTPException(status_code=400, detail="Студент не в этой группе")
+        raise HTTPException(status_code=400, detail="errorStudentNotInGroup")
 
     existing = (
         db.query(AssignmentSubmission)
@@ -2028,13 +2042,13 @@ def bootstrap_absent_submission(
         return {"id": existing.id}
 
     if a.deadline is None:
-        raise HTTPException(status_code=400, detail="У задания нет срока сдачи")
+        raise HTTPException(status_code=400, detail="errorNoDeadlineSet")
     now = datetime.now(timezone.utc)
     dl = a.deadline
     if dl.tzinfo is None:
         dl = dl.replace(tzinfo=timezone.utc)
     if dl >= now:
-        raise HTTPException(status_code=400, detail="Срок сдачи ещё не истёк")
+        raise HTTPException(status_code=400, detail="errorDeadlineNotPassed")
 
     placeholder = AssignmentSubmission(
         assignment_id=assignment_id,
@@ -2066,7 +2080,7 @@ def export_group_progress_excel(
         .first()
     )
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=404, detail="Группа не найдена")
+        raise HTTPException(status_code=404, detail="errorGroupNotFound")
     student_ids = [gs.student_id for gs in g.students]
     course_title = g.course.title if g.course else ""
 
@@ -2123,13 +2137,13 @@ def grade_submission(
     from datetime import datetime, timezone
     sub = db.query(AssignmentSubmission).filter(AssignmentSubmission.id == submission_id).first()
     if not sub:
-        raise HTTPException(status_code=404, detail="Работа не найдена")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == sub.assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     final_grade = body.grade
     if body.grades:
         for sg in db.query(AssignmentSubmissionGrade).filter(AssignmentSubmissionGrade.submission_id == submission_id).all():
@@ -2198,13 +2212,13 @@ def return_submission_to_student(
 
     sub = db.query(AssignmentSubmission).filter(AssignmentSubmission.id == submission_id).first()
     if not sub:
-        raise HTTPException(status_code=404, detail="Работа не найдена")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == sub.assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     final_grade = body.grade
     if body.grades:
@@ -2279,10 +2293,10 @@ def mark_assignment_reviewed(
     """Отметить все сдачи задания как проверенные (поставить 0 тем, кто не сдал, или просто пометить)."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     # Находим всех студентов группы
     student_ids = [gs.student_id for gs in g.students]
@@ -2325,10 +2339,10 @@ def unmark_assignment_reviewed(
     """Отметить задание как непроверенное. Сбрасывает только автоматические оценки (0), выставленные через 'Mark Reviewed'."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     # Сбрасываем только те оценки, которые были выставлены автоматически
     # Ориентируемся на комментарии "Auto-graded as reviewed" и "Not submitted, marked as reviewed"
@@ -2362,7 +2376,7 @@ def list_group_synopses(
     """Список конспектов студентов группы для проверки."""
     g = db.query(TeacherGroup).filter(TeacherGroup.id == group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     
     # Темы курса
     topics = db.query(CourseTopic).filter(CourseTopic.course_id == g.course_id).order_by(CourseTopic.order_number).all()
@@ -2373,14 +2387,52 @@ def list_group_synopses(
     users = {u.id: u for u in db.query(User).filter(User.id.in_(student_ids)).all()} if student_ids else {}
     
     # Все сдачи конспектов студентов этой группы по этому курсу
-    rows = db.query(TopicSynopsisSubmission).filter(
+    # 1. Сдачи из новой унифицированной таблицы (TeacherAssignment + AssignmentSubmission)
+    unified_assignments = db.query(TeacherAssignment).filter(
+        TeacherAssignment.group_id == group_id,
+        TeacherAssignment.is_synopsis == True,
+        TeacherAssignment.is_supplementary == False
+    ).all()
+    unified_assignment_ids = [a.id for a in unified_assignments]
+    
+    unified_submissions = []
+    if unified_assignment_ids:
+        unified_submissions = db.query(AssignmentSubmission).filter(
+            AssignmentSubmission.assignment_id.in_(unified_assignment_ids),
+            AssignmentSubmission.student_id.in_(student_ids)
+        ).all()
+
+    # 2. Сдачи из старой легаси таблицы (TopicSynopsisSubmission)
+    legacy_submissions = db.query(TopicSynopsisSubmission).filter(
         TopicSynopsisSubmission.topic_id.in_(topic_map.keys()),
         TopicSynopsisSubmission.user_id.in_(student_ids)
-    ).order_by(TopicSynopsisSubmission.submitted_at.desc()).all()
+    ).all()
     
-    return [
-        {
-            "id": r.id,
+    result = []
+    
+    # Добавляем унифицированные
+    for s in unified_submissions:
+        a = s.assignment
+        result.append({
+            "id": f"unified-{s.id}", # Префикс чтобы фронт различал
+            "user_id": s.student_id,
+            "student_name": users[s.student_id].full_name if s.student_id in users else "Unknown",
+            "topic_id": a.topic_id,
+            "topic_title": topic_map.get(a.topic_id, a.title or "Unknown"),
+            "file_url": s.file_url or (json.loads(s.file_urls)[0] if s.file_urls and json.loads(s.file_urls) else None),
+            "note_text": s.submission_text,
+            "grade": float(s.grade) if s.grade is not None else None,
+            "teacher_comment": s.teacher_comment,
+            "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
+            "graded_at": None, # В AssignmentSubmission нет отдельного graded_at
+            "is_unified": True,
+            "assignment_id": a.id
+        })
+        
+    # Добавляем легаси
+    for r in legacy_submissions:
+        result.append({
+            "id": f"legacy-{r.id}",
             "user_id": r.user_id,
             "student_name": users[r.user_id].full_name if r.user_id in users else "Unknown",
             "topic_id": r.topic_id,
@@ -2391,9 +2443,12 @@ def list_group_synopses(
             "teacher_comment": r.teacher_comment,
             "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
             "graded_at": r.graded_at.isoformat() if r.graded_at else None,
-        }
-        for r in rows
-    ]
+            "is_unified": False
+        })
+
+    # Сортируем всё по дате сдачи
+    result.sort(key=lambda x: x["submitted_at"] or "", reverse=True)
+    return result
 
 
 @router.put("/synopses/{synopsis_id}/grade")
@@ -2407,12 +2462,12 @@ def grade_synopsis(
     from datetime import datetime, timezone
     r = db.query(TopicSynopsisSubmission).filter(TopicSynopsisSubmission.id == synopsis_id).first()
     if not r:
-        raise HTTPException(status_code=404, detail="Конспект не найден")
+        raise HTTPException(status_code=404, detail="errorSynopsisNotFound")
     
     # Проверка доступа к группе студента
     topic = r.topic
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     
     # Находим группу студента по этому курсу
     gs = db.query(GroupStudent).join(TeacherGroup, TeacherGroup.id == GroupStudent.group_id).filter(
@@ -2421,7 +2476,7 @@ def grade_synopsis(
     ).first()
     
     if not gs or not _can_manage_group(current_user, gs.group):
-        raise HTTPException(status_code=403, detail="Нет доступа к проверке этого студента")
+        raise HTTPException(status_code=403, detail="errorNoAccessToStudentReview")
     
     r.grade = body.grade
     r.teacher_comment = body.teacher_comment
@@ -2497,6 +2552,7 @@ def create_material(
         ).first()
         if not topic:
             raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
+    target_ids = json.dumps(body.target_student_ids) if body.target_student_ids else None
     m = TeacherMaterial(
         teacher_id=current_user.id,
         group_id=body.group_id,
@@ -2509,8 +2565,18 @@ def create_material(
         attachment_urls=json.dumps(body.attachment_urls) if body.attachment_urls else None,
         attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
         is_supplementary=body.is_supplementary,
+        target_student_ids=target_ids,
     )
     db.add(m)
+    db.flush()
+
+    # Move files to permanent storage
+    if body.attachment_urls:
+        new_urls = move_files_to_permanent_storage("materials", m.id, body.attachment_urls)
+        m.attachment_urls = json.dumps(new_urls)
+    if body.video_urls:
+        new_video_urls = move_files_to_permanent_storage("materials", m.id, body.video_urls)
+        m.video_urls = json.dumps(new_video_urls)
     for gs in g.students:
         notif = Notification(
             user_id=gs.student_id,
@@ -2525,6 +2591,24 @@ def create_material(
     return {"id": m.id, "title": m.title}
 
 
+@router.delete("/questions/{question_id}")
+def delete_question(
+    question_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Удалить вопрос группы (вместе с ответами)."""
+    q = db.query(TeacherQuestion).filter(TeacherQuestion.id == question_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="errorNoAccess")
+    db.delete(q)
+    db.commit()
+    return {"ok": True}
+
+
 # ---------- Questions ----------
 @router.get("/questions")
 def list_questions(
@@ -2533,9 +2617,12 @@ def list_questions(
     group_id: int | None = Query(None),
 ):
     is_admin = current_user.role in ("admin", "director", "curator")
+    from app.models.group_teacher import GroupTeacher
     q_groups = db.query(TeacherGroup)
     if not is_admin:
-        q_groups = q_groups.filter(TeacherGroup.teacher_id == current_user.id)
+        q_groups = q_groups.outerjoin(GroupTeacher).filter(
+            (TeacherGroup.teacher_id == current_user.id) | (GroupTeacher.teacher_id == current_user.id)
+        ).distinct()
     group_ids = [g.id for g in q_groups.all()]
     if not group_ids:
         return []
@@ -2568,10 +2655,10 @@ def get_material(
 ):
     m = db.query(TeacherMaterial).filter(TeacherMaterial.id == material_id).first()
     if not m:
-        raise HTTPException(status_code=404, detail="Материал не найден")
+        raise HTTPException(status_code=404, detail="errorMaterialNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == m.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     return {
         "id": m.id,
         "group_id": m.group_id,
@@ -2583,6 +2670,7 @@ def get_material(
         "image_urls": json.loads(m.image_urls) if m.image_urls else [],
         "attachment_urls": json.loads(m.attachment_urls) if m.attachment_urls else [],
         "attachment_links": json.loads(m.attachment_links) if m.attachment_links else [],
+        "is_supplementary": bool(getattr(m, "is_supplementary", False)),
     }
 
 
@@ -2595,19 +2683,44 @@ def update_material(
 ):
     m = db.query(TeacherMaterial).filter(TeacherMaterial.id == material_id).first()
     if not m:
-        raise HTTPException(status_code=404, detail="Материал не найден")
+        raise HTTPException(status_code=404, detail="errorMaterialNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == m.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     
     if body.title is not None: m.title = body.title
     if body.description is not None: m.description = body.description
-    if body.topic_id is not None: m.topic_id = body.topic_id
-    if body.video_urls is not None: m.video_urls = json.dumps(body.video_urls)
+    if "topic_id" in body.__fields_set__:
+        m.topic_id = body.topic_id if body.topic_id != 0 else None
+    if body.video_urls is not None:
+        new_video_urls = move_files_to_permanent_storage("materials", m.id, body.video_urls)
+        m.video_urls = json.dumps(new_video_urls) if new_video_urls else None
     if body.image_urls is not None: m.image_urls = json.dumps(body.image_urls)
-    if body.attachment_urls is not None: m.attachment_urls = json.dumps(body.attachment_urls)
+    if body.attachment_urls is not None:
+        new_urls = move_files_to_permanent_storage("materials", m.id, body.attachment_urls)
+        m.attachment_urls = json.dumps(new_urls) if new_urls else None
     if body.attachment_links is not None: m.attachment_links = json.dumps(body.attachment_links)
+    if body.target_student_ids is not None:
+        m.target_student_ids = json.dumps(body.target_student_ids) if body.target_student_ids else None
     
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/materials/{material_id}")
+def delete_material(
+    material_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_teacher_user)],
+):
+    """Удалить учебный материал группы."""
+    m = db.query(TeacherMaterial).filter(TeacherMaterial.id == material_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="errorMaterialNotFound")
+    g = db.query(TeacherGroup).filter(TeacherGroup.id == m.group_id).first()
+    if not g or not _can_manage_group(current_user, g):
+        raise HTTPException(status_code=403, detail="errorNoAccess")
+    db.delete(m)
     db.commit()
     return {"ok": True}
 
@@ -2620,10 +2733,10 @@ def get_question(
 ):
     q = db.query(TeacherQuestion).filter(TeacherQuestion.id == question_id).first()
     if not q:
-        raise HTTPException(status_code=404, detail="Вопрос не найден")
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     return {
         "id": q.id,
         "group_id": q.group_id,
@@ -2642,10 +2755,10 @@ def list_question_answers(
 ):
     q = db.query(TeacherQuestion).filter(TeacherQuestion.id == question_id).first()
     if not q:
-        raise HTTPException(status_code=404, detail="Вопрос не найден")
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     
     rows = db.query(TeacherQuestionAnswer).filter(TeacherQuestionAnswer.question_id == question_id).all()
     answers_by_student = {r.student_id: r for r in rows}
@@ -2694,13 +2807,13 @@ def grade_question_answer(
     from datetime import datetime, timezone
     ans = db.query(TeacherQuestionAnswer).filter(TeacherQuestionAnswer.id == answer_id).first()
     if not ans:
-        raise HTTPException(status_code=404, detail="Ответ не найден")
+        raise HTTPException(status_code=404, detail="errorAnswerNotFound")
     q = db.query(TeacherQuestion).filter(TeacherQuestion.id == ans.question_id).first()
     if not q:
-        raise HTTPException(status_code=404, detail="Вопрос не найден")
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     ans.grade = body.grade
     ans.teacher_comment = body.teacher_comment
@@ -2732,13 +2845,13 @@ def return_question_answer(
     """Сбросить ответ студента, чтобы он мог ответить снова."""
     ans = db.query(TeacherQuestionAnswer).filter(TeacherQuestionAnswer.id == answer_id).first()
     if not ans:
-        raise HTTPException(status_code=404, detail="Ответ не найден")
+        raise HTTPException(status_code=404, detail="errorAnswerNotFound")
     q = db.query(TeacherQuestion).filter(TeacherQuestion.id == ans.question_id).first()
     if not q:
-        raise HTTPException(status_code=404, detail="Вопрос не найден")
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     student_id = ans.student_id
     question_text = q.question_text
@@ -2765,13 +2878,25 @@ def update_question(
 ):
     q = db.query(TeacherQuestion).filter(TeacherQuestion.id == question_id).first()
     if not q:
-        raise HTTPException(status_code=404, detail="Вопрос не найден")
+        raise HTTPException(status_code=404, detail="errorQuestionNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == q.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     
     if body.question_text is not None: q.question_text = body.question_text
     if body.question_type is not None: q.question_type = body.question_type
+    
+    if "topic_id" in body.__fields_set__:
+        if body.topic_id and body.topic_id != 0:
+            topic = db.query(CourseTopic).filter(
+                CourseTopic.id == body.topic_id, CourseTopic.course_id == q.course_id
+            ).first()
+            if not topic:
+                raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
+            q.topic_id = body.topic_id
+        else:
+            q.topic_id = None
+            
     if body.options is not None: q.options = json.dumps(body.options)
     if body.correct_option is not None: q.correct_option = body.correct_option
     
@@ -2779,60 +2904,7 @@ def update_question(
     return {"ok": True}
 
 
-@router.post("/questions")
-def create_question(
-    body: QuestionCreate,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_teacher_user)],
-):
-    g = db.query(TeacherGroup).filter(TeacherGroup.id == body.group_id).first()
-    if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail={"code": "no_access_group"})
-    if body.course_id != g.course_id:
-        raise HTTPException(status_code=400, detail={"code": "course_group_mismatch"})
-    if body.topic_id is not None:
-        topic = db.query(CourseTopic).filter(
-            CourseTopic.id == body.topic_id, CourseTopic.course_id == body.course_id
-        ).first()
-        if not topic:
-            raise HTTPException(status_code=400, detail={"code": "topic_not_in_course"})
-    deadline = None
-    if body.deadline:
-        try:
-            deadline = datetime.fromisoformat(body.deadline.replace("Z", "+00:00"))
-        except Exception:
-            pass
-    q = TeacherQuestion(
-        teacher_id=current_user.id,
-        group_id=body.group_id,
-        course_id=body.course_id,
-        topic_id=body.topic_id,
-        question_text=body.question_text,
-        description=(body.instructions or "").strip() or None,
-        question_type=_normalize_question_type_storage(body.question_type),
-        options=json.dumps(body.options) if body.options else None,
-        correct_option=body.correct_option,
-        deadline=deadline,
-        max_points=body.max_points,
-        attachment_urls=json.dumps(body.attachment_urls) if body.attachment_urls else None,
-        attachment_links=json.dumps(body.attachment_links) if body.attachment_links else None,
-        video_urls=json.dumps(body.video_urls) if body.video_urls else None,
-        allow_student_class_comments=body.can_comment,
-        allow_student_edit_submission=body.can_edit,
-    )
-    db.add(q)
-    for gs in g.students:
-        notif = Notification(
-            user_id=gs.student_id,
-            type="question_created",
-            title="Новый вопрос",
-            message=f"Преподаватель задал вопрос для группы «{g.group_name}».",
-            link="/app/questions",
-        )
-        db.add(notif)
-    db.commit()
-    db.refresh(q)
-    return {"id": q.id, "question_text": q.question_text[:50]}
+
 
 
     # ---------- Topics (teacher creates) ----------
@@ -2845,7 +2917,7 @@ def update_topic(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     
     # Check access
     is_admin = current_user.role in ("admin", "director", "curator")
@@ -2855,7 +2927,7 @@ def update_topic(
             TeacherGroup.teacher_id == current_user.id
         ).first()
         if not has_group:
-            raise HTTPException(status_code=403, detail="Нет доступа")
+            raise HTTPException(status_code=403, detail="errorNoAccess")
 
     if body.title is not None: topic.title = body.title
     if body.description is not None: topic.description = body.description
@@ -2873,7 +2945,7 @@ def delete_topic(
 ):
     topic = db.query(CourseTopic).filter(CourseTopic.id == topic_id).first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Тема не найдена")
+        raise HTTPException(status_code=404, detail="topicNotFound")
     
     # Check access
     is_admin = current_user.role in ("admin", "director", "curator")
@@ -2883,7 +2955,7 @@ def delete_topic(
             TeacherGroup.teacher_id == current_user.id
         ).first()
         if not has_group:
-            raise HTTPException(status_code=403, detail="Нет доступа")
+            raise HTTPException(status_code=403, detail="errorNoAccess")
 
     db.delete(topic)
     db.commit()
@@ -2928,10 +3000,10 @@ def get_assignment_for_clone(
 ):
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == a.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     rubric = [_rubric_row_to_api(c) for c in a.rubric_criteria]
     return {
         "group_id": a.group_id,
@@ -2955,10 +3027,10 @@ def get_material_for_clone(
 ):
     m = db.query(TeacherMaterial).filter(TeacherMaterial.id == material_id).first()
     if not m:
-        raise HTTPException(status_code=404, detail="Материал не найден")
+        raise HTTPException(status_code=404, detail="errorMaterialNotFound")
     g = db.query(TeacherGroup).filter(TeacherGroup.id == m.group_id).first()
     if not g or not _can_manage_group(current_user, g):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     return {
         "group_id": m.group_id,
         "course_id": m.course_id,

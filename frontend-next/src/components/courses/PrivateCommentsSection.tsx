@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/utils/dateUtils";
 
-type TargetType = "assignment" | "material";
+type TargetType = "assignment" | "material" | "question";
 
 type PrivateComment = {
   id: number | null;

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef, useEffect, type ChangeEvent } from "react";
 import { api } from "@/api/client";
@@ -468,7 +470,7 @@ function SupplementaryAssignmentCard({
 
       {actionError && (
         <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">
-          {actionError}
+          {t(actionError as any)}
         </div>
       )}
 
@@ -917,6 +919,19 @@ function SupplementaryTopicDetail({
             <Sparkles className="w-8 h-8 text-gray-400 dark:text-gray-500" />
           </div>
           <p className="text-gray-500 dark:text-gray-400">{t("supplementaryMaterialsEmpty" as TranslationKey)}</p>
+        </div>
+      )}
+
+      {/* Go to test button */}
+      {topic.id !== -1 && (
+        <div className="pt-6 mt-6 border-t border-gray-200 dark:border-gray-800">
+          <Link
+            href={`/app/courses/${courseId}/topic/${topic.id}?showTest=true`}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm font-bold shadow-lg shadow-purple-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Sparkles className="w-5 h-5" />
+            {t("topicControlTestTitle" as TranslationKey)}
+          </Link>
         </div>
       )}
     </div>

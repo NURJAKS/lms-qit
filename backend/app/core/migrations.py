@@ -477,6 +477,36 @@ def _ensure_topic_synopsis_columns(db_engine: Engine) -> None:
         with db_engine.begin() as conn:
             if "updated_at" not in existing:
                 conn.execute(text(f"ALTER TABLE topic_synopsis_submissions ADD COLUMN updated_at {dt}"))
+            if "grade" not in existing:
+                conn.execute(text("ALTER TABLE topic_synopsis_submissions ADD COLUMN grade NUMERIC(5, 2)"))
+            if "teacher_comment" not in existing:
+                conn.execute(text("ALTER TABLE topic_synopsis_submissions ADD COLUMN teacher_comment TEXT"))
+            if "graded_by_id" not in existing:
+                conn.execute(text("ALTER TABLE topic_synopsis_submissions ADD COLUMN graded_by_id INTEGER"))
+            if "graded_at" not in existing:
+                conn.execute(text(f"ALTER TABLE topic_synopsis_submissions ADD COLUMN graded_at {dt}"))
+    except Exception:
+        return
+
+
+def _ensure_assignment_and_material_individual_student_columns(db_engine: Engine) -> None:
+    """Add target_student_ids column to assignments and materials for individual student targeting."""
+    try:
+        insp = inspect(db_engine)
+        
+        # Check teacher_assignments
+        if insp.has_table("teacher_assignments"):
+            existing = {c["name"] for c in insp.get_columns("teacher_assignments")}
+            if "target_student_ids" not in existing:
+                with db_engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE teacher_assignments ADD COLUMN target_student_ids TEXT"))
+                    
+        # Check teacher_materials
+        if insp.has_table("teacher_materials"):
+            existing = {c["name"] for c in insp.get_columns("teacher_materials")}
+            if "target_student_ids" not in existing:
+                with db_engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE teacher_materials ADD COLUMN target_student_ids TEXT"))
     except Exception:
         return
 
@@ -553,6 +583,7 @@ def run_migrations(strict: bool = False) -> None:
     _ensure_teacher_question_answers_extended_columns(engine)
     _ensure_topic_synopsis_columns(engine)
     _ensure_shop_items_secret_content_column(engine)
+    _ensure_assignment_and_material_individual_student_columns(engine)
     _ensure_support_tickets_table(engine)
     if strict:
         _assert_critical_schema(engine)

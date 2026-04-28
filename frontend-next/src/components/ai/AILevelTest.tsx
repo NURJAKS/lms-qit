@@ -69,17 +69,17 @@ export function AILevelTest({ onComplete }: AILevelTestProps) {
       { 
         id: "beginner", 
         label: t("aiLevelBeginner"), 
-        desc: lang === "kk" ? "Программалауды енді бастадым" : lang === "en" ? "I'm just starting out" : "Я только начинаю" 
+        desc: t("aiLevelBeginnerDesc") 
       },
       { 
         id: "intermediate", 
         label: t("aiLevelIntermediate"), 
-        desc: lang === "kk" ? "Негіздерін білемін, тәжірибем бар" : lang === "en" ? "I have some experience" : "У меня есть базовый опыт" 
+        desc: t("aiLevelIntermediateDesc") 
       },
       { 
         id: "expert", 
         label: t("aiLevelExpert"), 
-        desc: lang === "kk" ? "Күрделі тапсырмаларды орындай аламын" : lang === "en" ? "I can solve complex tasks" : "Могу решать сложные задачи" 
+        desc: t("aiLevelExpertDesc") 
       },
     ];
 
@@ -88,10 +88,10 @@ export function AILevelTest({ onComplete }: AILevelTestProps) {
         <div className="max-w-3xl mx-auto p-10 space-y-10 text-center">
           <div className="space-y-4">
             <h2 className="text-3xl font-bold">
-              {lang === "kk" ? "Деңгейіңізді таңдаңыз" : lang === "en" ? "Select your level" : "Выберите ваш уровень"}
+              {t("aiLevelSelectTitle")}
             </h2>
             <p className="text-gray-500 max-w-md mx-auto">
-              {lang === "kk" ? "Біз сізге ең қолайлы жоспарды дайындаймыз" : lang === "en" ? "We will prepare the most suitable plan for you" : "Мы подготовим наиболее подходящий план для вас"}
+              {t("aiLevelSelectSubtitle")}
             </p>
           </div>
 

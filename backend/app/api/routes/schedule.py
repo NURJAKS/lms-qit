@@ -117,7 +117,7 @@ def create_schedule_item(
             CourseEnrollment.course_id == body.course_id,
         ).first()
         if not e:
-            raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+            raise HTTPException(status_code=403, detail="errorEnrollFirst")
     item = StudySchedule(
         user_id=current_user.id,
         course_id=body.course_id,
@@ -143,7 +143,7 @@ def update_schedule_item(
         StudySchedule.user_id == current_user.id,
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
     
     is_admin = current_user.role in ("admin", "director", "curator")
     if body.course_id is not None:
@@ -153,7 +153,7 @@ def update_schedule_item(
                 CourseEnrollment.course_id == body.course_id,
             ).first()
             if not e:
-                raise HTTPException(status_code=403, detail="Сначала запишитесь на курс.")
+                raise HTTPException(status_code=403, detail="errorEnrollFirst")
         item.course_id = body.course_id
     
     if body.topic_id is not None:
@@ -184,7 +184,7 @@ def delete_schedule_item(
         StudySchedule.user_id == current_user.id,
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
     db.delete(item)
     db.commit()
     return {"ok": True}
@@ -224,7 +224,7 @@ def update_goal(
         StudentGoal.user_id == current_user.id,
     ).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Цель не найдена")
+        raise HTTPException(status_code=404, detail="errorGoalNotFound")
     if body.is_achieved is not None:
         g.is_achieved = body.is_achieved
     db.commit()

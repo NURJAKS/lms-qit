@@ -20,6 +20,7 @@ class TeacherMaterial(Base):
     attachment_urls = Column(Text)  # JSON array of file URLs
     attachment_links = Column(Text)  # JSON array of external links
     is_supplementary = Column(Boolean, nullable=False, default=False)  # доп. материал
+    target_student_ids = Column(Text, nullable=True)  # JSON array of user IDs, if null then for all group
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     teacher = relationship("User", foreign_keys=[teacher_id])

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -28,6 +29,7 @@ from app.api.assignment_access import (
     deadline_passed_utc,
     is_assignment_submission_closed,
     submission_closed_http_detail,
+    can_student_see_item,
 )
 from app.services.topic_flow import video_requirement_met
 from app.models.course_topic import CourseTopic
@@ -117,29 +119,29 @@ async def upload_submission_file(
     """Загрузить файл для сдачи задания."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     in_group = db.query(GroupStudent).filter(
         GroupStudent.student_id == current_user.id,
         GroupStudent.group_id == a.group_id,
     ).first()
     if not in_group:
-        raise HTTPException(status_code=403, detail="Вы не в группе этого задания")
+        raise HTTPException(status_code=403, detail="errorNotYourGroup")
     existing = db.query(AssignmentSubmission).filter(
         AssignmentSubmission.assignment_id == assignment_id,
         AssignmentSubmission.student_id == current_user.id,
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Вы уже сдали это задание")
+        raise HTTPException(status_code=400, detail="errorAlreadySubmitted")
     now = datetime.now(timezone.utc)
     if is_assignment_submission_closed(a):
         raise HTTPException(status_code=400, detail=submission_closed_http_detail(a))
     if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="Файл не выбран")
+        raise HTTPException(status_code=400, detail="errorFileNotSelected")
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_SUBMISSION_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Только: {', '.join(ALLOWED_SUBMISSION_EXTENSIONS)}",
+            detail="errorInvalidFileType",
         )
     uploads_base = Path(__file__).resolve().parent.parent.parent.parent / "uploads"
     sub_dir = uploads_base / "submissions" / str(assignment_id)
@@ -148,7 +150,7 @@ async def upload_submission_file(
     dest = sub_dir / name
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Файл слишком большой (макс 50MB)")
+        raise HTTPException(status_code=400, detail="errorFileTooLarge")
     dest.write_bytes(content)
     url = f"/uploads/submissions/{assignment_id}/{name}"
     return {"url": url}
@@ -213,15 +215,27 @@ def list_my_assignments(
         ):
             cc_counts[aid] = cnt
 
+    comment_author_ids = list({s.teacher_comment_author_id for s in submissions_by_assignment.values() if s and s.teacher_comment_author_id})
+    comment_authors = {u.id: u for u in db.query(User).filter(User.id.in_(comment_author_ids)).all()} if comment_author_ids else {}
+
     now = datetime.now(timezone.utc)
     out = []
     for a in assignments:
+        if not can_student_see_item(a, current_user.id):
+            continue
         sub = submissions_by_assignment.get(a.id)
         closed = is_assignment_submission_closed(a)
         passed = deadline_passed_utc(a.deadline, now)
         manually_closed = getattr(a, "closed_at", None) is not None
         tu = teachers.get(a.teacher_id)
         teacher_name = (tu.full_name or tu.email or "") if tu else ""
+        
+        comment_author_name = None
+        if sub and sub.teacher_comment_author_id:
+            cau = comment_authors.get(sub.teacher_comment_author_id)
+            if cau:
+                comment_author_name = cau.full_name or cau.email or ""
+
         rubric = rubrics_by_assignment.get(a.id, [])
         rgrades = rubric_grades_by_sub.get(sub.id, []) if sub else []
         out.append({
@@ -235,6 +249,7 @@ def list_my_assignments(
             "topic_title": topics.get(getattr(a, "topic_id", 0)) if getattr(a, "topic_id", None) else None,
             "max_points": getattr(a, "max_points", 100),
             "teacher_name": teacher_name,
+            "teacher_comment_author_name": comment_author_name,
             "rubric": rubric,
             "rubric_grades": rgrades,
             "attachment_urls": _assignment_json_list(getattr(a, "attachment_urls", None)),
@@ -256,6 +271,7 @@ def list_my_assignments(
             "class_comments_count": cc_counts.get(a.id, 0),
             "allow_student_class_comments": bool(getattr(a, "allow_student_class_comments", True)),
             "is_synopsis": bool(getattr(a, "is_synopsis", False)),
+            "is_supplementary": bool(getattr(a, "is_supplementary", False)),
             "is_locked": (
                 a.topic_id is not None 
                 and a.topic_id in topic_objs 
@@ -328,7 +344,7 @@ def list_my_supplementary_materials(
             "created_at": a.created_at.isoformat() if a.created_at else None,
             "is_synopsis": bool(getattr(a, "is_synopsis", False)),
         }
-        for a in supp_assignments
+        for a in supp_assignments if can_student_see_item(a, current_user.id)
     ]
 
     materials_out = [
@@ -343,7 +359,7 @@ def list_my_supplementary_materials(
             "attachment_links": _assignment_json_list(getattr(m, "attachment_links", None)),
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
-        for m in supp_materials
+        for m in supp_materials if can_student_see_item(m, current_user.id)
     ]
 
     return {"topics": topics_out, "assignments": assignments_out, "materials": materials_out}
@@ -410,9 +426,10 @@ def list_my_materials(
             "attachment_urls": _assignment_json_list(getattr(m, "attachment_urls", None)),
             "attachment_links": _assignment_json_list(getattr(m, "attachment_links", None)),
             "created_at": m.created_at.isoformat() if m.created_at else None,
+            "is_supplementary": bool(getattr(m, "is_supplementary", False)),
             "is_locked": False,
         }
-        for m in materials
+        for m in materials if can_student_see_item(m, current_user.id)
     ]
 
 
@@ -424,9 +441,9 @@ def list_assignment_class_comments(
 ):
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     if not _can_access_assignment_class_comments(db, current_user, a):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
 
     rows = (
         db.query(AssignmentClassComment, User)
@@ -457,9 +474,9 @@ def post_assignment_class_comment(
 ):
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     if not _can_access_assignment_class_comments(db, current_user, a):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="errorNoAccess")
     if current_user.role == "student" and not bool(getattr(a, "allow_student_class_comments", True)):
         raise HTTPException(status_code=403, detail={"code": "assignment_class_comments_disabled"})
 
@@ -499,7 +516,7 @@ def submit_assignment(
     """Сдать задание."""
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     if is_assignment_submission_closed(a):
         raise HTTPException(status_code=400, detail=submission_closed_http_detail(a))
     in_group = db.query(GroupStudent).filter(
@@ -507,21 +524,21 @@ def submit_assignment(
         GroupStudent.group_id == a.group_id,
     ).first()
     if not in_group:
-        raise HTTPException(status_code=403, detail="Вы не в группе этого задания")
+        raise HTTPException(status_code=403, detail="errorNotYourGroup")
     existing = db.query(AssignmentSubmission).filter(
         AssignmentSubmission.assignment_id == assignment_id,
         AssignmentSubmission.student_id == current_user.id,
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Вы уже сдали это задание")
+        raise HTTPException(status_code=400, detail="errorAlreadySubmitted")
     text_ok = bool(body.submission_text and str(body.submission_text).strip())
     has_files = bool(body.file_url) or bool(body.file_urls and len(body.file_urls) > 0)
     if not text_ok and not has_files:
-        raise HTTPException(status_code=400, detail="Добавьте текст ответа или прикрепите файл")
+        raise HTTPException(status_code=400, detail="errorAnswerEmpty")
     file_urls_json = None
     if body.file_urls:
         if len(body.file_urls) > 5:
-            raise HTTPException(status_code=400, detail="Максимум 5 файлов")
+            raise HTTPException(status_code=400, detail="errorMaxFiles")
         file_urls_json = json.dumps(body.file_urls)
     sub = AssignmentSubmission(
         assignment_id=assignment_id,
@@ -534,14 +551,35 @@ def submit_assignment(
     notif = Notification(
         user_id=a.teacher_id,
         type="assignment_submitted",
-        title="Проверьте задание",
-        message=f"Студент {current_user.full_name or current_user.email} сдал задание «{a.title}».",
+        title="notifReviewTaskTitle",
+        message="notifReviewTaskBody",
         link=f"/app/teacher/view-answers/{assignment_id}",
     )
     db.add(notif)
+    
+    # If this is a primary synopsis, mark topic as completed (since tests are being removed)
+    if a.is_synopsis and not a.is_supplementary and a.topic_id:
+        from app.models.progress import StudentProgress
+        prog = db.query(StudentProgress).filter(
+            StudentProgress.user_id == current_user.id,
+            StudentProgress.topic_id == a.topic_id
+        ).first()
+        if not prog:
+            prog = StudentProgress(
+                user_id=current_user.id,
+                course_id=a.course_id,
+                topic_id=a.topic_id,
+                is_completed=True,
+                completed_at=func.now()
+            )
+            db.add(prog)
+        else:
+            prog.is_completed = True
+            prog.completed_at = func.now()
+
     db.commit()
     db.refresh(sub)
-    return {"id": sub.id, "message": "Тапсырма сәтті жіберілді"}
+    return {"id": sub.id, "message": "msgAssignmentSubmitted"}
 
 
 @router.post("/{assignment_id}/unsubmit")
@@ -556,25 +594,25 @@ def unsubmit_assignment(
     """
     a = db.query(TeacherAssignment).filter(TeacherAssignment.id == assignment_id).first()
     if not a:
-        raise HTTPException(status_code=404, detail="Задание не найдено")
+        raise HTTPException(status_code=404, detail="assignmentNotFound")
     submission = (
         db.query(AssignmentSubmission)
         .filter(AssignmentSubmission.assignment_id == assignment_id, AssignmentSubmission.student_id == current_user.id)
         .first()
     )
     if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
+        raise HTTPException(status_code=404, detail="errorRecordNotFound")
 
     # Avoid breaking already-graded work.
     if submission.graded_at is not None or submission.grade is not None:
-        raise HTTPException(status_code=400, detail="Cannot unsubmit a graded submission")
+        raise HTTPException(status_code=400, detail="unsubmitErrorGraded")
 
     if is_assignment_submission_closed(a):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя отменить сдачу: срок сдачи истёк, задание закрыто или приём работ завершён",
+            detail="errorUnsubmitForbidden",
         )
 
     db.delete(submission)
     db.commit()
-    return {"ok": True, "message": "Submission removed"}
+    return {"ok": True, "message": "msgSubmissionRemoved"}
