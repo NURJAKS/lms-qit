@@ -85,7 +85,7 @@ type Props = {
   teacherGroups: Group[];
   topics: CourseTopic[];
   onInviteStudents: () => void;
-  mode?: "assignment" | "assignmentWithTest" | "material";
+  mode?: "assignment" | "assignmentWithTest" | "material" | "question";
   initialData?: any;
 };
 
@@ -168,6 +168,7 @@ export function CreateAssignmentFullPageModal({
   initialData,
 }: Props) {
   const isAssignmentLike = mode === "assignment" || mode === "assignmentWithTest";
+  const isQuestionMode = mode === "question";
   const queryClient = useQueryClient();
   const { t, lang } = useLanguage();
   const { theme } = useTheme();
@@ -254,6 +255,10 @@ export function CreateAssignmentFullPageModal({
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([
     { question: "", options: ["", ""], correct_option_index: 0 },
   ]);
+  const [questionText, setQuestionText] = useState("");
+  const [questionType, setQuestionType] = useState<"single_choice" | "open">("single_choice");
+  const [questionOptions, setQuestionOptions] = useState<string[]>(["", ""]);
+  const [correctOption, setCorrectOption] = useState("");
 
 
   const rubricPayload: RubricCriterionPayload[] = useMemo(() => {
@@ -442,8 +447,19 @@ export function CreateAssignmentFullPageModal({
     setRubricTitle(t("assignmentRubricCriterion"));
     setRubricUsePoints(true);
     setRubricSortDesc(true);
-    setHasQuiz(mode === "assignmentWithTest");
     setQuizQuestions([{ question: "", options: ["", ""], correct_option_index: 0 }]);
+    setQuestionText("");
+    setQuestionType("single_choice");
+    setQuestionOptions(["", ""]);
+    setCorrectOption("");
+
+    if (initialData?.isEdit) {
+      if (mode === "question") {
+        setQuestionText(initialData.question_text || "");
+        setQuestionType(initialData.question_type || "single_choice");
+        setQuestionOptions(initialData.options || ["", ""]);
+        setCorrectOption(initialData.correct_option || "");
+      }
     setYoutubeDialogOpen(false);
     setYoutubeSearch("");
     setYoutubeUrl("");
@@ -579,7 +595,7 @@ export function CreateAssignmentFullPageModal({
         attachment_urls: payload.attachmentUrls?.length ? payload.attachmentUrls : undefined,
         attachment_links: payload.attachmentLinks?.length ? payload.attachmentLinks : undefined,
         video_urls: payload.videoUrls?.length ? payload.videoUrls : undefined,
-        is_supplementary: payload.isSupplementary,
+        isSupplementary: payload.isSupplementary,
         target_student_ids: payload.targetStudentIds?.length ? payload.targetStudentIds : undefined,
       });
     },
@@ -590,7 +606,7 @@ export function CreateAssignmentFullPageModal({
     setSubmitErrorDetail(null);
     setTitleTouched(true);
     const cleanedTitle = title.trim();
-    if (!cleanedTitle) return;
+    if (!cleanedTitle && mode !== "question") return;
     if (selectedGroupIds.length === 0) setSelectedGroupIds([currentGroup.id]);
 
     submittingRef.current = true;
@@ -640,6 +656,16 @@ export function CreateAssignmentFullPageModal({
               targetStudentIds: selectedStudentIds,
             });
           }
+        } else if (mode === "question") {
+          await createQuestionMutation.mutateAsync({
+            groupId: gid,
+            courseId: g.course_id,
+            questionText,
+            questionType,
+            options: questionType === "single_choice" ? questionOptions : undefined,
+            correctOption: questionType === "single_choice" ? correctOption : undefined,
+            isSupplementary,
+          });
         } else {
           const includeTest =
             mode === "assignmentWithTest" || (mode === "assignment" && hasQuiz);
@@ -734,7 +760,9 @@ export function CreateAssignmentFullPageModal({
               <h2 className="text-lg font-semibold font-geologica" style={{ color: textColors.primary }}>
                 {initialData?.isEdit ? t("teacherEditAssignment") : (mode === "material"
                   ? t("assignmentTypeMaterial")
-                  : mode === "assignmentWithTest"
+                  : mode === "question"
+                    ? t("teacherCreateQuestion")
+                    : mode === "assignmentWithTest"
                       ? t("assignmentTypeAssignmentWithTest")
                       : t("assignmentTypeAssignment"))}
               </h2>
@@ -742,7 +770,9 @@ export function CreateAssignmentFullPageModal({
             <p className="text-xs mt-1" style={{ color: textColors.secondary }}>
               {mode === "material"
                 ? t("assignmentCreateMaterial")
-                : mode === "assignmentWithTest"
+                : mode === "question"
+                  ? t("teacherCreateQuestion")
+                  : mode === "assignmentWithTest"
                     ? t("assignmentCreateAssignmentWithTest")
                     : t("createAssignment")}
             </p>
@@ -752,7 +782,7 @@ export function CreateAssignmentFullPageModal({
               <button
                 type="button"
                 onClick={handleCreateAssignment}
-                disabled={submitting || !title.trim()}
+                disabled={submitting || (mode !== "question" && !title.trim())}
                 className="px-6 py-2 rounded-xl text-white font-semibold transition-all hover:shadow-lg hover:brightness-110 disabled:opacity-50 ring-2 ring-white/25 dark:ring-white/15 shadow-md"
                 style={{ background: "linear-gradient(135deg,#2563EB,#7C3AED)" }}
               >
@@ -778,36 +808,116 @@ export function CreateAssignmentFullPageModal({
               {/* Left Panel */}
               <div className="min-w-0 p-4 sm:p-6 lg:p-10 border-b lg:border-b-0 lg:border-r" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
                 <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
-                  {/* Title */}
-                  <div className="space-y-1">
-                    <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                      {mode === "material" ? t("assignmentTitleLabel") : t("assignmentTitleLabel")}
-                    </label>
-                    <input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      onBlur={() => setTitleTouched(true)}
-                      placeholder={t("assignmentTitlePlaceholder")}
-                      className="w-full px-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/40"
-                      style={{ ...inputStyle, color: textColors.primary }}
-                    />
-                    {titleError ? (
-                      <p className="text-xs" style={{ color: "#F87171" }}>
-                        {titleError}
-                      </p>
-                    ) : null}
-                  </div>
+                  {/* Title or Question */}
+                  {mode === "question" ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: textColors.secondary }}>
+                          {t("teacherQuestionText")}
+                        </label>
+                        <textarea
+                          placeholder={t("teacherQuestionText")}
+                          value={questionText}
+                          onChange={(e) => setQuestionText(e.target.value)}
+                          className="w-full min-h-[100px] rounded-xl p-3 resize-none outline-none focus:ring-2 focus:ring-blue-500/40"
+                          style={{ ...inputStyle, color: textColors.primary }}
+                        />
+                      </div>
 
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: textColors.secondary }}>
+                            {t("teacherQuestionType")}
+                          </label>
+                          <select
+                            value={questionType}
+                            onChange={(e) => setQuestionType(e.target.value as "single_choice" | "open")}
+                            className="w-full h-11 rounded-xl px-3 outline-none"
+                            style={{ ...inputStyle, color: textColors.primary }}
+                          >
+                            <option value="single_choice">{t("teacherQuestionTypeSingle")}</option>
+                            <option value="open">{t("teacherQuestionTypeOpen")}</option>
+                          </select>
+                        </div>
+                      </div>
 
-                  {/* Instructions */}
-                  <div className="space-y-3">
-                    <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
-                      {mode === "material" ? t("optionalDescription") : t("optionalInstructions")}
-                    </label>
-                    <div className="min-h-[200px]">
-                      <RichTextEditor value={instructionsHtml} onChange={setInstructionsHtml} />
+                      {questionType === "single_choice" && (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: textColors.secondary }}>
+                            {t("teacherOptions")}
+                          </label>
+                          {questionOptions.map((opt, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                              <input
+                                type="radio"
+                                name="correct_option"
+                                checked={correctOption === String.fromCharCode(97 + idx)}
+                                onChange={() => setCorrectOption(String.fromCharCode(97 + idx))}
+                                className="w-4 h-4 accent-blue-500"
+                              />
+                              <input
+                                type="text"
+                                placeholder={`${t("teacherOption")} ${idx + 1}`}
+                                value={opt}
+                                onChange={(e) => {
+                                  const newOpts = [...questionOptions];
+                                  newOpts[idx] = e.target.value;
+                                  setQuestionOptions(newOpts);
+                                }}
+                                className="flex-1 h-11 rounded-xl px-3 outline-none"
+                                style={{ ...inputStyle, color: textColors.primary }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setQuestionOptions(questionOptions.filter((_, i) => i !== idx))}
+                                className="p-2.5 rounded-xl hover:bg-red-500/10 text-red-500 transition-colors"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setQuestionOptions([...questionOptions, ""])}
+                            className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                          >
+                            <Plus className="w-4 h-4" /> {t("teacherAddOption")}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
+                        {mode === "material" ? t("assignmentTitleLabel") : t("assignmentTitleLabel")}
+                      </label>
+                      <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        onBlur={() => setTitleTouched(true)}
+                        placeholder={t("assignmentTitlePlaceholder")}
+                        className="w-full px-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/40"
+                        style={{ ...inputStyle, color: textColors.primary }}
+                      />
+                      {titleError ? (
+                        <p className="text-xs" style={{ color: "#F87171" }}>
+                          {titleError}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Instructions (Not for questions) */}
+                  {mode !== "question" && (
+                    <div className="space-y-3">
+                      <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
+                        {mode === "material" ? t("optionalDescription") : t("optionalInstructions")}
+                      </label>
+                      <div className="min-h-[200px]">
+                        <RichTextEditor value={instructionsHtml} onChange={setInstructionsHtml} />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Attachments */}
                   <div className="space-y-4 pt-4 border-t" style={{ borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}>
@@ -1146,7 +1256,7 @@ export function CreateAssignmentFullPageModal({
                   )}
 
                   {/* Due date */}
-                  {mode !== "material" && (
+                  {mode !== "material" && mode !== "question" && (
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold" style={{ color: textColors.primary }}>
                         {t("dueDate")}
