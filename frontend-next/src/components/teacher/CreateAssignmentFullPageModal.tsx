@@ -453,13 +453,15 @@ export function CreateAssignmentFullPageModal({
     setQuestionOptions(["", ""]);
     setCorrectOption("");
 
-    if (initialData?.isEdit) {
+    if (initialData) {
       if (mode === "question") {
         setQuestionText(initialData.question_text || "");
         setQuestionType(initialData.question_type || "single_choice");
         setQuestionOptions(initialData.options || ["", ""]);
         setCorrectOption(initialData.correct_option || "");
       }
+    }
+
     setYoutubeDialogOpen(false);
     setYoutubeSearch("");
     setYoutubeUrl("");
@@ -475,7 +477,7 @@ export function CreateAssignmentFullPageModal({
     setMaxPointsFollowsRubric(!initialData);
     setIsSynopsis(initialData?.is_synopsis || false);
     setIsSupplementary(initialData?.is_supplementary || false);
-    setSelectedStudentIds(initialData?.target_student_ids ? JSON.parse(initialData.target_student_ids) : []);
+    setSelectedStudentIds(initialData?.target_student_ids ? (typeof initialData.target_student_ids === 'string' ? JSON.parse(initialData.target_student_ids) : initialData.target_student_ids) : []);
     setTestPassingScore(initialData?.test_passing_score || 70);
 
   }, [isOpen, currentGroup.id, initialData, mode, t]);
