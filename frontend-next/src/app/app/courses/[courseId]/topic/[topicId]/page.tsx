@@ -505,7 +505,7 @@ export default function TopicViewPage() {
                 )}
                 <span>
                   <strong className="text-amber-600 dark:text-amber-400">
-                    {t("topicRewardsCompletion") || t("topicRewardsTest").replace("{coins}", "25")}
+                    {t("topicRewardsTest").replace("{coins}", "25")}
                   </strong>
                   {progress?.is_completed && (
                     <span className="text-green-600 dark:text-green-400 ml-1">✓</span>
