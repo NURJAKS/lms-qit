@@ -345,9 +345,9 @@ export function CreateAssignmentFullPageModal({
         const levelsFromApi =
           apiLevels.length > 0
             ? apiLevels.map((lv) => ({
-                name: typeof lv.text === "string" ? lv.text : "",
-                points: Number.isFinite(Number(lv.points)) ? Number(lv.points) : 0,
-              }))
+              name: typeof lv.text === "string" ? lv.text : "",
+              points: Number.isFinite(Number(lv.points)) ? Number(lv.points) : 0,
+            }))
             : [{ name: "Max", points: Number(r.max_points) || 0 }];
         return {
           name: typeof r.name === "string" ? r.name : "",
@@ -363,7 +363,7 @@ export function CreateAssignmentFullPageModal({
   // Reset state on open
   useEffect(() => {
     if (!isOpen) return;
-    
+
     if (initialData) {
       setTitle(initialData.title || "");
       setInstructionsHtml(initialData.description || "");
@@ -382,9 +382,9 @@ export function CreateAssignmentFullPageModal({
             const levelsFromApi =
               apiLevels.length > 0
                 ? apiLevels.map((lv: any) => ({
-                    name: typeof lv.text === "string" ? lv.text : typeof lv.name === "string" ? lv.name : "",
-                    points: Number.isFinite(Number(lv.points)) ? Number(lv.points) : 0,
-                  }))
+                  name: typeof lv.text === "string" ? lv.text : typeof lv.name === "string" ? lv.name : "",
+                  points: Number.isFinite(Number(lv.points)) ? Number(lv.points) : 0,
+                }))
                 : [{ name: "Max", points: Number(r.max_points) || 0 }];
             return {
               name: typeof r.name === "string" ? r.name : "",
@@ -972,9 +972,9 @@ export function CreateAssignmentFullPageModal({
 
                     {/* Attachment previews */}
                     {videoUrls.length > 0 ||
-                    attachmentUrls.length > 0 ||
-                    attachmentLinks.length > 0 ||
-                    hasQuiz ? (
+                      attachmentUrls.length > 0 ||
+                      attachmentLinks.length > 0 ||
+                      hasQuiz ? (
                       <div className="space-y-3">
                         {videoUrls.length > 0 ? (
                           <div>
@@ -1067,8 +1067,8 @@ export function CreateAssignmentFullPageModal({
                         type="button"
                         onClick={() => setForWhomOpen((o) => !o)}
                         className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-sm font-semibold transition-all hover:bg-black/5 dark:hover:bg-white/5"
-                        style={{ 
-                          ...inputStyle, 
+                        style={{
+                          ...inputStyle,
                           color: textColors.primary,
                           background: isDark ? "rgba(30, 41, 59, 0.8)" : "#F1F5F9",
                           borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.05)"
@@ -1658,9 +1658,9 @@ export function CreateAssignmentFullPageModal({
                                         prev.map((c, j) =>
                                           j === idx
                                             ? {
-                                                ...c,
-                                                levels: c.levels.map((x, k) => (k === lidx ? { ...x, name: e.target.value } : x)),
-                                              }
+                                              ...c,
+                                              levels: c.levels.map((x, k) => (k === lidx ? { ...x, name: e.target.value } : x)),
+                                            }
                                             : c
                                         )
                                       )
@@ -1681,11 +1681,11 @@ export function CreateAssignmentFullPageModal({
                                             prev.map((c, j) =>
                                               j === idx
                                                 ? {
-                                                    ...c,
-                                                    levels: c.levels.map((x, k) =>
-                                                      k === lidx ? { ...x, points: 0 } : x
-                                                    ),
-                                                  }
+                                                  ...c,
+                                                  levels: c.levels.map((x, k) =>
+                                                    k === lidx ? { ...x, points: 0 } : x
+                                                  ),
+                                                }
                                                 : c
                                             )
                                           );
@@ -1696,11 +1696,11 @@ export function CreateAssignmentFullPageModal({
                                           prev.map((c, j) =>
                                             j === idx
                                               ? {
-                                                  ...c,
-                                                  levels: c.levels.map((x, k) =>
-                                                    k === lidx ? { ...x, points: Number.isFinite(v) ? v : 0 } : x
-                                                  ),
-                                                }
+                                                ...c,
+                                                levels: c.levels.map((x, k) =>
+                                                  k === lidx ? { ...x, points: Number.isFinite(v) ? v : 0 } : x
+                                                ),
+                                              }
                                               : c
                                           )
                                         );
@@ -1957,7 +1957,7 @@ export function CreateAssignmentFullPageModal({
                       <label
                         key={s.id}
                         className="flex items-center gap-4 px-4 py-3 rounded-2xl cursor-pointer transition-all hover:bg-black/5 dark:hover:bg-white/5 border"
-                        style={{ 
+                        style={{
                           borderColor: isSelected ? "#10B981" : isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
                           background: isSelected ? (isDark ? "rgba(16,185,129,0.1)" : "rgba(209,250,229,0.3)") : "transparent"
                         }}
@@ -1967,9 +1967,9 @@ export function CreateAssignmentFullPageModal({
                           className="w-5 h-5 rounded-md accent-emerald-500 shrink-0"
                           checked={isSelected}
                           onChange={() => {
-                            setSelectedStudentIds(prev => 
-                              prev.includes(s.id) 
-                                ? prev.filter(id => id !== s.id) 
+                            setSelectedStudentIds(prev =>
+                              prev.includes(s.id)
+                                ? prev.filter(id => id !== s.id)
                                 : [...prev, s.id]
                             );
                           }}

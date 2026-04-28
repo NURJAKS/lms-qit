@@ -86,7 +86,7 @@ export function TopicLessonMaterialsSection({
     const tasks: UnifiedTask[] = [];
     
     assignmentsData
-      .filter((a) => a.topic_id === topicId && !a.is_synopsis && !a.is_supplementary)
+      .filter((a) => a.topic_id === topicId && !a.is_supplementary)
       .forEach((a) => {
         tasks.push({
           type: 'assignment',
