@@ -78,7 +78,7 @@ export function TopicLessonMaterialsSection({
   });
 
   const mainMaterials = useMemo(
-    () => materialsData.filter((m) => m.topic_id === topicId && !m.is_supplementary && !m.is_synopsis),
+    () => materialsData.filter((m) => m.topic_id === topicId && !m.is_supplementary),
     [materialsData, topicId]
   );
 
@@ -97,7 +97,7 @@ export function TopicLessonMaterialsSection({
       });
 
     questionsData
-      .filter((q) => q.topic_id === topicId && !(q as any).is_supplementary && !(q as any).is_synopsis)
+      .filter((q) => q.topic_id === topicId && !(q as any).is_supplementary)
       .forEach((q) => {
         tasks.push({
           type: 'question',
