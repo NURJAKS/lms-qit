@@ -2180,9 +2180,14 @@ def grade_submission(
     n = Notification(
         user_id=sub.student_id,
         type="assignment_graded",
-        title="Работа оценена",
-        message=f"Ваша работа по заданию «{a.title}» оценена: {final_grade}. {body.teacher_comment or ''}",
+        title="notificationAssignmentGradedTitle",
+        message="notificationAssignmentGradedBody",
         link=f"/app/courses/{a.course_id}?tab=classwork&assignmentId={a.id}",
+        meta=json.dumps({
+            "title": a.title,
+            "grade": float(final_grade) if final_grade is not None else 0,
+            "comment": body.teacher_comment or ""
+        })
     )
     db.add(n)
     db.commit()

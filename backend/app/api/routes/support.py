@@ -66,6 +66,7 @@ def create_support_ticket(
                 title="notifNewSupportTicketTitle",
                 message=msg_json,
                 link="/app/admin/support",
+                meta=msg_json
             )
         )
 

@@ -16,5 +16,6 @@ class Notification(Base):
     link = Column(String(500))
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    meta = Column(Text)  # JSON string
 
     user = relationship("User", back_populates="notifications")

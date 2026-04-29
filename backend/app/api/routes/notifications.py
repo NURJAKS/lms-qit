@@ -22,7 +22,26 @@ def list_notifications(
     if is_read is not None:
         q = q.filter(Notification.is_read == is_read)
     rows = q.order_by(Notification.created_at.desc()).limit(limit).all()
-    return [{"id": r.id, "type": r.type, "title": r.title, "message": r.message, "link": r.link, "is_read": r.is_read, "created_at": r.created_at} for r in rows]
+    import json
+    out = []
+    for r in rows:
+        meta = None
+        if r.meta:
+            try:
+                meta = json.loads(r.meta)
+            except:
+                meta = None
+        out.append({
+            "id": r.id,
+            "type": r.type,
+            "title": r.title,
+            "message": r.message,
+            "link": r.link,
+            "is_read": r.is_read,
+            "created_at": r.created_at,
+            "meta": meta
+        })
+    return out
 
 
 @router.put("/{notification_id}/read")

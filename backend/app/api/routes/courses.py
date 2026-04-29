@@ -340,6 +340,7 @@ def enroll_course(
         title="notifCoursePurchasedTitle",
         message="notifCoursePurchasedBody",
         link=f"/app/courses/{course_id}",
+        meta=json.dumps({"title": course.title})
     )
     db.add(notif)
     
@@ -380,9 +381,14 @@ def enroll_course(
                 teacher_notif = Notification(
                     user_id=group.teacher_id,
                     type="add_student_task",
-                title="notifAddStudentTaskTitle",
-                message="notifAddStudentTaskBody",
-                link="/app/teacher?tab=requests"
+                    title="notifAddStudentTaskTitle",
+                    message="notifAddStudentTaskBody",
+                    link="/app/teacher?tab=requests",
+                    meta=json.dumps({
+                        "name": current_user.full_name or current_user.email,
+                        "title": course.title,
+                        "group": group.group_name
+                    })
                 )
                 db.add(teacher_notif)
     
@@ -530,6 +536,7 @@ def get_student_course_feed(
     # 4. Недавно проверенные работы (Задания)
     graded_assigns = (
         db.query(AssignmentSubmission)
+        .options(joinedload(AssignmentSubmission.assignment))
         .join(TeacherAssignment, TeacherAssignment.id == AssignmentSubmission.assignment_id)
         .filter(
             AssignmentSubmission.student_id == current_user.id,
@@ -541,6 +548,9 @@ def get_student_course_feed(
         .all()
     )
     for gs in graded_assigns:
+        # TeacherAssignment is joined, so we can access gs.assignment if relationship is defined, 
+        # but the query joins TeacherAssignment explicitly. 
+        # gs is AssignmentSubmission.
         items.append({
             "kind": "graded",
             "id": f"gr-asg-{gs.id}",
@@ -548,12 +558,17 @@ def get_student_course_feed(
             "body": "notifGradedBody",
             "link": f"/app/courses/{course_id}?tab=classwork&assignmentId={gs.assignment_id}",
             "date": gs.graded_at.isoformat() if gs.graded_at else None,
-            "meta": {"submission_id": gs.id}
+            "meta": {
+                "submission_id": gs.id,
+                "title": gs.assignment.title,
+                "grade": gs.grade
+            }
         })
 
     # 5. Недавно проверенные работы (Конспекты)
     graded_syn = (
         db.query(TopicSynopsisSubmission)
+        .options(joinedload(TopicSynopsisSubmission.topic))
         .join(CourseTopic, CourseTopic.id == TopicSynopsisSubmission.topic_id)
         .filter(
             TopicSynopsisSubmission.user_id == current_user.id,
@@ -572,7 +587,11 @@ def get_student_course_feed(
             "body": "notifSynopsisCheckedBody",
             "link": f"/app/courses/{course_id}/topic/{gs.topic_id}",
             "date": gs.graded_at.isoformat() if gs.graded_at else None,
-            "meta": {"synopsis_id": gs.id}
+            "meta": {
+                "synopsis_id": gs.id,
+                "title": gs.topic.title,
+                "grade": gs.grade
+            }
         })
 
     def sort_key(it: dict):
