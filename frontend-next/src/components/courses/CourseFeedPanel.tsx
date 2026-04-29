@@ -24,6 +24,7 @@ import { formatLocalizedDate } from "@/utils/dateUtils";
 import { getModalStyle, getTextColors } from "@/utils/themeStyles";
 import { feedLinkDisplayHref, isPlausibleExternalUrl, normalizeFeedLinkForSave } from "@/utils/feedLink";
 import { ALLOWED_EXTENSIONS_STR, ALLOWED_EXTENSIONS_HINT } from "@/constants/fileTypes";
+import { getLocalizedNotificationText } from "@/lib/notificationText";
 
 const FEED_ATTACHMENTS_MAX = 12;
 
@@ -389,10 +390,29 @@ export function CourseFeedPanel({
                   <span className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 dark:text-gray-400">
                     {labelFor(it)}
                   </span>
-                  <p className="mt-0.5 break-words font-medium text-gray-900 dark:text-white">{it.title}</p>
-                  {it.body ? (
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">{it.body}</p>
-                  ) : null}
+                  {(() => {
+                    const loc = getLocalizedNotificationText(
+                      {
+                        type: it.kind,
+                        title: it.title,
+                        message: it.body || "",
+                        meta: it.meta,
+                      },
+                      t
+                    );
+                    return (
+                      <>
+                        <p className="mt-0.5 break-words font-medium text-gray-900 dark:text-white">
+                          {loc.title}
+                        </p>
+                        {loc.message ? (
+                          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">
+                            {loc.message}
+                          </p>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <FeedAttachmentsBlock urls={attachments} t={t} />
                   {it.date ? (
                     <p className="text-xs text-gray-500 mt-2">{formatLocalizedDate(it.date, lang, t)}</p>

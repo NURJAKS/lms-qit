@@ -6,13 +6,32 @@ export type AppNotification = {
   link?: string;
   is_read: boolean;
   created_at: string;
+  meta?: Record<string, any>;
 };
 
+
+export function formatTranslation(text: string, meta?: Record<string, any>): string {
+  if (!text || !meta) return text;
+  let result = text;
+  for (const key in meta) {
+    result = result.replace(new RegExp(`{${key}}`, "g"), String(meta[key]));
+  }
+  return result;
+}
+
 export function getLocalizedNotificationText<K extends string>(
-  n: Pick<AppNotification, "type" | "title" | "message">,
+  n: { type: string; title: string; message: string; meta?: any },
   t: (key: K) => string,
 ) {
   const T = t as (key: string) => string;
+  const meta = typeof n.meta === "object" ? n.meta : {};
+
+  const translateAndFormat = (key: string, fallback: string) => {
+    const translated = T(key);
+    if (translated === key) return formatTranslation(fallback, meta);
+    return formatTranslation(translated, meta);
+  };
+
   switch (n.type) {
     case "new_application":
       return {
@@ -27,7 +46,7 @@ export function getLocalizedNotificationText<K extends string>(
     case "add_student_task":
       return {
         title: T("notificationAddStudentTaskTitle"),
-        message: T("notificationAddStudentTaskBody"),
+        message: formatTranslation(T("notificationAddStudentTaskBody"), meta),
       };
     case "add_student_task_completed":
       return {
@@ -37,31 +56,31 @@ export function getLocalizedNotificationText<K extends string>(
     case "added_to_group":
       return {
         title: T("notificationAddedToGroupTitle"),
-        message: T("notificationAddedToGroupBody"),
+        message: formatTranslation(T("notificationAddedToGroupBody"), meta),
       };
     case "course_purchased":
       return {
         title: T("notificationCoursePurchasedTitle"),
-        message: T("notificationCoursePurchasedBody"),
+        message: formatTranslation(T("notificationCoursePurchasedBody"), meta),
       };
     case "assignment_created":
       return {
         title: T("notificationAssignmentCreatedTitle"),
-        message: T("notificationAssignmentCreatedBody"),
+        message: formatTranslation(T("notificationAssignmentCreatedBody"), meta),
       };
     case "assignment_submitted":
       return {
         title: T("notificationAssignmentSubmittedTitle"),
-        message: T("notificationAssignmentSubmittedBody"),
+        message: formatTranslation(T("notificationAssignmentSubmittedBody"), meta),
       };
     case "assignment_graded":
       return {
-        title: T("notificationAssignmentGradedTitle"),
+        title: formatTranslation(T("notificationAssignmentGradedTitle"), meta),
         message: T("notificationAssignmentGradedBody"),
       };
     case "assignment_returned": {
       try {
-        const p = JSON.parse(n.message) as { grade?: number | null; comment?: string };
+        const p = typeof n.message === "string" && n.message.startsWith("{") ? JSON.parse(n.message) : n.meta || {};
         const gradeStr =
           p.grade != null && Number.isFinite(Number(p.grade))
             ? String(p.grade)
@@ -85,12 +104,12 @@ export function getLocalizedNotificationText<K extends string>(
     case "material_created":
       return {
         title: T("notificationMaterialCreatedTitle"),
-        message: T("notificationMaterialCreatedBody"),
+        message: formatTranslation(T("notificationMaterialCreatedBody"), meta),
       };
     case "question_created":
       return {
         title: T("notificationQuestionCreatedTitle"),
-        message: T("notificationQuestionCreatedBody"),
+        message: formatTranslation(T("notificationQuestionCreatedBody"), meta),
       };
     case "schedule_reminder":
       return {
@@ -100,7 +119,7 @@ export function getLocalizedNotificationText<K extends string>(
     case "coins_earned":
       return {
         title: T("notificationCoinsEarnedTitle"),
-        message: T("notificationCoinsEarnedBody"),
+        message: formatTranslation(T("notificationCoinsEarnedBody"), meta),
       };
     case "certificate_issued":
       return {
@@ -115,47 +134,43 @@ export function getLocalizedNotificationText<K extends string>(
     case "test_passed":
       return {
         title: T("notificationTestPassedTitle"),
-        message: T("notificationTestPassedBody"),
+        message: formatTranslation(T("notificationTestPassedBody"), meta),
       };
     case "test_failed":
       return {
         title: T("notificationTestFailedTitle"),
-        message: T("notificationTestFailedBody"),
+        message: formatTranslation(T("notificationTestFailedBody"), meta),
       };
     case "news":
       return {
-        title: T(n.title) || n.title,
-        message: T(n.message) || n.message,
+        title: translateAndFormat(n.title, n.title),
+        message: translateAndFormat(n.message, n.message),
       };
     case "support_ticket": {
       try {
-        const p = JSON.parse(n.message) as {
-          student_name: string;
-          course_title?: string | null;
-          message_snippet: string;
-        };
+        const p = typeof n.message === "string" && n.message.startsWith("{") ? JSON.parse(n.message) : n.meta || {};
         const title = T("notificationSupportTicketTitle");
         const bodyTemplate = p.course_title
           ? T("notificationSupportTicketBodyWithCourse")
           : T("notificationSupportTicketBody");
 
         const message = bodyTemplate
-          .replace("{student_name}", p.student_name)
+          .replace("{student_name}", p.student_name || "")
           .replace("{course_title}", p.course_title || "")
-          .replace("{message_snippet}", p.message_snippet);
+          .replace("{message_snippet}", p.message_snippet || "");
 
         return { title, message };
       } catch {
         return {
-          title: T(n.title) || n.title,
-          message: T(n.message) || n.message,
+          title: translateAndFormat(n.title, n.title),
+          message: translateAndFormat(n.message, n.message),
         };
       }
     }
     default:
       return {
-        title: T(n.title) || n.title,
-        message: T(n.message) || n.message,
+        title: translateAndFormat(n.title, n.title),
+        message: translateAndFormat(n.message, n.message),
       };
   }
 }
