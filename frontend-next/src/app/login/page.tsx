@@ -65,7 +65,7 @@ function LoginContent() {
       return err.message || t("loginFailed");
     }
     const d = err.response.data?.detail;
-    if (typeof d === "string") return d;
+    if (typeof d === "string") return t(d as any);
     if (Array.isArray(d) && d[0]?.msg) return d.map((x) => x.msg).join(". ");
     if (err.response.status === 401) return t("invalidCredentials");
     if (err.response.status === 403) return t("serverError");
