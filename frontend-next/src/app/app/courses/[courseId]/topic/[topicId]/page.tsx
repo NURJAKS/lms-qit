@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -70,6 +70,7 @@ export default function TopicViewPage() {
   const params = useParams();
   const { t } = useLanguage();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
   const courseId = params.courseId as string;
@@ -87,7 +88,18 @@ export default function TopicViewPage() {
   const [actualVideoDuration, setActualVideoDuration] = useState<number | null>(null);
   const [hasShownTheoryCoinsToast, setHasShownTheoryCoinsToast] = useState(false);
   const [localWatchedSeconds, setLocalWatchedSeconds] = useState<number>(0);
-  const [topicTab, setTopicTab] = useState<"lesson" | "supplementary">("lesson");
+  const [topicTab, setTopicTab] = useState<"lesson" | "supplementary">(
+    (searchParams.get("tab") as any) === "supplementary" ? "supplementary" : "lesson"
+  );
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "supplementary") {
+      setTopicTab("supplementary");
+    } else if (tab === "lesson") {
+      setTopicTab("lesson");
+    }
+  }, [searchParams]);
   const isPremium = user?.is_premium === 1;
 
   const {
@@ -611,7 +623,26 @@ export default function TopicViewPage() {
               {canViewTheory && topic.description && (
                 <div className="mb-6">
                   <TopicTheoryContent content={topic.description} />
-                  <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
+                  
+                  <div className="mt-8 space-y-8">
+                    {/* Main Synopsis Section */}
+                    <div id="main-synopsis">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <span className="w-1.5 h-6 bg-blue-600 rounded-full" />
+                        {t("topicSynopsisHeading")}
+                      </h3>
+                      <TopicSynopsisSection topicId={tId} courseId={cId} isSupplementary={false} />
+                    </div>
+
+                    {/* Main Materials & Assignments */}
+                    <div id="main-materials">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <span className="w-1.5 h-6 bg-indigo-600 rounded-full" />
+                        {t("topicLessonMaterialsTitle")}
+                      </h3>
+                      <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -702,10 +733,38 @@ export default function TopicViewPage() {
               <p className="text-sm text-gray-700 dark:text-gray-300">{t("topicFlowNoGroups")}</p>
             </div>
           ) : showSupplementarySlots ? (
-            <>
-              <TopicSynopsisSection topicId={tId} courseId={cId} />
-              <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
-            </>
+            <div className="space-y-12">
+              {/* Supplementary Materials (Synopses + Tasks) */}
+              <section id="supp-materials">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                  {t("supplementaryMaterialsHeading")}
+                </h3>
+                
+                <div className="space-y-8">
+                  <TopicSynopsisSection topicId={tId} courseId={cId} isSupplementary={true} />
+                  <TopicAssignmentsInlineSection courseId={cId} topicId={tId} />
+                </div>
+              </section>
+
+              <div className="mt-10 pb-10 flex flex-col items-center border-t border-gray-100 dark:border-gray-800 pt-8">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
+                  {t("readyToRetakeTestHint") || "Материалдарды қайталап болсаңыз, тестті қайта тапсырып көруге болады"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTopicTab("lesson");
+                    setShowTest(true);
+                  }}
+                  className="flex items-center gap-2 py-3 px-8 rounded-xl text-white font-bold shadow-lg hover:scale-105 transition-all"
+                  style={{ background: "var(--qit-primary)" }}
+                >
+                  <Sparkles className="w-5 h-5" />
+                  {t("topicTestButton")}
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
       ) : showTest ? (

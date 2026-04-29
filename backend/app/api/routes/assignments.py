@@ -557,25 +557,31 @@ def submit_assignment(
     )
     db.add(notif)
     
-    # If this is a primary synopsis, mark topic as completed (since tests are being removed)
+    # If this is a primary synopsis, mark topic as completed ONLY IF there is no test for this topic
     if a.is_synopsis and not a.is_supplementary and a.topic_id:
+        from app.models.test import Test
         from app.models.progress import StudentProgress
-        prog = db.query(StudentProgress).filter(
-            StudentProgress.user_id == current_user.id,
-            StudentProgress.topic_id == a.topic_id
-        ).first()
-        if not prog:
-            prog = StudentProgress(
-                user_id=current_user.id,
-                course_id=a.course_id,
-                topic_id=a.topic_id,
-                is_completed=True,
-                completed_at=func.now()
-            )
-            db.add(prog)
-        else:
-            prog.is_completed = True
-            prog.completed_at = func.now()
+        
+        # Check if topic has a test
+        topic_has_test = db.query(Test).filter(Test.topic_id == a.topic_id).first() is not None
+        
+        if not topic_has_test:
+            prog = db.query(StudentProgress).filter(
+                StudentProgress.user_id == current_user.id,
+                StudentProgress.topic_id == a.topic_id
+            ).first()
+            if not prog:
+                prog = StudentProgress(
+                    user_id=current_user.id,
+                    course_id=a.course_id,
+                    topic_id=a.topic_id,
+                    is_completed=True,
+                    completed_at=func.now()
+                )
+                db.add(prog)
+            else:
+                prog.is_completed = True
+                prog.completed_at = func.now()
 
     db.commit()
     db.refresh(sub)

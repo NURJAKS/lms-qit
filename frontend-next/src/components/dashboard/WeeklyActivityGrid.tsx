@@ -16,8 +16,6 @@ type WeeklyActivityGridProps = {
   period?: "weekly" | "monthly";
 };
 
-const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
-
 const getDotColor = (level: ActivityLevel, theme: "light" | "dark") => {
   if (level === "high") return theme === "dark" ? "#3B82F6" : "#2563EB";
   if (level === "medium") return theme === "dark" ? "#94A3B8" : "#64748B";
@@ -36,12 +34,15 @@ export function WeeklyActivityGrid({ data, period = "weekly" }: WeeklyActivityGr
   const textColors = getTextColors(theme);
   const isDark = theme === "dark";
 
+  const wdKeys = ["wdSun", "wdMon", "wdTue", "wdWed", "wdThu", "wdFri", "wdSat"];
+  const localizedDayLabels = wdKeys.map(key => t(key as any));
+
   return (
     <div className="space-y-4">
       {/* Day labels */}
       <div className="flex items-center gap-1 px-2">
         <div className="w-16" /> {/* Spacer for category labels */}
-        {dayLabels.map((day, idx) => (
+        {localizedDayLabels.map((day, idx) => (
           <div
             key={idx}
             className="flex-1 text-center text-xs font-medium"
@@ -69,7 +70,7 @@ export function WeeklyActivityGrid({ data, period = "weekly" }: WeeklyActivityGr
                 style={{
                   backgroundColor: getDotColor(level, theme),
                 }}
-                title={`${item.category} - ${dayLabels[dayIdx]}: ${level}`}
+                title={`${item.category} - ${localizedDayLabels[dayIdx]}: ${level}`}
               />
             ))}
           </div>

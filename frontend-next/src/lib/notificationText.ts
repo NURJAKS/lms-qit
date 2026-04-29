@@ -122,9 +122,18 @@ export function getLocalizedNotificationText<K extends string>(
         title: T("notificationTestFailedTitle"),
         message: T("notificationTestFailedBody"),
       };
+    case "news":
+      return {
+        title: T(n.title) || n.title,
+        message: T(n.message) || n.message,
+      };
     case "support_ticket": {
       try {
-        const p = JSON.parse(n.message) as { student_name: string; course_title?: string | null; message_snippet: string };
+        const p = JSON.parse(n.message) as {
+          student_name: string;
+          course_title?: string | null;
+          message_snippet: string;
+        };
         const title = T("notificationSupportTicketTitle");
         const bodyTemplate = p.course_title
           ? T("notificationSupportTicketBodyWithCourse")
@@ -138,15 +147,15 @@ export function getLocalizedNotificationText<K extends string>(
         return { title, message };
       } catch {
         return {
-          title: n.title,
-          message: n.message,
+          title: T(n.title) || n.title,
+          message: T(n.message) || n.message,
         };
       }
     }
     default:
       return {
-        title: n.title,
-        message: n.message,
+        title: T(n.title) || n.title,
+        message: T(n.message) || n.message,
       };
   }
 }

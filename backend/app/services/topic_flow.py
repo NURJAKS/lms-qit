@@ -178,7 +178,7 @@ def topic_flow_status(db: Session, user_id: int, topic: CourseTopic) -> dict:
         "synopsis_graded": syn_graded,
         "homework_exists": has_hw,
         "homework_graded": graded_ok,
-        "can_take_test": False,
-        "block_reason": "none",
+        "can_take_test": can_test,
+        "block_reason": reason,
         "topic_assignment_ids": [a.id for a in assigns],
     }

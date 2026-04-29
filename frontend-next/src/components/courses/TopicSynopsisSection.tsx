@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, Globe, Loader2, Lock, MessageSquare, Paperclip, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, FileText, Globe, Loader2, Lock, MessageSquare, Paperclip, Pencil, Plus, Trash2, Upload, X, ChevronDown, ChevronUp } from "lucide-react";
 import { api } from "@/api/client";
 import { useLanguage } from "@/context/LanguageContext";
 import type { AxiosError } from "axios";
@@ -56,10 +56,8 @@ function apiErrorDetail(err: unknown): string | null {
   return null;
 }
 
-export function TopicSynopsisSection({ topicId, courseId }: Props) {
+export function TopicSynopsisSection({ topicId, courseId, isSupplementary = false }: Props & { isSupplementary?: boolean }) {
   const { t } = useLanguage();
-  const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: assignmentsData = [], isPending: isLoading } = useQuery({
     queryKey: ["student-assignments", courseId],
@@ -70,23 +68,46 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
     enabled: !!courseId,
   });
 
-  const synopsis = useMemo(() => {
-    const list = assignmentsData.filter((a) => a.topic_id === topicId && a.is_synopsis && !a.is_supplementary);
-    if (list.length === 0) return null;
-    // Prefer the one already submitted
-    const submitted = list.find(a => a.submitted);
-    if (submitted) return submitted;
-    // Otherwise pick the newest (highest ID)
-    return [...list].sort((a, b) => b.id - a.id)[0];
-  }, [assignmentsData, topicId]);
+  const synopses = useMemo(() => {
+    return assignmentsData
+      .filter((a) => a.topic_id === topicId && a.is_synopsis && !!a.is_supplementary === isSupplementary)
+      .sort((a, b) => b.id - a.id);
+  }, [assignmentsData, topicId, isSupplementary]);
 
+  if (isLoading) {
+    return (
+      <div className="mb-6 flex items-center gap-2 text-gray-500 text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        {t("loading")}
+      </div>
+    );
+  }
+
+  if (synopses.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      {synopses.map((s) => (
+        <SynopsisCard key={s.id} synopsis={s} courseId={courseId} topicId={topicId} />
+      ))}
+    </div>
+  );
+}
+
+function SynopsisCard({ synopsis, courseId, topicId }: { synopsis: AssignmentRow; courseId: number; topicId: number }) {
+  const { t } = useLanguage();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-collapse if submitted/graded
+  const [isExpanded, setIsExpanded] = useState(!synopsis.submitted);
   const [attachments, setAttachments] = useState<SubmissionAttachment[]>([]);
   const [noteText, setNoteText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
-    if (synopsis?.submitted) {
+    if (synopsis.submitted) {
       setAttachments(
         (synopsis.submission_file_urls ?? []).map((url) => ({
           kind: classifySubmissionAttachment(url),
@@ -98,7 +119,7 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
       setAttachments([]);
       setNoteText("");
     }
-  }, [synopsis?.id, synopsis?.submitted, synopsis?.submission_file_urls, synopsis?.submission_text]);
+  }, [synopsis.id, synopsis.submitted, synopsis.submission_file_urls, synopsis.submission_text]);
 
   const refreshData = () => {
     queryClient.invalidateQueries({ queryKey: ["student-assignments", courseId] });
@@ -107,7 +128,6 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      if (!synopsis) return;
       const formData = new FormData();
       formData.append("file", file);
       const { data } = await api.post<{ url: string }>(
@@ -129,7 +149,6 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!synopsis) return;
       await api.post(`/assignments/${synopsis.id}/submit`, {
         submission_text: noteText.trim() || null,
         file_urls: attachments.map((a) => a.url),
@@ -139,6 +158,7 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
       setInfo(t("topicFlowSynopsisSaved"));
       setActionError(null);
       refreshData();
+      setIsExpanded(false); // Collapse after saving
     },
     onError: (err) => {
       setActionError(apiErrorDetail(err) ?? t("topicFlowSynopsisSaveError"));
@@ -147,26 +167,15 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
 
   const unsubmitMutation = useMutation({
     mutationFn: async () => {
-      if (!synopsis) return;
       await api.post(`/assignments/${synopsis.id}/unsubmit`);
     },
     onSuccess: () => {
       setInfo(null);
       setActionError(null);
       refreshData();
+      setIsExpanded(true); // Expand when unsubmitting to edit
     },
   });
-
-  if (isLoading) {
-    return (
-      <div className="mb-6 flex items-center gap-2 text-gray-500 text-sm">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        {t("loading")}
-      </div>
-    );
-  }
-
-  if (!synopsis) return null;
 
   const isLocked = synopsis.is_locked;
   const isGraded = synopsis.grade !== null;
@@ -174,201 +183,249 @@ export function TopicSynopsisSection({ topicId, courseId }: Props) {
 
   return (
     <div className={cn(
-      "mb-6 p-4 rounded-xl border transition-all",
+      "p-4 rounded-xl border transition-all",
       isLocked 
         ? "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50 opacity-60 grayscale" 
-        : "border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/20 shadow-sm shadow-teal-500/5"
+        : isGraded
+          ? "border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-900/10"
+          : "border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/20 shadow-sm shadow-teal-500/5"
     )}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {isLocked ? <Lock className="w-5 h-5 text-gray-400" /> : <FileText className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
-          <h3 className="font-semibold text-gray-900 dark:text-white">
-            {synopsis.title || t("topicFlowSynopsisTitle")}
-          </h3>
-        </div>
-        {isLocked && (
-          <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-            {t("lockedWatchVideoFirst")}
-          </span>
-        )}
-        {!isLocked && (
-          <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
-            {isGraded ? t("gradedStatus") : synopsis.submitted ? t("submittedStatus") : t("appointedStatus")}
-          </span>
-        )}
-      </div>
-
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{t("topicFlowSynopsisHint")}</p>
-
-      {/* Teacher's Synopsis Description & Materials */}
-      {(synopsis.description || synopsis.attachment_urls?.length > 0 || synopsis.attachment_links?.length > 0) && (
-        <div className="mb-6 p-4 rounded-xl border border-teal-100 bg-white/50 dark:border-teal-900/30 dark:bg-teal-950/20">
-          <p className="text-[10px] font-bold text-teal-600/60 dark:text-teal-400/60 uppercase tracking-widest mb-3">
-            {t("theoryMaterial")}
-          </p>
-          
-          {synopsis.description && (
-            <div 
-              className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 mb-4"
-              dangerouslySetInnerHTML={{ __html: synopsis.description }}
-            />
-          )}
-
-          {(synopsis.attachment_urls?.length > 0 || synopsis.attachment_links?.length > 0) && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {synopsis.attachment_urls.map((url, idx) => (
-                  <a
-                    key={`teacher-att-${idx}`}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 hover:border-teal-200 transition-all dark:border-teal-800 dark:bg-gray-900 dark:text-teal-300 dark:hover:bg-teal-900/40"
-                  >
-                    <FileText className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{fileNameFromUrl(url, idx, t("fileTypeFile"))}</span>
-                    <Globe className="w-3 h-3 ml-auto opacity-40" />
-                  </a>
-                ))}
-                {synopsis.attachment_links.map((url, idx) => (
-                  <a
-                    key={`teacher-link-${idx}`}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 hover:border-teal-200 transition-all dark:border-teal-800 dark:bg-gray-900 dark:text-teal-300 dark:hover:bg-teal-900/40"
-                  >
-                    <Globe className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{url}</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        accept={ALLOWED_EXTENSIONS_STR}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) uploadMutation.mutate(f);
-          e.target.value = "";
-        }}
-      />
-
-      {/* Attachments list */}
-      {attachments.length > 0 && (
-        <ul className="mb-4 space-y-2">
-          {attachments.map((att, idx) => (
-            <li
-              key={`${att.url}-${idx}`}
-              className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-white/60 px-3 py-2 text-sm dark:border-teal-800 dark:bg-teal-950/20"
-            >
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <Paperclip className="h-4 w-4 text-teal-500 shrink-0" />
-                <a
-                  href={att.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="truncate font-medium text-teal-700 hover:underline dark:text-teal-300"
-                >
-                  {fileNameFromUrl(att.url, idx, t("fileTypeFile"))}
-                </a>
-              </div>
-              {!synopsis.submitted && !isLocked && (
-                <button
-                  type="button"
-                  disabled={isBusy}
-                  onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                  className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+      {/* Header / Summary Line */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn(
+            "p-2 rounded-lg shrink-0",
+            isLocked ? "bg-gray-200 dark:bg-gray-800" : "bg-teal-100 dark:bg-teal-900/50"
+          )}>
+            {isLocked ? <Lock className="w-4 h-4 text-gray-400" /> : <FileText className="w-4 h-4 text-teal-600 dark:text-teal-400" />}
+          </div>
+          <div className="min-w-0">
+            <h4 className="font-bold text-gray-900 dark:text-white truncate">
+              {synopsis.title || t("topicFlowSynopsisTitle")}
+            </h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              {!isLocked && (
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-wider",
+                  isGraded ? "text-green-600 dark:text-green-400" : synopsis.submitted ? "text-blue-600 dark:text-blue-400" : "text-teal-600 dark:text-teal-400"
+                )}>
+                  {isGraded ? t("gradedStatus") : synopsis.submitted ? t("submittedStatus") : t("appointedStatus")}
+                </span>
               )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Add file button */}
-      {!synopsis.submitted && !isLocked && (
-        <div className="space-y-2 mb-4">
-          <button
-            type="button"
-            disabled={isBusy || attachments.length >= 5}
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-teal-300 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100/50 dark:hover:bg-teal-900/30 transition-all text-sm font-bold"
-          >
-            {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            {t("topicFlowChooseFile")}
-          </button>
-          <p className="text-[10px] font-medium text-center" style={{ color: "#F87171" }}>
-            {t("onlyAllowedExtensions").replace("{extensions}", ALLOWED_EXTENSIONS_HINT)}
-          </p>
+              {isLocked && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t("lockedStatus" as any) || 'Locked'}</span>}
+              {isGraded && (
+                <span className="text-[10px] font-black text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/50 px-1.5 py-0.5 rounded">
+                  {synopsis.grade}/{synopsis.max_points}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* Note textarea */}
-      <textarea
-        value={noteText}
-        onChange={(e) => setNoteText(e.target.value)}
-        placeholder={t("topicFlowSynopsisNotePlaceholder")}
-        rows={3}
-        disabled={synopsis.submitted || isLocked}
-        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm mb-4 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all disabled:opacity-50"
-      />
-
-      {/* Submission Actions */}
-      {!synopsis.submitted && !isLocked && (
         <button
           type="button"
-          disabled={isBusy || (attachments.length === 0 && !noteText.trim())}
-          onClick={() => saveMutation.mutate()}
-          className="w-full py-3 rounded-xl text-sm font-extrabold text-white shadow-lg shadow-teal-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:scale-100"
-          style={{ background: "linear-gradient(135deg, #0d9488, #0f766e)" }}
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/50 dark:bg-black/20 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-black/40 transition-all border border-gray-100 dark:border-gray-800"
         >
-          {saveMutation.isPending ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : t("topicFlowSynopsisSave")}
+          {isExpanded ? (
+            <>
+              <ChevronUp className="w-4 h-4" />
+              {t("hideDetails")}
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-4 h-4" />
+              {t("viewDetails")}
+            </>
+          )}
         </button>
-      )}
+      </div>
 
-      {synopsis.submitted && !isGraded && !isLocked && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-bold text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {t("topicFlowSynopsisGradingPending")}
-          </div>
-          <button
-            type="button"
-            className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 text-sm font-bold text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
-            onClick={() => unsubmitMutation.mutate()}
-            disabled={unsubmitMutation.isPending}
-          >
-            {unsubmitMutation.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : t("cancelSending")}
-          </button>
-        </div>
-      )}
-
-      {isGraded && (
-        <div className="mt-2 p-4 rounded-xl border border-green-200 bg-green-50/50 dark:border-green-900/30 dark:bg-green-900/10">
-          <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-black mb-1">
-            <CheckCircle2 className="w-5 h-5" />
-            {t("topicFlowSynopsisGraded")}
-          </div>
-          {synopsis.teacher_comment && (
-            <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 italic leading-relaxed">
-              &ldquo;{synopsis.teacher_comment}&rdquo;
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300">
+          {isLocked && (
+            <div className="mb-4 flex items-start gap-3 p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+              <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                {t("lockedWatchVideoFirst")}
+              </p>
             </div>
           )}
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t("topicFlowSynopsisHint")}</p>
+
+          {/* Teacher's Synopsis Description & Materials */}
+          {(synopsis.description || synopsis.attachment_urls?.length > 0 || synopsis.attachment_links?.length > 0) && (
+            <div className="mb-6 p-4 rounded-xl border border-teal-100 bg-white/50 dark:border-teal-900/30 dark:bg-teal-950/20">
+              <p className="text-[10px] font-bold text-teal-600/60 dark:text-teal-400/60 uppercase tracking-widest mb-3">
+                {t("theoryMaterial")}
+              </p>
+              
+              {synopsis.description && (
+                <div 
+                  className="prose prose-sm max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 mb-4"
+                  dangerouslySetInnerHTML={{ __html: synopsis.description }}
+                />
+              )}
+
+              {(synopsis.attachment_urls?.length > 0 || synopsis.attachment_links?.length > 0) && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {synopsis.attachment_urls.map((url, idx) => (
+                      <a
+                        key={`teacher-att-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 hover:border-teal-200 transition-all dark:border-teal-800 dark:bg-gray-900 dark:text-teal-300 dark:hover:bg-teal-900/40"
+                      >
+                        <FileText className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{fileNameFromUrl(url, idx, t("fileTypeFile"))}</span>
+                        <Globe className="w-3 h-3 ml-auto opacity-40" />
+                      </a>
+                    ))}
+                    {synopsis.attachment_links.map((url, idx) => (
+                      <a
+                        key={`teacher-link-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 hover:border-teal-200 transition-all dark:border-teal-800 dark:bg-gray-900 dark:text-teal-300 dark:hover:bg-teal-900/40"
+                      >
+                        <Globe className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{url}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept={ALLOWED_EXTENSIONS_STR}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadMutation.mutate(f);
+              e.target.value = "";
+            }}
+          />
+
+          {/* Attachments list */}
+          {attachments.length > 0 && (
+            <ul className="mb-4 space-y-2">
+              {attachments.map((att, idx) => (
+                <li
+                  key={`${att.url}-${idx}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-white/60 px-3 py-2 text-sm dark:border-teal-800 dark:bg-teal-950/20"
+                >
+                  <div className="min-w-0 flex-1 flex items-center gap-2">
+                    <Paperclip className="h-4 w-4 text-teal-500 shrink-0" />
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate font-medium text-teal-700 hover:underline dark:text-teal-300"
+                    >
+                      {fileNameFromUrl(att.url, idx, t("fileTypeFile"))}
+                    </a>
+                  </div>
+                  {!synopsis.submitted && !isLocked && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Add file button */}
+          {!synopsis.submitted && !isLocked && (
+            <div className="space-y-2 mb-4">
+              <button
+                type="button"
+                disabled={isBusy || attachments.length >= 5}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-teal-300 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100/50 dark:hover:bg-teal-900/30 transition-all text-sm font-bold"
+              >
+                {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {t("topicFlowChooseFile")}
+              </button>
+              <p className="text-[10px] font-medium text-center" style={{ color: "#F87171" }}>
+                {t("onlyAllowedExtensions").replace("{extensions}", ALLOWED_EXTENSIONS_HINT)}
+              </p>
+            </div>
+          )}
+
+          {/* Note textarea */}
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder={t("topicFlowSynopsisNotePlaceholder")}
+            rows={3}
+            disabled={synopsis.submitted || isLocked}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm mb-4 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all disabled:opacity-50"
+          />
+
+          {/* Submission Actions */}
+          {!synopsis.submitted && !isLocked && (
+            <button
+              type="button"
+              disabled={isBusy || (attachments.length === 0 && !noteText.trim())}
+              onClick={() => saveMutation.mutate()}
+              className="w-full py-3 rounded-xl text-sm font-extrabold text-white shadow-lg shadow-teal-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:scale-100"
+              style={{ background: "linear-gradient(135deg, #0d9488, #0f766e)" }}
+            >
+              {saveMutation.isPending ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : t("topicFlowSynopsisSave")}
+            </button>
+          )}
+
+          {synopsis.submitted && !isGraded && !isLocked && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t("topicFlowSynopsisGradingPending")}
+              </div>
+              <button
+                type="button"
+                className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 text-sm font-bold text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+                onClick={() => unsubmitMutation.mutate()}
+                disabled={unsubmitMutation.isPending}
+              >
+                {unsubmitMutation.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : t("cancelSending")}
+              </button>
+            </div>
+          )}
+
+          {isGraded && (
+            <div className="mt-2 p-4 rounded-xl border border-green-200 bg-green-50/50 dark:border-green-900/30 dark:bg-green-900/10">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-black mb-1">
+                <CheckCircle2 className="w-5 h-5" />
+                {t("topicFlowSynopsisGraded")}
+              </div>
+              {synopsis.teacher_comment && (
+                <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 italic leading-relaxed">
+                  &ldquo;{synopsis.teacher_comment}&rdquo;
+                </div>
+              )}
+            </div>
+          )}
+
+          {actionError && <p className="mt-3 text-sm font-bold text-red-600 dark:text-red-400">{t(actionError as any)}</p>}
+          {info && <p className="mt-3 text-sm font-bold text-teal-600 dark:text-teal-400">{info}</p>}
         </div>
       )}
-
-      {actionError && <p className="mt-3 text-sm font-bold text-red-600 dark:text-red-400">{t(actionError as any)}</p>}
-      {info && <p className="mt-3 text-sm font-bold text-teal-600 dark:text-teal-400">{info}</p>}
     </div>
   );
 }

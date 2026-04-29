@@ -78,7 +78,7 @@ export function TopicLessonMaterialsSection({
   });
 
   const mainMaterials = useMemo(
-    () => materialsData.filter((m) => m.topic_id === topicId && !m.is_supplementary),
+    () => materialsData.filter((m) => m.topic_id === topicId && !m.is_supplementary && !m.is_synopsis),
     [materialsData, topicId]
   );
 
@@ -86,7 +86,7 @@ export function TopicLessonMaterialsSection({
     const tasks: UnifiedTask[] = [];
     
     assignmentsData
-      .filter((a) => a.topic_id === topicId && !a.is_supplementary)
+      .filter((a) => a.topic_id === topicId && !a.is_supplementary && !a.is_synopsis)
       .forEach((a) => {
         tasks.push({
           type: 'assignment',
@@ -97,7 +97,7 @@ export function TopicLessonMaterialsSection({
       });
 
     questionsData
-      .filter((q) => q.topic_id === topicId)
+      .filter((q) => q.topic_id === topicId && !(q as any).is_supplementary && !(q as any).is_synopsis)
       .forEach((q) => {
         tasks.push({
           type: 'question',
@@ -227,13 +227,9 @@ export function TopicLessonMaterialsSection({
                         {isExpanded ? (
                           <span className="text-xs font-bold text-gray-400">{t("hide")}</span>
                         ) : (
-                          <Link
-                            href={`/app/courses/${courseId}?tab=classwork`}
-                            className="text-sm font-bold text-blue-600 hover:underline px-3 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {t("viewDetails")}
-                          </Link>
+                            <span className="text-sm font-bold text-blue-600 px-3 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors">
+                              {t("viewDetails")}
+                            </span>
                         )}
                       </div>
                       {isExpanded && (
@@ -283,13 +279,9 @@ export function TopicLessonMaterialsSection({
                         {isExpanded ? (
                            <span className="text-xs font-bold text-gray-400">{t("hide")}</span>
                         ) : (
-                          <Link
-                            href={`/app/courses/${courseId}?tab=classwork`}
-                            className="text-sm font-bold text-blue-600 hover:underline px-3 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {t("viewDetails")}
-                          </Link>
+                            <span className="text-sm font-bold text-blue-600 px-3 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors">
+                              {t("viewDetails")}
+                            </span>
                         )}
                       </div>
                       {isExpanded && (
@@ -315,7 +307,8 @@ export function TopicLessonMaterialsSection({
                       <TopicAssignmentCard 
                         assignment={task.data} 
                         courseId={courseId} 
-                        topicId={topicId} 
+                        topicId={topicId}
+                        initialExpanded={true}
                       />
                     ) : (
                       <TopicQuestionCard question={task.data} />

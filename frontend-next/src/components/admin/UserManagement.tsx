@@ -2290,9 +2290,9 @@ function AssignStudentModal({
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
-      if (typeof groupId !== "number") throw new Error("Select group");
+      if (typeof groupId !== "number") throw new Error(t("errorGroupNotSelected"));
       const group = groups.find((g) => g.id === groupId);
-      if (!group) throw new Error("Group not found");
+      if (!group) throw new Error(t("courseGroupNotFound"));
       await api.post("/admin/add-student-tasks", {
         student_id: student.id,
         teacher_id: group.teacher_id,

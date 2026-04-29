@@ -59,8 +59,8 @@ export function PrivateCommentsSection({
   targetType,
   targetId,
   canPost = true,
-  placeholder = "Add private comment...",
-  title = "Private comments",
+  placeholder,
+  title,
 }: {
   targetType: TargetType;
   targetId: number;
@@ -71,6 +71,9 @@ export function PrivateCommentsSection({
   const { t, lang } = useLanguage();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+
+  const finalPlaceholder = placeholder || t("studentSubmissionAnswerPlaceholder");
+  const finalTitle = title || t("personalComments");
 
   const queryKey = useMemo(() => ["private-comments", targetType, targetId] as const, [targetType, targetId]);
 
@@ -118,7 +121,7 @@ export function PrivateCommentsSection({
       <div className="flex items-center gap-3">
         <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
         <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-          {displayComments.length} {t("personalComments").toLowerCase()}
+          {displayComments.length} {finalTitle.toLowerCase()}
         </h3>
       </div>
 
@@ -171,7 +174,7 @@ export function PrivateCommentsSection({
         )}>
           <textarea
             className="w-full resize-none border-0 bg-transparent px-4 py-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-600"
-            placeholder={placeholder}
+            placeholder={finalPlaceholder}
             rows={2}
             value={draft}
             disabled={!canPost || postMutation.isPending}

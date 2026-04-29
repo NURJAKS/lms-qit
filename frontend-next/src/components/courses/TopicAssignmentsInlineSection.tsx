@@ -268,12 +268,12 @@ export function TopicAssignmentsInlineSection({
   });
 
   const topicAssignments = useMemo(
-    () => assignmentsData.filter((a) => a.course_id === courseId && a.topic_id === topicId && !a.is_synopsis && a.is_supplementary),
+    () => assignmentsData.filter((a) => a.course_id === courseId && a.topic_id === topicId && a.is_supplementary && !a.is_synopsis),
     [assignmentsData, courseId, topicId]
   );
 
   const topicQuestions = useMemo(
-    () => questionsData.filter((q) => q.course_id === courseId && q.topic_id === topicId),
+    () => questionsData.filter((q) => q.course_id === courseId && q.topic_id === topicId && (q as any).is_supplementary && !(q as any).is_synopsis),
     [questionsData, courseId, topicId]
   );
 
@@ -313,6 +313,9 @@ export function TopicAssignmentsInlineSection({
           ))}
           {topicAssignments.map((a) => (
             <TopicAssignmentCard key={`a-${a.id}`} assignment={a} courseId={courseId} topicId={topicId} />
+          ))}
+          {topicQuestions.map((q) => (
+            <TopicQuestionCard key={`q-${q.id}`} question={q} />
           ))}
           {isPending ? (
             <div className="py-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

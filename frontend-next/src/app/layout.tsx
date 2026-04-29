@@ -4,7 +4,7 @@ import { Providers } from "@/components/providers/Providers";
 
 export const metadata: Metadata = {
   title: "Qazaq IT Academy",
-  description: "Modern education with the help of artificial intelligence",
+  description: "Образовательная платформа Qazaq IT Academy — современное обучение с помощью искусственного интеллекта",
 };
 
 export const viewport = {
