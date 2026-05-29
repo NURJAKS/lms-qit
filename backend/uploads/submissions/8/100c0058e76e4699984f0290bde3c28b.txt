@@ -1,0 +1,339 @@
+ ЗЕРТХАНАЛЫҚ ЖҰМЫС №12 (1 сағат)
+Тақырып: Инцидент хабарлау және triage формасы (Incident Response — IR)
+Формат: Kali Linux (terminal) + қысқа есеп (markdown)
+Негізгі идея: “оқиға болды” дегенде SOC/Blue Team ең алдымен дұрыс хабарлап, triage жасап, алғашқы containment жоспарын ұсынады.
+
+1) Мақсаты
+Студент:
+Инцидентті дұрыс тіркейді (кім/қашан/қайда/не болды).
+Triage жасайды: категория, әсер (CIA), шұғылдық/ауырлық.
+Дәлелдерден (лог + email header) негізгі фактіні шығарады.
+IOC тізімін жасайды (IP/URL/domain).
+Алғашқы әрекеттер жоспарын береді: Containment → Evidence → Next steps.
+
+2) Ереже (міндетті)
+✅ Бұл зертханада шабуыл жасамаймыз. Тек берілген “оқу-инцидент” материалын талдаймыз.
+✅ Жеке деректерді report-та көрсетпейміз (анонимизация).
+✅ Нәтиже “қорғаныс көзқарасы”: Block/Monitor/Reset/Notify.
+
+3) Қажетті командалар (Kali)
+Бұл зертханада мына базалық командалар қолданылады: mkdir, cd, cat, echo, grep, awk, sort, uniq, head, tail, tar, history, script.
+
+4) 60 минуттық жоспар
+0–5 мин: орта дайындау + дәлел лог
+5–20 мин: “оқу-инцидент” материалын жасау (case + evidence)
+20–40 мин: triage: факт шығару + IOC + CIA әсері
+40–55 мин: triage_form + report жазу
+55–60 мин: тапсыруға архив жасау
+5) Қадам-қадам орындалуы
+A) Папка + терминал дәлелін жазу (5 мин)
+mkdir -p ~/lab12 && cd ~/lab12
+script -f lab12_terminal.log
+
+B) Оқу-инцидент кейсін жасау (10–12 мин)
+1) Case мәтіні (не болды?)
+cat > case.txt <<'EOF'
+CASE: "Университет аккаунттарына күдікті әрекет"
+Сценарий:
+* Қызметкерге/студентке "жалақы ведомосі / құжат" тақырыбымен хат келді.
+* Хаттағы сілтемені ашқаннан кейін 20 минут ішінде бірнеше рет SSH login сәтсіз әрекеттері байқалған.
+Міндет:
+* IR triage формасын толтыру
+* IOC жинау (IP/URL/domain)
+* Қандай алғашқы containment әрекеттер керек екенін ұсыну
+Шектеу:
+* Тек талдау, шабуыл/скан/эксплойт жоқ.
+EOF
+2) Evidence: күдікті email header (фишинг белгісі бар)
+cat > email_header_suspicious.txt <<'EOF'
+Return-Path: <random.sender@gmail.com>
+Received: from unknown (HELO mail.fake) (198.51.100.77)
+        by mx.korkyt.kz with SMTP id XYZ999;
+        Tue, 26 Mar 2026 10:25:45 +0500
+Authentication-Results: mx.korkyt.kz;
+        spf=fail smtp.mailfrom=gmail.com;
+        dkim=none (message not signed);
+        dmarc=fail header.from=payroll-korkyt.kz
+From: "Payroll Office" <hr@payroll-korkyt.kz>
+Reply-To: verify@helpdesk-payroll.net
+To: user@korkyt.kz
+Subject: URGENT: ведомость, подтвердите доступ
+Date: Tue, 26 Mar 2026 10:25:30 +0500
+Message-ID: <20260326102530.77777@helpdesk-payroll.net>
+EOF
+3) Evidence: auth.log үзіндісі (SSH brute/scan белгілері)
+cat > auth_sample.log <<'EOF'
+Mar 26 10:41:02 srv sshd[2211]: Failed password for invalid user admin from 203.0.113.55 port 52520 ssh2
+Mar 26 10:41:05 srv sshd[2211]: Failed password for invalid user admin from 203.0.113.55 port 52522 ssh2
+Mar 26 10:41:08 srv sshd[2211]: Failed password for invalid user test from 203.0.113.55 port 52525 ssh2
+Mar 26 10:41:12 srv sshd[2211]: Failed password for root from 203.0.113.55 port 52530 ssh2
+Mar 26 10:41:15 srv sshd[2211]: Failed password for invalid user user1 from 203.0.113.55 port 52533 ssh2
+Mar 26 10:41:19 srv sshd[2211]: Failed password for invalid user postgres from 203.0.113.55 port 52539 ssh2
+Mar 26 10:42:10 srv sshd[2211]: Failed password for invalid user admin from 198.51.100.77 port 61220 ssh2
+Mar 26 10:42:14 srv sshd[2211]: Failed password for invalid user admin from 198.51.100.77 port 61225 ssh2
+EOF
+4) Evidence: күдікті URL (IOC ретінде)
+cat > suspicious_urls.txt <<'EOF'
+http://helpdesk-payroll.net/login
+http://payroll-korkyt.kz-verify.com/auth
+EOF
+
+C) Triage: факт шығару (20 мин)
+1) Header-ден фишинг белгілерін шығару
+grep -iE '^(From:|Return-Path:|Reply-To:|Subject:|Authentication-Results:|Received:)' email_header_suspicious.txt
+Тапсырма (қысқа):
+SPF/DKIM/DMARC нәтижесі қандай?
+From домені мен Reply-To домені сәйкес пе?
+2) auth.log-тан “ең көп шабуылдаған IP” табу
+grep "Failed password" auth_sample.log \
+| awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' \
+| sort | uniq -c | sort -nr
+3) Оқиға уақыт шкаласы (timeline) — ең аз дегенде 4 жол
+grep "sshd" auth_sample.log | head -n 20 > timeline_raw.txt
+cat timeline_raw.txt
+4) IOC тізімі (IP + URL + домен)
+IP IOC:
+grep "Failed password" auth_sample.log \
+| awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' \
+| sort -u > ioc_ips.txt
+URL IOC:
+cat suspicious_urls.txt > ioc_urls.txt
+Domain IOC (URL ішінен доменді жұлу):
+cat suspicious_urls.txt \
+| awk -F/ '{print $3}' \
+| sed 's/:.*//' \
+| sort -u > ioc_domains.txt
+
+D) IR TRIAGE формасын толтыру (15 мин)
+Мына шаблонды жасап, толтырыңыз:
+cat > triage_form.md <<'EOF'
+# IR TRIAGE FORM (LAB12)
+
+## 1) Incident metadata
+* Reported by (кім): ______________________
+* Date/time noticed (қашан): ______________________
+* Organization/asset (қай жүйе): ______________________
+* Short summary (1–2 сөйлем): ______________________
+
+## 2) Initial classification
+* Category: [ ] Phishing  [ ] Unauthorized login attempts  [ ] Credential compromise  [ ] Other: ______
+* CIA impact (қысқаша):
+  - Confidentiality: ______________________
+  - Integrity: ______________________
+  - Availability: ______________________
+
+## 3) Evidence collected (қандай дәлел)
+* Email header file: email_header_suspicious.txt
+* Auth log file: auth_sample.log
+* URLs: suspicious_urls.txt
+* Timeline: timeline_raw.txt
+
+## 4) IOC list
+* IPs: (ioc_ips.txt)
+* URLs: (ioc_urls.txt)
+* Domains: (ioc_domains.txt)
+
+## 5) Triage decision
+* Severity: [ ] Low  [ ] Medium  [ ] High  [ ] Critical
+* Justification (неге?): ______________________
+
+## 6) Immediate actions (Containment – алғашқы 30 минут)
+1) ______________________
+2) ______________________
+3) ______________________
+
+## 7) Next steps (Investigation – келесі 24 сағат)
+1) ______________________
+2) ______________________
+3) ______________________
+
+## 8) Communication plan (кімге хабарлау керек)
+* IT/SOC: ______________________
+* Management: ______________________
+* Users/students (қажет болса): ______________________
+
+EOF
+Severity таңдауға көмектесетін қарапайым логика:
+High/Critical: аккаунт бұзылған белгісі бар, көптеген пайдаланушы әсерленген, құпия дерек қаупі жоғары
+Medium: фишинг бар, бірақ compromise дәлелі жоқ; brute әрекеттер көп
+Low: бір реттік күмән, әсер аз
+E) Қысқа қорытынды есеп (report.md) (10 мин)
+cat > report.md <<'EOF'
+# LAB12 Report — Incident Triage Summary
+
+## 1) What happened (3–5 сөйлем)
+...
+
+## 2) Key findings
+* Email: SPF/DKIM/DMARC нәтижесі: ...
+* Auth log: ең көп әрекет жасаған IP(лер): ...
+* Suspected scenario: phishing → credential theft (ықтимал) + SSH brute attempts
+
+## 3) IOC (қысқа)
+* IPs: (see ioc_ips.txt)
+* URLs: (see ioc_urls.txt)
+* Domains: (see ioc_domains.txt)
+
+## 4) Recommended containment (ең аз 3)
+1) MFA қосу / пароль reset (әсіресе хатты ашқандарға)
+2) Mail gateway: домен/URL блоктау, DMARC policy күшейту
+3) SSH: fail2ban/geo-block/allowlist, root login жабу, key-only auth
+
+## 5) Evidence
+Files: triage_form.md, email_header_suspicious.txt, auth_sample.log, timeline_raw.txt, ioc_*.txt, lab12_terminal.log
+EOF
+
+6) Тапсыру (Submit) Терминал логты аяқтау:
+exit
+Архив:
+cd ~
+tar -czf lab12_submit_<FIO>.tar.gz lab12
+Міндетті файлдар:
+case.txt
+triage_form.md
+report.md
+email_header_suspicious.txt
+auth_sample.log
+timeline_raw.txt
+ioc_ips.txt, ioc_urls.txt, ioc_domains.txt
+lab12_terminal.log
+
+7) Оқытушыға жылдам тексеру (2–3 минут)
+cd ~/lab12
+ls -la
+head -n 40 triage_form.md
+head -n 40 report.md
+cat ioc_ips.txt
+grep -i "dmarc" email_header_suspicious.txt
+
+8) Бағалау (10 балл)
+Triage формасы толық әрі логикалық (metadata + CIA + severity) — 4
+IOC дұрыс шығарылған (IP/URL/domain) — 2
+Дәлелден негізгі факт дұрыс табылған (SPF/DKIM/DMARC + top IP) — 2
+Containment/Next steps нақты, дұрыс бағытта — 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+ЗЕРТХАНАЛЫҚ ЖҰМЫС №13 (1 сағат)
+Тақырып: OWASP оқу стенді (DVWA/WebGoat): осалдықты тану
+Мақсат: 3 негізгі веб-осалдықты тану (симптом → дәлел → OWASP категория → mitigation).
+Қауіпсіздік ережесі (міндетті!)
+✅ Тек өз компьютеріде, localhost-та (немесе оқытушы берген оқу желісінде). 
+❌ Реал сайт/реал жүйені тестілеу болмайды. 
+✅ Қолданатын “payload” тек оқу стендінде. 
+1) Қажетті құралдар (Kali)
+1.1 Docker орнату (бір рет)
+sudo apt update
+sudo apt install -y docker.io docker-compose
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+Соңғы командадан кейін кейде қайта login керек. Егер docker permission бермесе, sudo docker ... қолданыңыз.
+1.2 Жұмыс папкасы + дәлел лог
+mkdir -p ~/lab13 && cd ~/lab13
+script -f lab13_terminal.log
+2) OWASP оқу стендін көтеру (10–12 мин)
+Вариант A (ұсынылады): Docker арқылы DVWA + WebGoat
+DVWA
+docker pull vulnerables/web-dvwa
+docker run -d --name dvwa -p 8081:80 vulnerables/web-dvwa
+DVWA ашу:
+http://127.0.0.1:8081 
+DVWA логин (әдетте): admin / password
+DVWA ішінде:
+DVWA Security → Low (оқу үшін) 
+“Create / Reset Database” болса — басып қойыңыз. 
+WebGoat
+docker pull webgoat/webgoat
+docker run -d --name webgoat -p 8080:8080 webgoat/webgoat
+WebGoat ашу:
+http://127.0.0.1:8080/WebGoat 
+WebGoat-та әдетте өзіңіз аккаунт ашасыз (Register).
+Тез тексеру
+docker ps
+curl -I http://127.0.0.1:8081 | head
+curl -I http://127.0.0.1:8080/WebGoat | head
+3) Негізгі тапсырма (45 мин): 3 осалдықты тану
+Сіз 3 осалдық бойынша 1 кесте толтырасыз:
+(1) SQL Injection, (2) Reflected XSS, (3) Broken Access Control / IDOR.
+Тапсырма 1 — SQL Injection (DVWA) (15 мин)
+Мақсат: SQLi-ді “симптом” арқылы тану.
+DVWA → SQL Injection бөлімі 
+“User ID” өрісіне мына тесттерді енгізіңіз: 
+A) Симптом тесті:
+1'
+Күтілетін белгі: қате/ерекше жауап (SQL қатесі немесе бос/күдікті нәтиже). 
+B) Осалдық барын дәлелдеу (оқу стендінде):
+1 OR 1=1
+Күтілетін белгі: көп жазба/күтілмеген нәтиже қайтуы мүмкін. 
+Нәтиже жазу (report.md):
+Симптом қандай болды? 
+Бұл OWASP қай категория? (Injection) 
+Қорғаныс: prepared statements, input validation, least privilege. 
+Тапсырма 2 — Reflected XSS (DVWA) (15 мин)
+Мақсат: XSS-ті “output” арқылы тану.
+DVWA → XSS (Reflected)
+Тест ретінде (оқу үшін) енгізіңіз:
+<script>alert(1)</script> 
+Күтілетін белгі: браузер “alert(1)” көрсетсе → Reflected XSS бар.
+Нәтиже жазу (report.md):
+Қай жерде көрінді? 
+OWASP категория: (XSS / Injection-like, OWASP-та “XSS” жеке/немесе broader Injection/Output Encoding мәселесі) 
+Қорғаныс: output encoding, CSP, input sanitization. 
+Тапсырма 3 — Broken Access Control / IDOR (WebGoat) (15 мин)
+Мақсат: “рұқсатты тек UI емес, сервер тексеруі керек” дегенді түсіну.
+WebGoat ішінде мына сияқты бөлімдерді табыңыз (атауы версияға қарай өзгеруі мүмкін):
+Broken Access Control 
+IDOR (Insecure Direct Object Reference) 
+Access Control Flaws 
+Сабақтың логикасы біреу:
+URL параметр/ID өзгерткенде “өзге объект” ашылып кетсе → IDOR / Access Control flaw. 
+Нәтиже жазу (report.md):
+Қандай параметр/ID өзгертілді? (тек жалпы түрде жазыңыз) 
+Қандай “рұқсат” бұзылды? 
+Қорғаныс: server-side authorization check, RBAC/ABAC, deny-by-default. 
+Егер WebGoat-та дәл IDOR таба алмасаңыз: “Broken Access Control” ішіндегі кез келген 1 сабақты орындап, дәлелмен жазыңыз.
+4) Есеп (report.md) — дайын шаблон (10 мин)
+cat > report.md <<'EOF'
+# LAB13 — OWASP оқу стенді (DVWA/WebGoat): осалдықты тану
+
+## Environment
+- DVWA: http://127.0.0.1:8081
+- WebGoat: http://127.0.0.1:8080/WebGoat
+- Rule: localhost only (no real targets)
+
+## Results table
+| # | App | Vulnerability | Symptom (how recognized) | Evidence (what you saw) | OWASP category | Mitigation (how to fix) |
+|---|-----|--------------|---------------------------|--------------------------|---------------|--------------------------|
+| 1 | DVWA | SQL Injection |                           |                          | Injection     | Prepared stmt, validation |
+| 2 | DVWA | Reflected XSS |                           |                          | XSS/Injection | Output encoding, CSP     |
+| 3 | WebGoat | Broken Access Control / IDOR |               |                          | Access Control | Server-side auth checks  |
+
+## Short conclusion (5–7 sentences)
+- Which vuln was easiest to recognize and why?
+- Which one is most dangerous in a real organization and why?
+- What 2 controls would you implement first for a university web system?
+EOF
+5) Тапсыру (Submit)
+exit  # script log stop
+cd ~
+tar -czf lab13_submit_<FIO>.tar.gz lab13
+Міндетті файлдар:
+report.md 
+lab13_terminal.log 
+6) Оқытушыға жылдам қабылдау (2–3 мин)
+cd ~/lab13
+ls -la
+head -n 60 report.md
+docker ps
+
+

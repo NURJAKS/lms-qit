@@ -1,0 +1,560 @@
+import re
+import secrets
+import string
+import logging
+from datetime import datetime, timezone, date
+from typing import Annotated, Literal, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+from app.api.deps import get_current_admin_user, get_current_user
+from app.core.rate_limit import limiter
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.security import get_password_hash
+from app.i18n.translations import get_email_translation, resolve_email_lang
+from app.models.user import User
+from app.models.course import Course
+from app.models.course_application import CourseApplication
+from app.models.enrollment import CourseEnrollment
+from app.models.notification import Notification
+from app.models.payment import Payment
+from app.services.email_sender import (
+    send_course_purchase_email,
+    send_purchase_pending_confirmation_email,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+def _generate_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+class SubmitApplicationRequest(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: str = ""
+    city: str = ""
+    # Доп. данные студента
+    student_birth_date: Optional[date] = None
+    student_age: Optional[int] = None
+    student_iin: str = ""
+    course_id: int
+    parent_email: str = ""
+    parent_full_name: str = ""
+    parent_phone: str = ""
+    parent_city: str = ""
+    # Доп. данные родителя
+    parent_birth_date: Optional[date] = None
+    parent_age: Optional[int] = None
+    parent_iin: str = ""
+
+
+class SubmitApplicationResponse(BaseModel):
+    message: str
+    temp_login: str
+    temp_password: str
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+
+
+class PayApplicationResponse(BaseModel):
+    message: str
+    confirmation_token: str
+    course_title: str
+    student_name: str
+    student_email: str
+    temp_login: str
+    temp_password: str
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+
+
+class PayApplicationRequest(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: str = ""
+    city: str = ""
+    # Доп. данные студента
+    student_birth_date: Optional[date] = None
+    student_age: Optional[int] = None
+    student_iin: str = ""
+    course_id: int
+    parent_email: str = ""
+    parent_full_name: str = ""
+    parent_phone: str = ""
+    parent_city: str = ""
+    # Доп. данные родителя
+    parent_birth_date: Optional[date] = None
+    parent_age: Optional[int] = None
+    parent_iin: str = ""
+    payment_method: Literal[
+        "kaspi",
+        "halyk",
+        "card",
+        "eurasian",
+        "tinkoff",
+        "jusan",
+        "forte",
+    ] = "card"
+
+
+@router.post("/pay", response_model=PayApplicationResponse)
+@limiter.limit("5/minute")
+def pay_application(
+    request: Request,
+    body: PayApplicationRequest,
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
+):
+    course = db.query(Course).filter(Course.id == body.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
+    if not course.is_active:
+        raise HTTPException(status_code=400, detail="errorCourseUnavailable")
+
+    if body.parent_email.strip():
+        email_re = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+        if not email_re.match(body.parent_email.strip()):
+            raise HTTPException(status_code=400, detail="errorInvalidParentEmail")
+
+    existing_user = db.query(User).filter(User.email == body.email).first()
+    if existing_user and getattr(existing_user, "is_approved", True):
+        raise HTTPException(
+            status_code=400,
+            detail="errorHasAccountLoginNeeded",
+        )
+
+    if existing_user:
+        user = existing_user
+        temp_password = _generate_password()
+        user.password_hash = get_password_hash(temp_password)
+        if body.city:
+            user.address = body.city
+        if body.student_birth_date:
+            user.birth_date = body.student_birth_date
+        user.is_approved = True
+        if not (user.interface_language and str(user.interface_language).strip()):
+            user.interface_language = "Казахский"
+        existing_paid = db.query(CourseApplication).filter(
+            CourseApplication.user_id == user.id,
+            CourseApplication.course_id == body.course_id,
+            CourseApplication.status.in_(["paid", "approved"]),
+        ).first()
+        if existing_paid:
+            raise HTTPException(status_code=400, detail="errorCourseAlreadyPaid")
+    else:
+        temp_password = _generate_password()
+        user = User(
+            email=body.email,
+            password_hash=get_password_hash(temp_password),
+            full_name=body.full_name,
+            role="student",
+            phone=body.phone or None,
+            address=body.city or None,
+            birth_date=body.student_birth_date,
+            is_approved=True,
+            interface_language="Казахский",
+        )
+        db.add(user)
+        db.flush()
+
+    parent_user: User | None = None
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+
+    if body.parent_email.strip():
+        if body.parent_email.lower() != body.email.lower():
+            existing_parent = db.query(User).filter(User.email == body.parent_email).first()
+            if existing_parent:
+                if existing_parent.role == "parent":
+                    parent_user = existing_parent
+                    parent_temp_password = _generate_password()
+                    parent_user.password_hash = get_password_hash(parent_temp_password)
+                    parent_user.full_name = body.parent_full_name or parent_user.full_name
+                    parent_user.phone = body.parent_phone or parent_user.phone
+                    parent_user.address = body.parent_city or parent_user.address
+                    parent_temp_login = parent_user.email
+                else:
+                    parent_user = existing_parent if existing_parent.role == "parent" else None
+            else:
+                parent_temp_password = _generate_password()
+                parent_user = User(
+                    email=body.parent_email,
+                    password_hash=get_password_hash(parent_temp_password),
+                    full_name=body.parent_full_name
+                    or get_email_translation("default_parent_display_name", "kk"),
+                    role="parent",
+                    phone=body.parent_phone or None,
+                    address=body.parent_city or None,
+                    is_approved=True,
+                    interface_language="Казахский",
+                )
+                db.add(parent_user)
+                db.flush()
+                parent_temp_login = parent_user.email
+
+    if parent_user:
+        user.parent_id = parent_user.id
+
+    # --- Instant activation: status = "paid", no confirmation needed ---
+    reusable_app = db.query(CourseApplication).filter(
+        CourseApplication.user_id == user.id,
+        CourseApplication.course_id == body.course_id,
+        CourseApplication.status.in_(["rejected", "pending", "pending_confirmation"]),
+    ).order_by(CourseApplication.id.desc()).first()
+
+    if reusable_app:
+        app = reusable_app
+        app.status = "paid"
+        app.email = body.email
+        app.full_name = body.full_name
+        app.phone = body.phone or None
+        app.city = body.city or None
+        app.student_birth_date = body.student_birth_date
+        app.student_age = body.student_age
+        app.student_iin = body.student_iin or None
+        app.parent_email = body.parent_email or None
+        app.parent_full_name = body.parent_full_name or None
+        app.parent_phone = body.parent_phone or None
+        app.parent_city = body.parent_city or None
+        app.parent_birth_date = body.parent_birth_date
+        app.parent_age = body.parent_age
+        app.parent_iin = body.parent_iin or None
+        app.confirmed_at = datetime.now(timezone.utc)
+        app.created_at = datetime.now(timezone.utc)
+    else:
+        app = CourseApplication(
+            user_id=user.id,
+            course_id=body.course_id,
+            status="paid",
+            email=body.email,
+            full_name=body.full_name,
+            phone=body.phone or None,
+            city=body.city or None,
+            student_birth_date=body.student_birth_date,
+            student_age=body.student_age,
+            student_iin=body.student_iin or None,
+            parent_email=body.parent_email or None,
+            parent_full_name=body.parent_full_name or None,
+            parent_phone=body.parent_phone or None,
+            parent_city=body.parent_city or None,
+            parent_birth_date=body.parent_birth_date,
+            parent_age=body.parent_age,
+            parent_iin=body.parent_iin or None,
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        db.add(app)
+        db.flush()
+
+    # --- Instant enrollment ---
+    amount = float(course.price or 0)
+    existing_enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == user.id,
+        CourseEnrollment.course_id == body.course_id,
+    ).first()
+    if not existing_enrollment:
+        enrollment = CourseEnrollment(
+            user_id=user.id,
+            course_id=body.course_id,
+            payment_confirmed=True,
+            payment_amount=amount,
+        )
+        db.add(enrollment)
+
+    payment = Payment(
+        user_id=user.id,
+        course_id=body.course_id,
+        amount=amount,
+        status="completed",
+        payment_method=body.payment_method,
+        application_id=app.id,
+    )
+    db.add(payment)
+
+    managers = db.query(User).filter(User.role.in_(["admin", "director", "curator"])).all()
+    for m in managers:
+        n = Notification(
+            user_id=m.id,
+            type="new_application",
+            title="Студент оплатил и зачислен на курс",
+            message=f"{body.full_name} ({body.email}) оплатил курс «{course.title}» и автоматически зачислен.",
+            link="/app/admin/users?tab=group-queue",
+        )
+        db.add(n)
+
+    db.commit()
+
+    # --- Send welcome email with credentials (no confirmation link) ---
+    try:
+        user_lang = resolve_email_lang(user)
+        background_tasks.add_task(
+            send_course_purchase_email,
+            to_email=user.email,
+            student_name=user.full_name,
+            course_title=course.title,
+            temp_login=user.email,
+            temp_password=temp_password,
+            parent_temp_login=parent_temp_login,
+            parent_temp_password=parent_temp_password,
+            lang=user_lang,
+        )
+    except Exception as e:
+        logger.exception("Failed to queue welcome email to %s: %s", user.email, e)
+
+    return PayApplicationResponse(
+        message="Оплата принята. Вы зачислены на курс!",
+        confirmation_token="",
+        course_title=course.title,
+        student_name=body.full_name,
+        student_email=body.email,
+        temp_login=user.email,
+        temp_password=temp_password,
+        parent_temp_login=parent_temp_login,
+        parent_temp_password=parent_temp_password,
+    )
+
+
+class ConfirmPurchaseResponse(BaseModel):
+    message: str
+    temp_login: str
+    temp_password: str
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+    course_title: str
+    student_name: str
+
+
+@router.get("/confirm/{token}", response_model=ConfirmPurchaseResponse)
+def confirm_purchase(
+    token: str,
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
+):
+    app = db.query(CourseApplication).filter(
+        CourseApplication.confirmation_token == token,
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="errorInvalidConfirmLink")
+
+    if app.confirmed_at is not None:
+        user = db.query(User).filter(User.id == app.user_id).first()
+        course = db.query(Course).filter(Course.id == app.course_id).first()
+        parent_user = db.query(User).filter(User.id == user.parent_id).first() if user and user.parent_id else None
+        raise HTTPException(
+            status_code=400,
+            detail="errorPurchaseAlreadyConfirmed",
+        )
+
+    user = db.query(User).filter(User.id == app.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="errorUserNotFound")
+    course = db.query(Course).filter(Course.id == app.course_id).first()
+    if not course:
+        raise HTTPException(status_code=403, detail="errorAccessDenied")
+
+    temp_password = _generate_password()
+    user.password_hash = get_password_hash(temp_password)
+
+    app.status = "paid"
+    app.confirmed_at = datetime.now(timezone.utc)
+
+    payment = db.query(Payment).filter(
+        Payment.application_id == app.id,
+    ).first()
+    if payment:
+        payment.status = "completed"
+
+    amount = float(course.price or 0)
+    existing_enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == user.id,
+        CourseEnrollment.course_id == app.course_id,
+    ).first()
+    if not existing_enrollment:
+        enrollment = CourseEnrollment(
+            user_id=user.id,
+            course_id=app.course_id,
+            payment_confirmed=True,
+            payment_amount=amount,
+        )
+        db.add(enrollment)
+
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+    parent_user = db.query(User).filter(User.id == user.parent_id).first() if user.parent_id else None
+    if parent_user and parent_user.role == "parent":
+        parent_temp_password = _generate_password()
+        parent_user.password_hash = get_password_hash(parent_temp_password)
+        parent_temp_login = parent_user.email
+
+    db.commit()
+
+    try:
+        background_tasks.add_task(
+            send_course_purchase_email,
+            to_email=user.email,
+            student_name=user.full_name,
+            course_title=course.title,
+            temp_login=user.email,
+            temp_password=temp_password,
+            parent_temp_login=parent_temp_login,
+            parent_temp_password=parent_temp_password,
+            lang=resolve_email_lang(user),
+        )
+    except Exception as e:
+        logger.exception("Failed to queue course purchase confirmation email to %s: %s", user.email, e)
+
+    return ConfirmPurchaseResponse(
+        message="Поздравляем! Вы добавлены на курс. Удачи в обучении!",
+        temp_login=user.email,
+        temp_password=temp_password,
+        parent_temp_login=parent_temp_login,
+        parent_temp_password=parent_temp_password,
+        course_title=course.title,
+        student_name=user.full_name,
+    )
+
+
+@router.post("/submit", response_model=SubmitApplicationResponse)
+@limiter.limit("5/minute")
+def submit_application(
+    request: Request,
+    body: SubmitApplicationRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Публичный эндпоинт: заявка на покупку курса без авторизации."""
+    course = db.query(Course).filter(Course.id == body.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="errorCourseNotFound")
+    if not course.is_active:
+        raise HTTPException(status_code=400, detail="errorCourseUnavailable")
+
+    if body.parent_email.strip():
+        email_re = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+        if not email_re.match(body.parent_email.strip()):
+            raise HTTPException(status_code=400, detail="errorInvalidParentEmail")
+
+    existing_user = db.query(User).filter(User.email == body.email).first()
+
+    if existing_user and getattr(existing_user, "is_approved", True):
+        raise HTTPException(
+            status_code=400,
+            detail="errorHasAccountLoginNeeded",
+        )
+
+    if existing_user:
+        user = existing_user
+        temp_password = _generate_password()
+        user.password_hash = get_password_hash(temp_password)
+        if body.city:
+            user.address = body.city
+        existing_app = db.query(CourseApplication).filter(
+            CourseApplication.user_id == user.id,
+            CourseApplication.course_id == body.course_id,
+            CourseApplication.status == "pending",
+        ).first()
+        if existing_app:
+            raise HTTPException(status_code=400, detail="errorApplicationAlreadySent")
+    else:
+        temp_password = _generate_password()
+        user = User(
+            email=body.email,
+            password_hash=get_password_hash(temp_password),
+            full_name=body.full_name,
+            role="student",
+            phone=body.phone or None,
+            address=body.city or None,
+            is_approved=False,
+            interface_language="Казахский",
+        )
+        db.add(user)
+        db.flush()
+
+    # Find or create parent user
+    parent_temp_login: str | None = None
+    parent_temp_password: str | None = None
+    parent_user: User | None = None
+
+    if body.parent_email.strip():
+        # Skip creating parent if same as student email
+        if body.parent_email.lower() != body.email.lower():
+            existing_parent = db.query(User).filter(User.email == body.parent_email).first()
+            if existing_parent:
+                if existing_parent.role == "parent":
+                    parent_user = existing_parent
+                    parent_temp_password = _generate_password()
+                    parent_user.password_hash = get_password_hash(parent_temp_password)
+                    parent_user.full_name = body.parent_full_name or parent_user.full_name
+                    parent_user.phone = body.parent_phone or parent_user.phone
+                    parent_user.address = body.parent_city or parent_user.address
+                    parent_temp_login = parent_user.email
+                else:
+                    # Email belongs to non-parent user; don't create parent, just link if they're parent
+                    parent_user = existing_parent if existing_parent.role == "parent" else None
+            else:
+                parent_temp_password = _generate_password()
+                parent_user = User(
+                    email=body.parent_email,
+                    password_hash=get_password_hash(parent_temp_password),
+                    full_name=body.parent_full_name
+                    or get_email_translation("default_parent_display_name", "kk"),
+                    role="parent",
+                    phone=body.parent_phone or None,
+                    address=body.parent_city or None,
+                    is_approved=True,
+                    interface_language="Казахский",
+                )
+                db.add(parent_user)
+                db.flush()
+                parent_temp_login = parent_user.email
+
+    if parent_user:
+        user.parent_id = parent_user.id
+
+    app = CourseApplication(
+        user_id=user.id,
+        course_id=body.course_id,
+        status="pending",
+        email=body.email,
+        full_name=body.full_name,
+        phone=body.phone or None,
+        city=body.city or None,
+        student_birth_date=body.student_birth_date,
+        student_age=body.student_age,
+        student_iin=body.student_iin or None,
+        parent_email=body.parent_email or None,
+        parent_full_name=body.parent_full_name or None,
+        parent_phone=body.parent_phone or None,
+        parent_city=body.parent_city or None,
+        parent_birth_date=body.parent_birth_date,
+        parent_age=body.parent_age,
+        parent_iin=body.parent_iin or None,
+    )
+    db.add(app)
+
+    # Уведомляем менеджеров (admin, director, curator)
+    managers = db.query(User).filter(User.role.in_(["admin", "director", "curator"])).all()
+    for m in managers:
+        n = Notification(
+            user_id=m.id,
+            type="new_application",
+            title="Новая заявка на курс",
+            message=f"от {body.full_name} ({body.email}) на курс «{course.title}»",
+            link="/app/admin/applications",
+        )
+        db.add(n)
+
+    db.commit()
+    db.refresh(app)
+
+    return SubmitApplicationResponse(
+        message="Менеджер свяжется с вами.",
+        temp_login=body.email,
+        temp_password=temp_password,
+        parent_temp_login=parent_temp_login,
+        parent_temp_password=parent_temp_password,
+    )

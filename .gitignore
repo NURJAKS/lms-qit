@@ -1,0 +1,58 @@
+# === Backend (Python) ===
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+# Секреты только локально — в git только backend/.env.example
+backend/.env
+# Локальная / Docker data (не путать с демо backend/education.db)
+backend/data/
+# Случайные тестовые SQLite в корне backend
+backend/app.db
+backend/sql_app.db
+backend/test.db
+# Черновики и отчёты не для клиента
+scratch/
+scratch_admin.txt
+status_report.txt
+frontend-next/alert_list.txt
+# Демо: backend/uploads/ и backend/education.db коммитим при необходимости
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/**/*.so
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/test_email_config.py
+backend/test_smtp.py
+
+# === Frontend ===
+node_modules/
+frontend-next/.next/
+frontend-next/out/
+frontend-next/.turbo/
+
+# === General ===
+.cursor/
+.env
+.env.*
+!.env.example
+.env.deploy
+!**/.env.example
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.local
+
+# Референс-картинки в корне (jpeg, icons8-*, image copy*.png, image.png, uyfydu6.jpg и т.д.) — не удалять; см. deploy/ROOT_ASSETS_NOTE.txt
+
+# Случайные медиа и логи в корне репозитория (не часть сборки; не коммитить повторно)
+/*.webm
+/*.mp4
+/ngrok.log
+/start.log
+notification_fix_report.txt

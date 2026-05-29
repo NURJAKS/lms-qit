@@ -1,0 +1,74 @@
+# VPS / production: PostgreSQL + uploads в томах. API через Next (/api).
+# Перед запуском: cp env.deploy.example .env.deploy — задайте SECRET_KEY, POSTGRES_PASSWORD, ALLOWED_ORIGINS.
+#
+# Миграция данных из старого SQLite: см. deploy/VPS.md (раздел «PostgreSQL и перенос с SQLite»).
+#
+# Запуск: docker compose --env-file .env.deploy -f docker-compose.vps.yml up -d --build
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.deploy}
+      POSTGRES_DB: ${POSTGRES_DB:-education_platform}
+    volumes:
+      - lms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-education_platform}
+      LMS_DATA_DIR: ""
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      AUTH_LOGIN_RATELIMIT: ${AUTH_LOGIN_RATELIMIT:-60/minute}
+      AUTH_REGISTER_RATELIMIT: ${AUTH_REGISTER_RATELIMIT:-10/minute}
+      # 1 = не запускать seed_* при старте (нужно после импорта SQLite, чтобы данные не «разъезжались»)
+      LMS_SKIP_ENTRYPOINT_SEED: ${LMS_SKIP_ENTRYPOINT_SEED:-0}
+    volumes:
+      - lms_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8000),timeout=3); s.close()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ./frontend-next
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  lms_postgres_data:
+  lms_uploads:
