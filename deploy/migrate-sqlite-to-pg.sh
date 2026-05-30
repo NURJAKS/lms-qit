@@ -45,7 +45,7 @@ echo "Миграция SQLite → PostgreSQL (файл смонтирован т
 docker compose --env-file "$COMPOSE_ENV_FILE" -f docker-compose.vps.yml run --rm --no-deps \
   --entrypoint python \
   -v "$ABS_SQLITE:/tmp/migrate_source.db:ro" \
-  backend migrate_sqlite_to_pg.py \
+  backend scripts/migrate_sqlite_to_pg.py \
   --sqlite-url sqlite:////tmp/migrate_source.db \
   --force
 
