@@ -335,20 +335,8 @@ export default function LeaderboardPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="relative z-10">
-        <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
-          <LeaderboardHeader lastReward={lastReward} />
-          <BlurFade delay={0.2} inView>
-            <ShimmerButton
-              onClick={handleExportExcel}
-              className="bg-gradient-to-r from-[var(--qit-primary)] to-purple-600 text-white border-0"
-              shimmerColor="#ffffff"
-              borderRadius="12px"
-            >
-              <Download className="w-4 h-4 mr-2" /> {t("digitalRating")}
-            </ShimmerButton>
-          </BlurFade>
-        </div>
+      <div className="relative z-10 w-full">
+        <LeaderboardHeader lastReward={lastReward} onExportExcel={handleExportExcel} />
       </div>
 
       {/* Stat Cards */}

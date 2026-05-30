@@ -1,23 +1,25 @@
 "use client";
 
-import { Trophy } from "lucide-react";
+import { Trophy, Download } from "lucide-react";
 import { AnimatedGradientText } from "@/components/ui/animated-gradient-text";
 import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 
 interface LeaderboardHeaderProps {
   lastReward?: { date: string; rank: number; amount: number } | null;
+  onExportExcel?: () => void;
 }
 
-export function LeaderboardHeader({ lastReward }: LeaderboardHeaderProps) {
+export function LeaderboardHeader({ lastReward, onExportExcel }: LeaderboardHeaderProps) {
   const { t, lang } = useLanguage();
 
   return (
-    <BlurFade delay={0.1} inView className="relative">
-      <div className="relative rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-6 shadow-lg overflow-hidden">
+    <BlurFade delay={0.1} inView className="relative w-full">
+      <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-6 shadow-lg overflow-hidden">
         <BorderBeam
           size={100}
           duration={8}
@@ -26,8 +28,8 @@ export function LeaderboardHeader({ lastReward }: LeaderboardHeaderProps) {
           borderWidth={2}
         />
         
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="relative z-10 w-full space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-4 w-full">
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Trophy className="w-10 h-10 text-amber-500 dark:text-amber-400 animate-bounce" />
@@ -44,17 +46,28 @@ export function LeaderboardHeader({ lastReward }: LeaderboardHeaderProps) {
                 </AnimatedGradientText>
               </div>
             </div>
+            
+            {onExportExcel && (
+              <ShimmerButton
+                onClick={onExportExcel}
+                className="bg-gradient-to-r from-[var(--qit-primary)] to-purple-600 text-white border-0 shrink-0"
+                shimmerColor="#ffffff"
+                borderRadius="12px"
+              >
+                <Download className="w-4 h-4 mr-2" /> {t("digitalRating")}
+              </ShimmerButton>
+            )}
           </div>
 
           <div className="space-y-2">
             <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 leading-relaxed max-w-3xl">
               {t("leaderboardRankingHint")}
             </p>
-            <div className="mt-3 p-4 rounded-xl bg-gray-50/50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            <div className="mt-3 p-4 rounded-xl bg-gray-50/50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50 w-full">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 text-center sm:text-left">
                 🎁 {lang === "kk" ? "Күнделікті сыйлықтар (Топ-5)" : lang === "en" ? "Daily Rewards (Top-5)" : "Ежедневные награды (Топ-5)"}
               </p>
-              <div className="grid grid-cols-5 gap-2 text-center">
+              <div className="grid grid-cols-5 gap-2 sm:gap-4 text-center max-w-4xl mx-auto sm:mx-0">
                 {/* 1st Place */}
                 <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-sm shadow-amber-500/5 group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
                   <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-amber-500 text-white font-bold text-xs flex items-center justify-center shadow-md">1</div>
