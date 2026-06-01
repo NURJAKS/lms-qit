@@ -56,3 +56,4 @@ Thumbs.db
 /ngrok.log
 /start.log
 notification_fix_report.txt
+*.zip

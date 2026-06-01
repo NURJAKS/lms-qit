@@ -27,7 +27,7 @@ export function LeaderboardHeader({ lastReward, onExportExcel }: LeaderboardHead
           colorTo="#9c40ff"
           borderWidth={2}
         />
-        
+
         <div className="relative z-10 w-full space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-4 w-full">
             <div className="flex items-center gap-3">
@@ -46,7 +46,7 @@ export function LeaderboardHeader({ lastReward, onExportExcel }: LeaderboardHead
                 </AnimatedGradientText>
               </div>
             </div>
-            
+
             {onExportExcel && (
               <ShimmerButton
                 onClick={onExportExcel}
@@ -69,33 +69,48 @@ export function LeaderboardHeader({ lastReward, onExportExcel }: LeaderboardHead
               </p>
               <div className="grid grid-cols-5 gap-2 sm:gap-4 text-center max-w-4xl mx-auto sm:mx-0">
                 {/* 1st Place */}
-                <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-sm shadow-amber-500/5 group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-amber-500 text-white font-bold text-xs flex items-center justify-center shadow-md">1</div>
-                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">1000 🪙</span>
+                <div className="relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 shadow-sm shadow-amber-500/5 group hover:scale-[1.05] transition-transform min-h-[90px] sm:min-h-[110px] h-auto overflow-hidden">
+                  <div className="absolute top-2 left-2 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-500 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-md">1</div>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold text-amber-700 dark:text-amber-300 leading-none tracking-tight">1000</span>
+                    <span className="text-sm sm:text-lg">🪙</span>
+                  </div>
                 </div>
-                
+
                 {/* 2nd Place */}
-                <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-slate-400/10 border border-slate-400/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-400 text-white font-bold text-xs flex items-center justify-center shadow-md">2</div>
-                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">700 🪙</span>
+                <div className="relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-slate-400/10 border border-slate-400/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[90px] sm:min-h-[110px] h-auto overflow-hidden">
+                  <div className="absolute top-2 left-2 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-slate-400 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-md">2</div>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold text-slate-700 dark:text-slate-300 leading-none tracking-tight">700</span>
+                    <span className="text-sm sm:text-lg">🪙</span>
+                  </div>
                 </div>
 
                 {/* 3rd Place */}
-                <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-700/10 border border-amber-700/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-amber-700 text-white font-bold text-xs flex items-center justify-center shadow-md">3</div>
-                  <span className="text-[10px] font-bold text-amber-950 dark:text-amber-400 whitespace-nowrap">500 🪙</span>
+                <div className="relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-amber-700/10 border border-amber-700/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[90px] sm:min-h-[110px] h-auto overflow-hidden">
+                  <div className="absolute top-2 left-2 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-700 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-md">3</div>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold text-amber-950 dark:text-amber-400 leading-none tracking-tight">500</span>
+                    <span className="text-sm sm:text-lg">🪙</span>
+                  </div>
                 </div>
 
                 {/* 4th Place */}
-                <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-500 text-white font-bold text-xs flex items-center justify-center shadow-md">4</div>
-                  <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 whitespace-nowrap">250 🪙</span>
+                <div className="relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[90px] sm:min-h-[110px] h-auto overflow-hidden">
+                  <div className="absolute top-2 left-2 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-500 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-md">4</div>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold text-blue-700 dark:text-blue-300 leading-none tracking-tight">250</span>
+                    <span className="text-sm sm:text-lg">🪙</span>
+                  </div>
                 </div>
 
                 {/* 5th Place */}
-                <div className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[60px] sm:min-h-[70px] h-auto">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-purple-500 text-white font-bold text-xs flex items-center justify-center shadow-md">5</div>
-                  <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">100 🪙</span>
+                <div className="relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 shadow-sm group hover:scale-[1.05] transition-transform min-h-[90px] sm:min-h-[110px] h-auto overflow-hidden">
+                  <div className="absolute top-2 left-2 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-purple-500 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-md">5</div>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold text-purple-700 dark:text-purple-300 leading-none tracking-tight">100</span>
+                    <span className="text-sm sm:text-lg">🪙</span>
+                  </div>
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 justify-center">
@@ -103,7 +118,7 @@ export function LeaderboardHeader({ lastReward, onExportExcel }: LeaderboardHead
                 <span>{lang === "kk" ? "Есептеу 00:05-те" : lang === "en" ? "Calculation at 00:05" : "Расчет в 00:05"}</span>
               </div>
             </div>
-            
+
             {lastReward && (
               <BlurFade delay={0.3} inView>
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-purple-500/20 border border-amber-500/30 dark:border-purple-500/30">

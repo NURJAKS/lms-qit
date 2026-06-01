@@ -9,9 +9,10 @@ import { useAuthStore } from "@/store/authStore";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TranslationKey } from "@/i18n/translations";
 import { AppHeader } from "@/components/common/AppHeader";
-import { Loader2, Clock, Signal, GraduationCap, Lock, Sparkles, CreditCard, Smartphone, X } from "lucide-react";
+import { Loader2, Clock, Signal, GraduationCap, Lock, Sparkles, CreditCard, Smartphone, X, Eye, EyeOff, Copy, Check } from "lucide-react";
 import type { Course } from "@/types";
 import { CATEGORY_METRICS, COURSE_CARD_COLORS, courseImageUrl, getCategoryFromCourse, getLocalizedCourseTitle, getLocalizedCourseDesc } from "@/lib/courseUtils";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 function CatalogCourseCard({
   c,
@@ -182,6 +183,20 @@ function CatalogPageContent() {
     parent_age: "",
     parent_iin: "",
   });
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showParentPassword, setShowParentPassword] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+    }
+  };
 
   const { data: courses = [], isLoading: coursesLoading, isError: coursesError } = useQuery({
     queryKey: ["courses-all"],
@@ -372,8 +387,7 @@ function CatalogPageContent() {
         }
       }
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      setSubmitError(err.response?.data?.detail ?? t("error"));
+      setSubmitError(getApiErrorMessage(e, t("error")));
       setSubmitStep("card_details");
       setPaymentProgress(0);
     }
@@ -582,7 +596,7 @@ function CatalogPageContent() {
 
         {buyModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/50"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 dark:bg-black/50"
           role="dialog"
           aria-modal="true"
           aria-labelledby="buy-modal-title"
@@ -974,7 +988,7 @@ function CatalogPageContent() {
                     </div>
                   </button>
                 </div>
-                {submitError && <p className="text-red-500 text-sm mb-3">{submitError}</p>}
+                {submitError && <p className="text-red-500 text-sm mb-3">{t(submitError as TranslationKey)}</p>}
                 <div className="flex gap-4">
                   <button
                     type="button"
@@ -1022,7 +1036,7 @@ function CatalogPageContent() {
                   </div>
                 </div>
 
-                {submitError && <p className="text-red-500 text-sm mb-3 text-center">{submitError}</p>}
+                {submitError && <p className="text-red-500 text-sm mb-3 text-center">{t(submitError as TranslationKey)}</p>}
 
                 <div className="flex gap-4 pt-2">
                   <button
@@ -1114,50 +1128,86 @@ function CatalogPageContent() {
                   <>
                     {purchaseCredentials ? (
                       <>
-                        <p className="text-gray-600 dark:text-gray-300 text-base leading-relaxed mb-2 px-4">
-                          {t("confirmCongrats")} <span className="text-white font-semibold">{purchaseCredentials.student_name}</span>!
+                        <p className="text-gray-900 dark:text-white text-base leading-relaxed mb-2 px-4">
+                          {t("confirmCongrats")} <span className="font-bold">{purchaseCredentials.student_name?.trim() || purchaseCredentials.temp_login}</span>!
                         </p>
                         <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-6 px-4">
                           {t("confirmAddedToCourse")}{" "}
-                          <span className="text-blue-400 font-semibold">&laquo;{purchaseCredentials.course_title}&raquo;</span>.
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">&laquo;{purchaseCredentials.course_title}&raquo;</span>.
                           {" "}{t("confirmGoodLuck")}
                         </p>
 
                         <div className="w-full max-w-sm space-y-3 mb-6">
-                          <div className="bg-gray-100 dark:bg-gray-800/50 rounded-2xl p-4 border border-gray-200 dark:border-gray-700/50">
+                          <div className="bg-gray-100 dark:bg-gray-800/80 rounded-2xl p-4 border border-gray-200 dark:border-gray-700/50">
                             <p className="font-bold text-gray-900 dark:text-white mb-3 text-sm">{t("confirmStudentLogin")}</p>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between items-center">
-                                <span className="text-gray-500 dark:text-gray-400">{t("confirmLoginLabel")}</span>
-                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{purchaseCredentials.temp_login}</span>
+                            <div className="space-y-3 text-sm">
+                              <div className="flex justify-between items-center gap-2 bg-white dark:bg-[#1A2238] p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <span className="text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{t("confirmLoginLabel")}</span>
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <span className="font-mono font-bold text-gray-900 dark:text-white truncate">{purchaseCredentials.temp_login}</span>
+                                  <button onClick={() => copyToClipboard(purchaseCredentials.temp_login, 'studentLogin')} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0" title="Скопировать логин">
+                                    {copiedField === 'studentLogin' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                  </button>
+                                </div>
                               </div>
-                              <div className="flex justify-between items-center">
-                                <span className="text-gray-500 dark:text-gray-400">{t("confirmPasswordLabel")}</span>
-                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{purchaseCredentials.temp_password}</span>
+                              <div className="flex justify-between items-center gap-2 bg-white dark:bg-[#1A2238] p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <span className="text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{t("confirmPasswordLabel")}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold text-gray-900 dark:text-white mt-[3px]">
+                                    {showPassword ? purchaseCredentials.temp_password : "••••••••"}
+                                  </span>
+                                  <div className="flex items-center">
+                                    <button onClick={() => setShowPassword(!showPassword)} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title={showPassword ? "Скрыть пароль" : "Показать пароль"}>
+                                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                    <button onClick={() => copyToClipboard(purchaseCredentials.temp_password, 'studentPass')} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="Скопировать пароль">
+                                      {copiedField === 'studentPass' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
 
                           {purchaseCredentials.parent_temp_login && (
-                            <div className="bg-gray-100 dark:bg-gray-800/50 rounded-2xl p-4 border border-gray-200 dark:border-gray-700/50">
+                            <div className="bg-gray-100 dark:bg-gray-800/80 rounded-2xl p-4 border border-gray-200 dark:border-gray-700/50">
                               <p className="font-bold text-gray-900 dark:text-white mb-3 text-sm">{t("confirmParentLogin")}</p>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-gray-500 dark:text-gray-400">{t("confirmLoginLabel")}</span>
-                                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{purchaseCredentials.parent_temp_login}</span>
+                              <div className="space-y-3 text-sm">
+                                <div className="flex justify-between items-center gap-2 bg-white dark:bg-[#1A2238] p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                                  <span className="text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{t("confirmLoginLabel")}</span>
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="font-mono font-bold text-gray-900 dark:text-white truncate">{purchaseCredentials.parent_temp_login}</span>
+                                    <button onClick={() => copyToClipboard(purchaseCredentials.parent_temp_login as string, 'parentLogin')} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0" title="Скопировать логин">
+                                      {copiedField === 'parentLogin' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-gray-500 dark:text-gray-400">{t("confirmPasswordLabel")}</span>
-                                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{purchaseCredentials.parent_temp_password}</span>
+                                <div className="flex justify-between items-center gap-2 bg-white dark:bg-[#1A2238] p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                                  <span className="text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{t("confirmPasswordLabel")}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-gray-900 dark:text-white mt-[3px]">
+                                      {showParentPassword ? purchaseCredentials.parent_temp_password : "••••••••"}
+                                    </span>
+                                    <div className="flex items-center">
+                                      <button onClick={() => setShowParentPassword(!showParentPassword)} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title={showParentPassword ? "Скрыть пароль" : "Показать пароль"}>
+                                        {showParentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                      </button>
+                                      <button onClick={() => copyToClipboard(purchaseCredentials.parent_temp_password as string, 'parentPass')} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="Скопировать пароль">
+                                        {copiedField === 'parentPass' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           )}
                         </div>
 
-                        <p className="text-gray-400 dark:text-gray-500 text-xs leading-relaxed mb-6 px-4">
-                          💡 {t("catalogPasswordChangeHint")}
-                        </p>
+                        <div className="w-full max-w-sm mb-6 p-3 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-xl">
+                          <p className="text-blue-800 dark:text-blue-300 text-xs sm:text-sm leading-relaxed font-medium">
+                            💡 {t("catalogPasswordChangeHint")}
+                          </p>
+                        </div>
 
                         <div className="flex flex-col gap-3 w-full max-w-sm">
                           <button
@@ -1166,7 +1216,7 @@ function CatalogPageContent() {
                               closeBuyModal("done");
                               router.push("/login");
                             }}
-                            className="w-full min-h-[44px] py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all touch-manipulation"
+                            className="w-full min-h-[48px] py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all touch-manipulation text-base"
                             style={{ background: "var(--qit-gradient-1)" }}
                           >
                             {t("confirmGoToLogin")}
@@ -1174,7 +1224,7 @@ function CatalogPageContent() {
                           <button
                             type="button"
                             onClick={() => closeBuyModal("done")}
-                            className="w-full min-h-[44px] py-3 rounded-2xl font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 transition-all touch-manipulation"
+                            className="w-full min-h-[44px] py-2 font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors touch-manipulation text-sm"
                           >
                             {t("confirmBackToCourses")}
                           </button>

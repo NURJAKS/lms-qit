@@ -232,16 +232,16 @@ export default function UserProfilePage() {
             </div>
           </MagicCard>
         )}
-        {certificates.length > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
-            <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5" /> {t("profileCertificates")}
-            </h2>
+        <div className="bg-white dark:bg-gray-800 rounded-[20px] shadow-md border border-gray-200 dark:border-gray-700 p-5">
+          <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+            <Award className="w-5 h-5" /> {t("profileCertificates")}
+          </h2>
+          {certificates.length > 0 ? (
             <ul className="space-y-3">
-              {certificates.map((c: any) => (
+              {certificates.map((c) => (
                 <li key={c.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-sm text-gray-800 dark:text-white truncate">{getLocalizedCourseTitle({ title: c.course_title } as any, t)} {c.final_score != null && `(${c.final_score}%)`}</span>
+                  <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+                    <span className="text-sm text-gray-800 dark:text-white truncate block flex-1">{getLocalizedCourseTitle({ title: c.course_title } as any, t)} {c.final_score != null && `(${c.final_score}%)`}</span>
                     {c.certificate_url && (
                       <a href={c.certificate_url} target="_blank" rel="noreferrer" className="text-[var(--qit-primary)] dark:text-[#00b0ff] hover:underline text-sm shrink-0">{t("profileView")}</a>
                     )}
@@ -254,8 +254,13 @@ export default function UserProfilePage() {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          ) : (
+            <div className="p-5 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50/50 dark:bg-gray-800/30 flex flex-col items-center justify-center text-center gap-2">
+              <Award className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-1" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("profileNoCertificates")}</p>
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );
