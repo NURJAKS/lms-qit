@@ -313,11 +313,13 @@ class QuestionUpdate(BaseModel):
 class TopicCreate(BaseModel):
     title: str
     description: str | None = None
+    module_id: int | None = None
 
 
 class TopicUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    module_id: int | None = None
 
 
 class AddTeacher(BaseModel):
@@ -2937,6 +2939,7 @@ def update_topic(
 
     if body.title is not None: topic.title = body.title
     if body.description is not None: topic.description = body.description
+    if body.module_id is not None: topic.module_id = body.module_id
     
     db.commit()
     db.refresh(topic)
@@ -2989,6 +2992,7 @@ def create_topic(
         course_id=course_id,
         title=body.title,
         description=body.description,
+        module_id=body.module_id,
         order_number=max_order + 1,
     )
     db.add(topic)

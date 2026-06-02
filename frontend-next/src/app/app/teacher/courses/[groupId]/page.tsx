@@ -121,7 +121,7 @@ type MaterialDetails = {
   attachment_links: string[];
 };
 
-type CourseTopic = { id: number; title: string };
+type CourseTopic = { id: number; title: string; module_id?: number | null };
 
 type GroupStudent = { id: number; full_name: string; email: string };
 
@@ -218,6 +218,7 @@ export default function TeacherCourseGroupPage() {
   const [topicModalOpen, setTopicModalOpen] = useState(false);
   const [topicTitle, setTopicTitle] = useState("");
   const [topicTitleTouched, setTopicTitleTouched] = useState(false);
+  const [topicModuleId, setTopicModuleId] = useState<number | "">("");
 
   const [renameTopicModalOpen, setRenameTopicModalOpen] = useState(false);
   const [renamingTopic, setRenamingTopic] = useState<CourseTopic | null>(null);
@@ -381,6 +382,15 @@ export default function TeacherCourseGroupPage() {
   });
   const topics = topicsData ?? EMPTY_TOPIC_LIST;
 
+  const { data: modules = [] } = useQuery({
+    queryKey: ["course-modules", group?.course_id],
+    queryFn: async () => {
+      const { data } = await api.get<{ modules: { id: number; title: string; order_number?: number }[] }>(`/courses/${group!.course_id}/structure`);
+      return data.modules || [];
+    },
+    enabled: !!group?.course_id,
+  });
+
   useEffect(() => {
     setLocalAssignments(assignments);
   }, [assignments]);
@@ -465,10 +475,10 @@ export default function TeacherCourseGroupPage() {
   });
 
   const createTopicMutation = useMutation({
-    mutationFn: async (title: string) => {
+    mutationFn: async (args: { title: string, module_id: number | null }) => {
       const { data } = await api.post<{ id: number; title: string }>(
         `/teacher/courses/${group?.course_id}/topics`,
-        { title }
+        args
       );
       return data;
     },
@@ -476,6 +486,7 @@ export default function TeacherCourseGroupPage() {
       queryClient.invalidateQueries({ queryKey: ["course-topics", group?.course_id] });
       setTopicModalOpen(false);
       setTopicTitle("");
+      setTopicModuleId("");
       setTopicTitleTouched(false);
 
       if (isRenamingUncategorized) {
@@ -502,14 +513,15 @@ export default function TeacherCourseGroupPage() {
   });
 
   const renameTopicMutation = useMutation({
-    mutationFn: async ({ id, title }: { id: number; title: string }) => {
-      await api.patch(`/teacher/topics/${id}`, { title });
+    mutationFn: async ({ id, title, module_id }: { id: number; title: string; module_id: number | null }) => {
+      await api.patch(`/teacher/topics/${id}`, { title, module_id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-topics", group?.course_id] });
       setRenameTopicModalOpen(false);
       setRenamingTopic(null);
       setRenameTitle("");
+      setTopicModuleId("");
     },
   });
 
@@ -770,6 +782,7 @@ export default function TeacherCourseGroupPage() {
   const openTeacherCreateTopic = () => {
     setCreateOpen(false);
     setTopicTitle("");
+    setTopicModuleId("");
     setTopicTitleTouched(false);
     setTopicModalOpen(true);
   };
@@ -1134,6 +1147,7 @@ export default function TeacherCourseGroupPage() {
                                                 if (tp) {
                                                   setRenamingTopic(tp);
                                                   setRenameTitle(tp.title);
+                                                  setTopicModuleId(tp.module_id ?? "");
                                                   setRenameTopicModalOpen(true);
                                                 }
                                                 setActiveTopicMenu(null);
@@ -2051,6 +2065,22 @@ export default function TeacherCourseGroupPage() {
                 {topicTitleTouched && !topicTitle.trim() && (
                   <p className="text-xs text-red-500 ml-1">*{t("fieldRequired")}</p>
                 )}
+                <div className="relative mt-3">
+                  <select
+                    value={topicModuleId}
+                    onChange={(e) => setTopicModuleId(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/40"
+                    style={{ ...inputStyle, color: textColors.primary, appearance: "none" }}
+                  >
+                    <option value="">Без модуля</option>
+                    {modules.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50 pointer-events-none" />
+                </div>
               </div>
 
               {/* Quick topics suggestions */}
@@ -2099,7 +2129,7 @@ export default function TeacherCourseGroupPage() {
               <button
                 type="button"
                 disabled={createTopicMutation.isPending || !topicTitle.trim()}
-                onClick={() => createTopicMutation.mutate(topicTitle)}
+                onClick={() => createTopicMutation.mutate({ title: topicTitle, module_id: typeof topicModuleId === "number" ? topicModuleId : null })}
                 className="flex-1 py-2.5 rounded-xl text-white font-medium text-sm disabled:opacity-50 transition-all hover:shadow-lg"
                 style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
               >
@@ -2274,6 +2304,22 @@ export default function TeacherCourseGroupPage() {
                     {renameTitle.length}/100
                   </div>
                 </div>
+                <div className="relative mt-3">
+                  <select
+                    value={topicModuleId}
+                    onChange={(e) => setTopicModuleId(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/40"
+                    style={{ ...inputStyle, color: textColors.primary, appearance: "none" }}
+                  >
+                    <option value="">Без модуля</option>
+                    {modules.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50 pointer-events-none" />
+                </div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
@@ -2290,8 +2336,8 @@ export default function TeacherCourseGroupPage() {
               </button>
               <button
                 type="button"
-                disabled={renameTopicMutation.isPending || !renameTitle.trim() || renameTitle === renamingTopic.title}
-                onClick={() => renameTopicMutation.mutate({ id: renamingTopic.id, title: renameTitle })}
+                disabled={renameTopicMutation.isPending || !renameTitle.trim()}
+                onClick={() => renameTopicMutation.mutate({ id: renamingTopic.id, title: renameTitle, module_id: typeof topicModuleId === "number" ? topicModuleId : null })}
                 className="flex-1 py-2.5 rounded-xl text-white font-medium text-sm disabled:opacity-50 transition-all hover:shadow-lg"
                 style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)" }}
               >
