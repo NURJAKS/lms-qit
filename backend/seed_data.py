@@ -128,22 +128,6 @@ QUESTIONS_PYTHON_TOPIC_8 = [
     ("JSON үшін стандартты модуль?", "a", "json", "pickle", "csv", "xml"),
 ]
 
-QUESTIONS_PYTHON_TOPIC_9 = [
-    ("Класс анықтау кілт сөзі?", "b", "struct", "class", "object", "type"),
-    ("__init__ не үшін?", "a", "Конструктор/бастапқы күй", "Деструктор", "Статикалық әдіс", "Итератор"),
-    ("self дегеніміз не?", "c", "Глобалды айнымалы", "Модуль атауы", "Экземплярға сілтеме", "Сынып атауы"),
-    ("Мұрагерлік үшін синтаксис?", "d", "class A inherits B", "class A from B", "class A(B):", "class A -> B"),
-    ("Дандер әдіс __str__ не үшін?", "b", "Салыстыру", "Строкалық көрініс", "Хеш", "Ұзындық"),
-]
-
-QUESTIONS_PYTHON_TOPIC_10 = [
-    ("import math не істейді?", "a", "math модулін қосады", "Математиканы өшіреді", "Пакетті жояды", "Тек sqrt қосады"),
-    ("from x import y дегеніміз?", "b", "Барлық модульді жояды", "x модулінен y импорттау", "Тек пакет құрады", "Жолды көрсетеді"),
-    ("if __name__ == '__main__' не үшін?", "c", "Тек тест", "Тек IDE", "Скриптті тікелей іске қосқанда", "Ештеңе"),
-    ("Пакетті белгілеу үшін қандай файл керек?", "d", "setup.py", "__init__.py міндетті емес", "__main__.py ғана", "Каталогта __init__.py (бос болуы мүмкін)"),
-    ("pip дегеніміз не?", "a", "Python пакеттерін орнату құралы", "Интерпретатор", "Редактор", "ОС командасы"),
-]
-
 TOPIC_QUESTIONS_PYTHON = [
     QUESTIONS_PYTHON_TOPIC_1,
     QUESTIONS_PYTHON_TOPIC_2,
@@ -153,8 +137,6 @@ TOPIC_QUESTIONS_PYTHON = [
     QUESTIONS_PYTHON_TOPIC_6,
     QUESTIONS_PYTHON_TOPIC_7,
     QUESTIONS_PYTHON_TOPIC_8,
-    QUESTIONS_PYTHON_TOPIC_9,
-    QUESTIONS_PYTHON_TOPIC_10,
 ]
 
 PYTHON_FINAL_QUESTIONS = [
@@ -509,10 +491,8 @@ def _populate_python_modules_topics_tests(db, course_id: int) -> None:
     db.add(m1_1)
     db.add(m1_2)
     db.flush()
-    m1_3 = CourseModule(course_id=course_id, title="Функциялар және модульдер", order_number=3, description="Функциялар, коллекциялар")
-    m1_4 = CourseModule(course_id=course_id, title="Объектіге бағытталған бағдарламалау", order_number=4, description="ООП негіздері және модульдер")
+    m1_3 = CourseModule(course_id=course_id, title="Функциялар және коллекциялар", order_number=3, description="Функциялар, коллекциялар")
     db.add(m1_3)
-    db.add(m1_4)
     db.flush()
     _d1 = THEORY_PYTHON if THEORY_PYTHON else [""] * 10
     _pv = PYTHON_TOPIC_VIDEOS if len(PYTHON_TOPIC_VIDEOS) >= 10 else []
@@ -525,8 +505,6 @@ def _populate_python_modules_topics_tests(db, course_id: int) -> None:
         (m1_3.id, "Функциялар негіздері",         6,  _pv[5] if _pv else "https://youtu.be/ZdzpPqWlLXc",  600, _d1[5] if len(_d1)>5 else ""),
         (m1_3.id, "Тізімдер және кортеждер",      7,  _pv[6] if _pv else "https://youtu.be/rBbQ2S3hFlw",  600, _d1[6] if len(_d1)>6 else ""),
         (m1_3.id, "Сөздіктер және файлдармен жұмыс", 8,  _pv[7] if _pv else "https://youtu.be/cK6C28FsqkQ",  600, _d1[7] if len(_d1)>7 else ""),
-        (m1_4.id, "Объектіге бағытталған бағдарламалау (ООП)", 9, _pv[8] if _pv else "https://youtu.be/JeznW_7DlB0", 600, _d1[8] if len(_d1)>8 else ""),
-        (m1_4.id, "Модульдер, пакеттер және pip",  10, _pv[9] if _pv else "https://youtu.be/c72R6c6J3d0",  600, _d1[9] if len(_d1)>9 else ""),
     ]
     topic1_ids = []
     for mod_id, title, order, video, dur, desc in topics1:
