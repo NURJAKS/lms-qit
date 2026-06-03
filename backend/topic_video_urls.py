@@ -9,7 +9,7 @@ YouTube URLs per topic for main Python and Web courses.
 Әр элемент реті: курстағы order_number сәйкес (Python 1..10, Web 1..10).
 """
 
-# Python: 7 topics
+# Python: 10 topics
 PYTHON_TOPIC_VIDEOS = [
     "https://youtu.be/ymxpfWURgew",
     "https://youtu.be/-6Q1Ui3E_44",
@@ -18,6 +18,9 @@ PYTHON_TOPIC_VIDEOS = [
     "https://youtu.be/2ETmarcmN9I",
     "https://youtu.be/ZdzpPqWlLXc",
     "https://youtu.be/rBbQ2S3hFlw",
+    "https://youtu.be/cK6C28FsqkQ",
+    "https://youtu.be/JeznW_7DlB0",
+    "https://youtu.be/c72R6c6J3d0",
 ]
 
 # Web: 8 topics
