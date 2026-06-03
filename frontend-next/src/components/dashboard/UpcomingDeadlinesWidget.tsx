@@ -126,6 +126,7 @@ export function UpcomingDeadlinesWidget({ layout = "list" }: { layout?: "list" |
       style={{
         ...glassStyle,
         height: isGrid ? "auto" : "100%",
+        maxHeight: isGrid ? "none" : "450px",
         display: "flex",
         flexDirection: "column",
       }}

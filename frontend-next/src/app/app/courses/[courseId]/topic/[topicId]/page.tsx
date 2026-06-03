@@ -625,9 +625,11 @@ export default function TopicViewPage() {
                   <p className="text-sm text-amber-800 dark:text-amber-200">{t("topicTheoryLockedUntilVideo")}</p>
                 </div>
               )}
-              {canViewTheory && topic.description && (
+              {canViewTheory && (
                 <div className="mb-6">
-                  <TopicTheoryContent content={topic.description} />
+                  {topic.description && (
+                    <TopicTheoryContent content={topic.description} />
+                  )}
                   
                   <div className="mt-8 space-y-8">
                     {/* Main Synopsis Section */}
@@ -655,13 +657,11 @@ export default function TopicViewPage() {
             <>
               <div className="mb-6">
                 {topic.description ? (
-                  <>
-                    <TopicTheoryContent content={topic.description} />
-                    <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
-                  </>
+                  <TopicTheoryContent content={topic.description} />
                 ) : (
-                  <p className="text-gray-600 dark:text-gray-300">{t("materialPreparing")}</p>
+                  <p className="text-gray-600 dark:text-gray-300 mb-6">{t("materialPreparing")}</p>
                 )}
+                <TopicLessonMaterialsSection courseId={cId} topicId={tId} />
               </div>
               {isPremium && <TopicNotes topicId={tId} />}
             </>

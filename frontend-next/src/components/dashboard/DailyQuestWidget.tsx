@@ -57,7 +57,13 @@ export function DailyQuestWidget() {
   };
 
   return (
-    <div className="h-full flex flex-col rounded-xl border-0 shadow-sm overflow-hidden" style={glassStyle}>
+    <div
+      className="h-full flex flex-col rounded-xl border-0 shadow-sm overflow-hidden"
+      style={{
+        ...glassStyle,
+        maxHeight: "450px",
+      }}
+    >
       <div
         className="p-3.5 text-white flex items-center justify-between"
         style={{ background: "linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)" }}

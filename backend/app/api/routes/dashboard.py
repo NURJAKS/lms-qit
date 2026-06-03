@@ -838,7 +838,8 @@ def get_upcoming_deadlines(
     result = []
     for a in assignments:
         # Определяем приоритет на основе времени до дедлайна
-        days_until_deadline = (a.deadline - now).days
+        deadline_naive = a.deadline.replace(tzinfo=None) if a.deadline.tzinfo else a.deadline
+        days_until_deadline = (deadline_naive - now).days
         if days_until_deadline <= 1:
             priority = "high"
         elif days_until_deadline <= 3:

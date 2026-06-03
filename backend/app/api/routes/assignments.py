@@ -175,6 +175,7 @@ def list_my_assignments(
     ).all():
         submissions_by_assignment[s.assignment_id] = s
     topics = {}
+    topic_ids = []
     if assignments:
         from app.models.course_topic import CourseTopic
         topic_ids = [a.topic_id for a in assignments if getattr(a, "topic_id", None)]
