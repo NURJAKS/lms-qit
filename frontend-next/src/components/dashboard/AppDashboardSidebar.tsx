@@ -107,12 +107,12 @@ export function AppDashboardSidebar() {
       : isStudentWithoutGroup
         ? [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
-          { href: "/courses", icon: Library, label: t("courseCatalog") },
+          { href: "/app/catalog", icon: Library, label: t("courseCatalog") },
           { href: "/app/support", icon: LifeBuoy, label: t("studentSupportTitle") },
         ]
         : [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
-          { href: "/courses", icon: Library, label: t("courseCatalog") },
+          { href: "/app/catalog", icon: Library, label: t("courseCatalog") },
           ...(isTeacher() ? [] : [
             { href: "/app/analytics", icon: BarChart3, label: t("studentAnalytics") },
           ]),

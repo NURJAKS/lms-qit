@@ -137,7 +137,7 @@ function CatalogCourseCard({
   );
 }
 
-function CatalogPageContent() {
+export function CatalogPageContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -403,8 +403,15 @@ function CatalogPageContent() {
     setCardData({ number: "", expiry: "", cvv: "" });
     setPaymentProgress(0);
     setPaymentId(null);
+    if (source === "done") {
+      queryClient.invalidateQueries({ queryKey: ["my-enrollments", user?.id] });
+      if (embedded) {
+        router.push("/app/courses");
+        return;
+      }
+    }
     if (searchParams.get("course")) {
-      router.replace("/courses");
+      router.replace(embedded ? "/app/catalog" : "/courses");
     }
   };
 
@@ -451,53 +458,66 @@ function CatalogPageContent() {
   }, [coursesLoading, enrollmentsReady, courses.length, courseIdFromUrl, enrollments.length, user, token, handleInitiatePayment]);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <header className="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-2 sm:gap-4 lg:gap-8 min-w-0">
-            <Link href="/" className="flex items-center gap-2 shrink-0 min-w-0">
-              <div
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0 aspect-square"
-                style={{ background: "var(--qit-gradient-1)" }}
-              >
-                Q
-              </div>
-              <span className="hidden lg:inline text-xl font-bold text-gray-900 dark:text-white font-montserrat truncate">
-                {t("platformName")}
-              </span>
-            </Link>
-            <nav className="hidden sm:flex items-center gap-2 md:gap-3 xl:gap-6 flex-1 justify-center min-w-0">
-              <Link href="/" className="shrink-0 py-2 text-sm xl:text-base text-gray-600 dark:text-gray-300 hover:text-[#1a237e] dark:hover:text-[#00b0ff] font-medium whitespace-nowrap">
-                {t("navHome")}
+    <div className={embedded ? "" : "min-h-screen bg-white dark:bg-gray-900"}>
+      {!embedded && (
+        <header className="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16 gap-2 sm:gap-4 lg:gap-8 min-w-0">
+              <Link href="/" className="flex items-center gap-2 shrink-0 min-w-0">
+                <div
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0 aspect-square"
+                  style={{ background: "var(--qit-gradient-1)" }}
+                >
+                  Q
+                </div>
+                <span className="hidden lg:inline text-xl font-bold text-gray-900 dark:text-white font-montserrat truncate">
+                  {t("platformName")}
+                </span>
               </Link>
-              <span className="shrink-0 py-2 text-sm xl:text-base text-[#1a237e] dark:text-[#00b0ff] font-semibold whitespace-nowrap">{t("courseCatalog")}</span>
-            </nav>
-            <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0 min-w-0">
-              <AppHeader />
-              {(mounted && token) ? (
-                <Link
-                  href="/app"
-                  className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
-                  style={{ background: "var(--qit-gradient-3)" }}
-                >
-                  {t("navPersonalCabinet")}
+              <nav className="hidden sm:flex items-center gap-2 md:gap-3 xl:gap-6 flex-1 justify-center min-w-0">
+                <Link href="/" className="shrink-0 py-2 text-sm xl:text-base text-gray-600 dark:text-gray-300 hover:text-[#1a237e] dark:hover:text-[#00b0ff] font-medium whitespace-nowrap">
+                  {t("navHome")}
                 </Link>
-              ) : (
-                <Link
-                  href="/login"
-                  className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
-                  style={{ background: "var(--qit-gradient-3)" }}
-                >
-                  {t("signIn")}
-                </Link>
-              )}
+                <span className="shrink-0 py-2 text-sm xl:text-base text-[#1a237e] dark:text-[#00b0ff] font-semibold whitespace-nowrap">{t("courseCatalog")}</span>
+              </nav>
+              <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0 min-w-0">
+                <AppHeader />
+                {(mounted && token) ? (
+                  <Link
+                    href="/app"
+                    className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
+                    style={{ background: "var(--qit-gradient-3)" }}
+                  >
+                    {t("navPersonalCabinet")}
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="px-3 py-2 xl:px-5 xl:py-2.5 text-sm xl:text-base rounded-full font-semibold text-white transition-all hover:opacity-90 whitespace-nowrap"
+                    style={{ background: "var(--qit-gradient-3)" }}
+                  >
+                    {t("signIn")}
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6 font-montserrat">{t("catalogTitle")}</h1>
+      <main className={embedded ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"}>
+        {embedded ? (
+          <div className="mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold font-geologica text-gray-800 dark:text-white">
+              {t("courseCatalog")}
+            </h1>
+            <p className="text-sm mt-1 text-gray-500 dark:text-gray-400">
+              {t("catalogTitle")}
+            </p>
+          </div>
+        ) : (
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6 font-montserrat">{t("catalogTitle")}</h1>
+        )}
 
         {coursesLoading && (
           <div className="flex flex-col items-center justify-center py-16">

@@ -46,10 +46,18 @@ def seed():
 
         # --- Distribute Students among Groups ---
         # Each student is added to one of the 3 groups
+        # EXCEPT student1-student5 who are added to both Python and Web groups (groups[0] and groups[1])
         for idx, s in enumerate(students):
-            gr = groups[idx % len(groups)]
-            if not db.query(GroupStudent).filter(GroupStudent.group_id == gr.id, GroupStudent.student_id == s.id).first():
-                db.add(GroupStudent(group_id=gr.id, student_id=s.id))
+            if s.email in [f"student{i}@edu.kz" for i in range(1, 6)]:
+                for g_idx in [0, 1]:
+                    if g_idx < len(groups):
+                        gr = groups[g_idx]
+                        if not db.query(GroupStudent).filter(GroupStudent.group_id == gr.id, GroupStudent.student_id == s.id).first():
+                            db.add(GroupStudent(group_id=gr.id, student_id=s.id))
+            else:
+                gr = groups[idx % len(groups)]
+                if not db.query(GroupStudent).filter(GroupStudent.group_id == gr.id, GroupStudent.student_id == s.id).first():
+                    db.add(GroupStudent(group_id=gr.id, student_id=s.id))
         
         db.commit()
 
