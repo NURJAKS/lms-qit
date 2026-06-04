@@ -107,12 +107,13 @@ export function AppDashboardSidebar() {
       : isStudentWithoutGroup
         ? [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
+          { href: "/courses", icon: Library, label: t("courseCatalog") },
           { href: "/app/support", icon: LifeBuoy, label: t("studentSupportTitle") },
         ]
         : [
           { href: "/app", icon: LayoutDashboard, label: t("dashboard") },
+          { href: "/courses", icon: Library, label: t("courseCatalog") },
           ...(isTeacher() ? [] : [
-            ...(user?.role === "student" ? [] : [{ href: "/app/courses", icon: Library, label: t("courseCatalog") }]),
             { href: "/app/analytics", icon: BarChart3, label: t("studentAnalytics") },
           ]),
           ...(user?.role === "student" ? [{ href: "/app/ai-challenge/1", icon: Zap, label: t("aiVsStudent") }] : []),

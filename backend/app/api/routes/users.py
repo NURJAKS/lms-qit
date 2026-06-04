@@ -1294,7 +1294,7 @@ def get_advanced_analytics(
             continue
         
         course_progress = [p for p in progress_rows if p.course_id == course_id]
-        completed_topics = len([p for p in course_progress if p.is_completed])
+        completed_topics = len({p.topic_id for p in course_progress if p.is_completed and p.topic_id})
         total_topics = db.query(CourseTopic).filter(CourseTopic.course_id == course_id).count()
         course_video_seconds = sum(p.video_watched_seconds or 0 for p in course_progress)
         course_test_scores = [float(p.test_score) for p in course_progress if p.test_score is not None]

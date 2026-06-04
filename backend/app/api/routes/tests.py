@@ -55,8 +55,9 @@ def _check_all_topics_completed(db: Session, user_id: int, course_id: int) -> tu
         StudentProgress.is_completed == True,
     ).all()
     
-    completed_count = len(completed_progress)
-    all_completed = completed_count == total_count
+    completed_topic_ids = {p.topic_id for p in completed_progress if p.topic_id}
+    completed_count = len(completed_topic_ids)
+    all_completed = completed_count >= total_count
     
     return (all_completed, completed_count, total_count)
 
@@ -90,8 +91,9 @@ def _check_all_assignments_completed(db: Session, user_id: int, course_id: int) 
         AssignmentSubmission.grade.isnot(None),
     ).all()
     
-    completed_count = len(completed_submissions)
-    all_completed = completed_count == total_count
+    completed_assignment_ids = {s.assignment_id for s in completed_submissions if s.assignment_id}
+    completed_count = len(completed_assignment_ids)
+    all_completed = completed_count >= total_count
     
     return (all_completed, completed_count, total_count)
 

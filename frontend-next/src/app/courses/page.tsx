@@ -187,6 +187,7 @@ function CatalogPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [showParentPassword, setShowParentPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [validatingEmail, setValidatingEmail] = useState(false);
 
   const copyToClipboard = async (text: string, field: string) => {
     try {
@@ -264,7 +265,7 @@ function CatalogPageContent() {
       if (data.enrollment_id) {
         // Уже записан на курс
         queryClient.invalidateQueries({ queryKey: ["my-enrollments"] });
-        setSubmitStep("done");
+        setSubmitError("errorAlreadyEnrolled");
         return;
       }
       if (data.payment_id) {
@@ -642,6 +643,8 @@ function CatalogPageContent() {
                     <div className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-gray-700 text-gray-400 flex items-center justify-center font-bold text-sm">2</div>
                   </div>
 
+                  {submitError && <p className="text-red-500 text-sm mb-3">{t(submitError as TranslationKey)}</p>}
+
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
@@ -738,14 +741,27 @@ function CatalogPageContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!formData.email.trim() || !formData.full_name.trim()) return;
-                      setSubmitStep("form_parent");
+                      setSubmitError("");
+                      setValidatingEmail(true);
+                      try {
+                        await api.post("/applications/check-email", {
+                          email: formData.email.trim(),
+                          course_id: buyModal.id,
+                        });
+                        setSubmitStep("form_parent");
+                      } catch (err: any) {
+                        setSubmitError(getApiErrorMessage(err, t("error")));
+                      } finally {
+                        setValidatingEmail(false);
+                      }
                     }}
-                    disabled={!formData.email.trim() || !formData.full_name.trim()}
-                    className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20"
+                    disabled={!formData.email.trim() || !formData.full_name.trim() || validatingEmail}
+                    className="flex-[2] min-h-[48px] py-3 px-6 rounded-xl text-white font-bold disabled:opacity-50 active-tap shadow-lg shadow-[var(--qit-primary)]/20 flex items-center justify-center gap-2"
                     style={{ background: "var(--qit-primary)" }}
                   >
+                    {validatingEmail && <Loader2 className="w-4 h-4 animate-spin" />}
                     {t("nextStep" as TranslationKey)}
                   </button>
                 </div>

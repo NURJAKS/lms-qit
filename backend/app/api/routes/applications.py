@@ -103,6 +103,39 @@ class PayApplicationRequest(BaseModel):
     ] = "card"
 
 
+class CheckEmailRequest(BaseModel):
+    email: EmailStr
+    course_id: int
+
+
+@router.post("/check-email")
+def check_email_availability(
+    body: CheckEmailRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    user = db.query(User).filter(User.email == body.email.strip().lower()).first()
+    if user:
+        enrolled = db.query(CourseEnrollment).filter(
+            CourseEnrollment.user_id == user.id,
+            CourseEnrollment.course_id == body.course_id
+        ).first()
+        if enrolled:
+            raise HTTPException(status_code=400, detail="errorAlreadyEnrolled")
+        
+        app = db.query(CourseApplication).filter(
+            CourseApplication.user_id == user.id,
+            CourseApplication.course_id == body.course_id,
+            CourseApplication.status.in_(["paid", "approved"])
+        ).first()
+        if app:
+            raise HTTPException(status_code=400, detail="errorCourseAlreadyPaid")
+            
+        if getattr(user, "is_approved", True):
+            raise HTTPException(status_code=400, detail="errorHasAccountLoginNeeded")
+            
+    return {"status": "ok"}
+
+
 @router.post("/pay", response_model=PayApplicationResponse)
 @limiter.limit("5/minute")
 def pay_application(
@@ -123,11 +156,18 @@ def pay_application(
             raise HTTPException(status_code=400, detail="errorInvalidParentEmail")
 
     existing_user = db.query(User).filter(User.email == body.email).first()
-    if existing_user and getattr(existing_user, "is_approved", True):
-        raise HTTPException(
-            status_code=400,
-            detail="errorHasAccountLoginNeeded",
-        )
+    if existing_user:
+        enrolled = db.query(CourseEnrollment).filter(
+            CourseEnrollment.user_id == existing_user.id,
+            CourseEnrollment.course_id == body.course_id
+        ).first()
+        if enrolled:
+            raise HTTPException(status_code=400, detail="errorAlreadyEnrolled")
+        if getattr(existing_user, "is_approved", True):
+            raise HTTPException(
+                status_code=400,
+                detail="errorHasAccountLoginNeeded",
+            )
 
     if existing_user:
         user = existing_user

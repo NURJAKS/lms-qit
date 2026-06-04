@@ -68,7 +68,7 @@ function topicFlowBlockMessage(reason: string, t: (key: TranslationKey) => strin
 
 export default function TopicViewPage() {
   const params = useParams();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
@@ -238,6 +238,29 @@ export default function TopicViewPage() {
     enabled: validTopicId && !!topic && !!access?.allowed,
   });
 
+  const { data: availableTests = [] } = useQuery({
+    queryKey: ["available-tests", cId],
+    queryFn: async () => {
+      const { data } = await api.get<Array<{ id: number; is_final: boolean }>>(`/tests/available?course_id=${cId}`);
+      return data;
+    },
+    enabled: !!cId,
+  });
+  const finalTest = availableTests.find((t) => t.is_final);
+
+  const flattened: number[] = [];
+  if (structure?.modules) {
+    const sortedModules = [...structure.modules].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+    for (const mod of sortedModules) {
+      const sortedTopics = [...(mod.topics || [])].sort((a, b) => (a.order_number ?? 0) - (b.order_number ?? 0));
+      for (const topic of sortedTopics) {
+        flattened.push(topic.id);
+      }
+    }
+  }
+  const currentIndex = flattened.indexOf(tId);
+  const isLastTopic = currentIndex !== -1 && currentIndex === flattened.length - 1;
+
   useEffect(() => {
     if (topicTest?.test_id) setTestId(topicTest.test_id);
     else setTestId(null);
@@ -370,11 +393,21 @@ export default function TopicViewPage() {
     setShowCoinsToast(true);
     setTimeout(() => setShowCoinsToast(false), 4000);
     setShowTest(false);
-    goToNextTopicOrCourse();
+    if (!isLastTopic) {
+      goToNextTopicOrCourse();
+    }
   };
 
   const onNextTopic = () => {
-    goToNextTopicOrCourse();
+    if (isLastTopic) {
+      if (finalTest) {
+        router.push(`/app/test/${finalTest.id}?courseId=${cId}`);
+      } else {
+        router.push(`/app/courses/${cId}`);
+      }
+    } else {
+      goToNextTopicOrCourse();
+    }
   };
 
   if (!validTopicId) {
@@ -717,10 +750,17 @@ export default function TopicViewPage() {
               <button
                 type="button"
                 onClick={onNextTopic}
-                className="inline-flex items-center gap-2 py-3 px-8 rounded-xl text-white font-bold shadow-lg shadow-green-500/20 hover:scale-105 transition-all"
-                style={{ background: "#2ecc71" }}
+                className="inline-flex items-center gap-2 py-3 px-8 rounded-xl text-white font-bold shadow-lg hover:scale-105 transition-all"
+                style={{
+                  background: isLastTopic
+                    ? "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
+                    : "#2ecc71",
+                  boxShadow: isLastTopic
+                    ? "0 8px 20px rgba(59, 130, 246, 0.3)"
+                    : "0 8px 20px rgba(46, 204, 113, 0.2)",
+                }}
               >
-                {t("topicFlowNextTopic")}
+                {isLastTopic ? t("takeFinalTest") : t("topicFlowNextTopic")}
                 <CheckCircle2 className="w-5 h-5" />
               </button>
             </div>
@@ -783,7 +823,7 @@ export default function TopicViewPage() {
               setTestAttemptKey((k) => k + 1);
               setShowTest(true);
             }}
-            passedContinueLabelKey="topicFlowNextTopic"
+            passedContinueLabelKey={isLastTopic ? "takeFinalTest" : "topicFlowNextTopic"}
           />
         )
       ) : null}

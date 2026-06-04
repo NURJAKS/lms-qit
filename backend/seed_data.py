@@ -504,7 +504,7 @@ def _populate_python_modules_topics_tests(db, course_id: int) -> None:
         (m1_2.id, "Циклдар",                           5,  _pv[4] if _pv else "https://youtu.be/2ETmarcmN9I",  600, _d1[4] if len(_d1)>4 else ""),
         (m1_3.id, "Функциялар негіздері",         6,  _pv[5] if _pv else "https://youtu.be/ZdzpPqWlLXc",  600, _d1[5] if len(_d1)>5 else ""),
         (m1_3.id, "Тізімдер және кортеждер",      7,  _pv[6] if _pv else "https://youtu.be/rBbQ2S3hFlw",  600, _d1[6] if len(_d1)>6 else ""),
-        (m1_3.id, "Сөздіктер және файлдармен жұмыс", 8,  _pv[7] if _pv else "https://youtu.be/cK6C28FsqkQ",  600, _d1[7] if len(_d1)>7 else ""),
+        (m1_3.id, "Сөздіктер және файлдармен жұмыс", 8,  _pv[7] if _pv else "https://youtu.be/3OlRavWy3cI?si=AaR1CyabWJZhY9Kb",  600, _d1[7] if len(_d1)>7 else ""),
     ]
     topic1_ids = []
     for mod_id, title, order, video, dur, desc in topics1:

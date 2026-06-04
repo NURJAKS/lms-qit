@@ -18,7 +18,7 @@ PYTHON_TOPIC_VIDEOS = [
     "https://youtu.be/2ETmarcmN9I",
     "https://youtu.be/ZdzpPqWlLXc",
     "https://youtu.be/rBbQ2S3hFlw",
-    "https://youtu.be/cK6C28FsqkQ",
+    "https://youtu.be/3OlRavWy3cI?si=AaR1CyabWJZhY9Kb",
     "https://youtu.be/JeznW_7DlB0",
     "https://youtu.be/c72R6c6J3d0",
 ]

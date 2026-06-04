@@ -138,6 +138,35 @@ export default function MyCoursesPage() {
     );
   }
 
+  if (user?.role === "student" && !user?.has_group_access) {
+    return (
+      <div className="relative max-w-2xl mx-auto py-12 px-4">
+        <BlurFade>
+          <div className="rounded-3xl p-8 text-center flex flex-col items-center" style={{ ...glassStyle }}>
+            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center mb-6 animate-[pulse_2s_infinite]">
+              <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold mb-4 font-geologica" style={{ color: textColors.primary }}>
+              {t("studentPendingGroup")}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-6">
+              {t("studentPendingGroupHint")}
+            </p>
+            <Link
+              href="/app/support"
+              className="px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #FF4181 0%, #B938EB 100%)" }}
+            >
+              {t("studentSupportTitle")}
+            </Link>
+          </div>
+        </BlurFade>
+      </div>
+    );
+  }
+
   return (
     <div className="relative max-w-6xl mx-auto">
       <div className="mb-8">
